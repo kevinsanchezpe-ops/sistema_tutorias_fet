@@ -1,6 +1,6 @@
 # Sistema de Gestión de Tutorías (GT) - Modernizado
 
-Sistema integral de gestión de tutorías académicas modernizado a partir del proyecto original [`dennis-andino/GT`](https://github.com/dennis-andino/GT), implementado con **Clean Architecture**, **Domain-Driven Design Ligero**, **TypeScript**, **Tailwind CSS** y **Recharts**.
+Sistema integral de gestión de tutorías académicas modernizado, implementado con **Clean Architecture**, **Domain-Driven Design Ligero**, **TypeScript**, **Tailwind CSS** y **Recharts**.
 
 ---
 
