@@ -4,7 +4,10 @@ import { Request, Response, NextFunction } from 'express';
 import { UserRole } from '../../types';
 
 const SALT_ROUNDS = 10;
-const JWT_SECRET = process.env.JWT_SECRET || 'fet-tutorias-secure-secret-key-2026-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET no está definido. Configúralo en tu archivo .env antes de iniciar el servidor.');
+}
 const JWT_EXPIRATION = '12h';
 
 export interface AuthTokenPayload {
