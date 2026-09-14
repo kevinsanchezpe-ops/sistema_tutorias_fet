@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-green: #11770e;
+  --color-brand-green-hover: #0d5c0b;
+  --color-brand-green-light: #eaf8ea;
+  --color-brand-green-border: #bce6bc;
+  --color-brand-lime: #7ce200;
+  --color-brand-cream: #fffaed;
+  --color-brand-yellow: #fff314;
+  --color-brand-liver: #4c4c4c;
+  --color-brand-liver-dark: #2b2b2b;
+}

@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gt_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: gt_user
+      POSTGRES_PASSWORD: gt_password
+      POSTGRES_DB: gt_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - gt_network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gt_app
+    restart: always
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      DATABASE_URL: postgresql://gt_user:gt_password@postgres:5432/gt_db?schema=public
+      JWT_SECRET: super-secret-jwt-key-for-gt-system-development-only
+      JWT_REFRESH_SECRET: super-secret-jwt-refresh-key-for-gt-system
+      FRONTEND_URL: http://localhost:3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+    networks:
+      - gt_network
+
+volumes:
+  postgres_data:
+
+networks:
+  gt_network:
+    driver: bridge

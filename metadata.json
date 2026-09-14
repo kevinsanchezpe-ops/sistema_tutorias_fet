@@ -1,0 +1,6 @@
+{
+  "name": "Agendamientos Tutorias FET",
+  "description": "Sistema integral y modernizado de gestión de tutorías académicas con Clean Architecture, preservando todas las reglas de negocio originales para Estudiantes, Docentes y Administradores.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
