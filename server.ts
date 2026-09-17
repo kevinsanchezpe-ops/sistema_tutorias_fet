@@ -9,6 +9,7 @@ import { initPostgres } from './src/core/infrastructure/database/pg-init';
 import { pgRepo } from './src/core/infrastructure/database/pg-repository';
 import { runBusinessRulesTests } from './src/core/tests/business-rules.test';
 import { runPostgresBusinessRulesTests } from './src/core/tests/postgres-business-rules.test';
+import { runAuthzTests } from './src/core/tests/authz.test';
 import { UserRole } from './src/core/types';
 import {
   generateAuthToken,
@@ -171,7 +172,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/auth/register-teacher', authLimiter, requireDb, async (req, res) => {
+  app.post('/api/auth/register-teacher', authLimiter, requireDb, requireAuth, requireRole(UserRole.ADMIN), async (req, res) => {
     try {
       const body = req.body || {};
       let initialAvailability = body.initialAvailability;
@@ -725,7 +726,7 @@ async function startServer() {
     if (isDbConnected) {
       postgres = await runPostgresBusinessRulesTests();
     }
-    const results = [...inMemory.results, ...postgres.results];
+    const results = [...inMemory.results, ...runAuthzTests().results, ...postgres.results];
     res.json({ total: results.length, passed: results.filter((r) => r.success).length, results });
   }));
 

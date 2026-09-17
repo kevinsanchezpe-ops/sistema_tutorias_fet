@@ -43,7 +43,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [loginError, setLoginError] = useState<string | null>(null);
 
   // Registration state
-  const [registerRole, setRegisterRole] = useState<'student' | 'teacher'>('student');
   const [fullName, setFullName] = useState('');
   const [account, setAccount] = useState('');
   const [username, setUsername] = useState('');
@@ -165,7 +164,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
       return;
     }
     if (!account.trim()) {
-      setRegError(registerRole === 'student' ? 'El carnet institucional es obligatorio.' : 'El código de docente es obligatorio.');
+      setRegError('El carnet institucional es obligatorio.');
       return;
     }
     if (!username.trim()) {
@@ -183,54 +182,30 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
     setRegLoading(true);
 
-    if (registerRole === 'student') {
-      const res = await ApiClient.registerStudent({
-        fullName: fullName.trim(),
-        account: account.trim(),
-        username: username.trim().toLowerCase(),
-        email: email.trim().toLowerCase(),
-        phone: phone.trim(),
-        password: password || 'password123',
-        birthDate: '2004-01-01',
-        admissionDate: new Date().toISOString().split('T')[0],
-        careerId,
-        semester: Number(semester),
-        campusId: 'cmp-1'
-      });
-      setRegLoading(false);
+    const res = await ApiClient.registerStudent({
+      fullName: fullName.trim(),
+      account: account.trim(),
+      username: username.trim().toLowerCase(),
+      email: email.trim().toLowerCase(),
+      phone: phone.trim(),
+      password: password || 'password123',
+      birthDate: '2004-01-01',
+      admissionDate: new Date().toISOString().split('T')[0],
+      careerId,
+      semester: Number(semester),
+      campusId: 'cmp-1'
+    });
+    setRegLoading(false);
 
-      if (res.success && res.data) {
-        setRegSuccessMsg(`¡Estudiante ${res.data.fullName} registrado con éxito! Ahora inicia sesión con tus credenciales.`);
-        setTimeout(() => {
-          setActiveTab('login');
-          setRegSuccessMsg(null);
-          setLoginError(null);
-        }, 900);
-      } else {
-        setRegError(res.error?.message || 'Error al registrar al estudiante.');
-      }
+    if (res.success && res.data) {
+      setRegSuccessMsg(`¡Estudiante ${res.data.fullName} registrado con éxito! Ahora inicia sesión con tus credenciales.`);
+      setTimeout(() => {
+        setActiveTab('login');
+        setRegSuccessMsg(null);
+        setLoginError(null);
+      }, 900);
     } else {
-      const res = await ApiClient.registerTeacher({
-        fullName: fullName.trim(),
-        account: account.trim(),
-        username: username.trim().toLowerCase(),
-        email: email.trim().toLowerCase(),
-        phone: phone.trim(),
-        password: password || 'password123',
-        careerId
-      });
-      setRegLoading(false);
-
-      if (res.success && res.data) {
-        setRegSuccessMsg(`¡Docente ${res.data.fullName} registrado con éxito! Ahora inicia sesión con tus credenciales.`);
-        setTimeout(() => {
-          setActiveTab('login');
-          setRegSuccessMsg(null);
-          setLoginError(null);
-        }, 900);
-      } else {
-        setRegError(res.error?.message || 'Error al registrar al docente.');
-      }
+      setRegError(res.error?.message || 'Error al registrar al estudiante.');
     }
   };
 
@@ -455,36 +430,8 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   Crear Cuenta
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Selecciona tu rol e ingresa tus datos esenciales
+                  Ingresa tus datos esenciales para registrarte como estudiante
                 </p>
-              </div>
-
-              {/* Role selector */}
-              <div className="grid grid-cols-2 gap-2 p-1 bg-[#fffaed] border border-stone-200 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => setRegisterRole('student')}
-                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    registerRole === 'student'
-                      ? 'bg-[#11770e] text-white shadow-xs'
-                      : 'text-stone-600 hover:text-[#2b2b2b] hover:bg-[#eaf8ea]'
-                  }`}
-                >
-                  <GraduationCap className="w-4 h-4" />
-                  <span>Estudiante</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRegisterRole('teacher')}
-                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    registerRole === 'teacher'
-                      ? 'bg-[#11770e] text-white shadow-xs'
-                      : 'text-stone-600 hover:text-[#2b2b2b] hover:bg-[#eaf8ea]'
-                  }`}
-                >
-                  <Briefcase className="w-4 h-4" />
-                  <span>Docente</span>
-                </button>
               </div>
 
               {/* Career selector */}
@@ -521,11 +468,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </div>
               </div>
 
-              {/* Semester selector (students only) */}
-              {registerRole === 'student' && (
-                <div>
-                  <label
-                    htmlFor="reg-semester"
+              {/* Semester selector */}
+              <div>
+                <label
+                  htmlFor="reg-semester"
                     className="block text-xs font-semibold text-slate-700 mb-1"
                   >
                     Semestre que cursas
@@ -552,7 +498,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     </select>
                   </div>
                 </div>
-              )}
 
               {/* Messages */}
               {regSuccessMsg && (
@@ -607,7 +552,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                       htmlFor="reg-account"
                       className="block text-xs font-semibold text-slate-700 mb-1"
                     >
-                      {registerRole === 'student' ? 'Carnet Institucional' : 'Código Docente'}
+                      Carnet Institucional
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -618,7 +563,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                         type="text"
                         value={account}
                         onChange={(e) => setAccount(e.target.value)}
-                        placeholder={registerRole === 'student' ? '20241012' : 'DOC-102'}
+                        placeholder="20241012"
                         required
                         className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e] uppercase font-mono"
                       />
@@ -741,7 +686,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     </span>
                   ) : (
                     <>
-                      <span>{registerRole === 'student' ? 'Registrarme como Estudiante' : 'Registrarme como Docente'}</span>
+                      <span>Registrarme como Estudiante</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
