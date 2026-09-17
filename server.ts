@@ -285,9 +285,8 @@ async function startServer() {
 
   app.post('/api/tutorings', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const effectiveUserId = req.user?.userId || req.body.petitionerId;
-      const { petitionerId, ...dto } = req.body;
-      const user = await pgRepo.getUserById(effectiveUserId);
+      const dto = req.body;
+      const user = await pgRepo.getUserById(req.user!.userId);
       if (!user) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario estudiante requerido.' } });
       }
@@ -300,9 +299,8 @@ async function startServer() {
 
   app.patch('/api/tutorings/:id/approve', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const effectiveApproverId = req.user?.userId || req.body.approverId;
       const { space } = req.body;
-      const approver = await pgRepo.getUserById(effectiveApproverId);
+      const approver = await pgRepo.getUserById(req.user!.userId);
       if (!approver || (approver.role !== UserRole.ADMIN && approver.role !== UserRole.TEACHER)) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Permiso de administrador o docente requerido.' } });
       }
@@ -315,9 +313,8 @@ async function startServer() {
 
   app.patch('/api/tutorings/:id/cancel', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const effectiveUserId = req.user?.userId || req.body.userId;
       const { reason } = req.body;
-      const user = await pgRepo.getUserById(effectiveUserId);
+      const user = await pgRepo.getUserById(req.user!.userId);
       if (!user) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario no identificado.' } });
       }
@@ -328,10 +325,9 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/tutorings/:id/start', requireDb, async (req, res) => {
+  app.patch('/api/tutorings/:id/start', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { teacherId } = req.body;
-      const teacher = await pgRepo.getUserById(teacherId);
+      const teacher = await pgRepo.getUserById(req.user!.userId);
       if (!teacher) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Docente titular requerido.' } });
       }
@@ -342,10 +338,10 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/tutorings/:id/stop', requireDb, async (req, res) => {
+  app.patch('/api/tutorings/:id/stop', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { teacherId, teacherComment } = req.body;
-      const teacher = await pgRepo.getUserById(teacherId);
+      const { teacherComment } = req.body;
+      const teacher = await pgRepo.getUserById(req.user!.userId);
       if (!teacher) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Docente titular requerido.' } });
       }
@@ -356,10 +352,9 @@ async function startServer() {
     }
   });
 
-  app.post('/api/tutorings/:id/join', requireDb, async (req, res) => {
+  app.post('/api/tutorings/:id/join', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { studentId } = req.body;
-      const student = await pgRepo.getUserById(studentId);
+      const student = await pgRepo.getUserById(req.user!.userId);
       if (!student) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Estudiante requerido.' } });
       }
@@ -370,10 +365,10 @@ async function startServer() {
     }
   });
 
-  app.post('/api/tutorings/:id/assistance', requireDb, async (req, res) => {
+  app.post('/api/tutorings/:id/assistance', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { records, teacherId } = req.body;
-      const teacher = await pgRepo.getUserById(teacherId);
+      const { records } = req.body;
+      const teacher = await pgRepo.getUserById(req.user!.userId);
       if (!teacher) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Docente titular requerido.' } });
       }
@@ -384,10 +379,10 @@ async function startServer() {
     }
   });
 
-  app.post('/api/tutorings/:id/rate', requireDb, async (req, res) => {
+  app.post('/api/tutorings/:id/rate', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { score, studentComment, studentId } = req.body;
-      const student = await pgRepo.getUserById(studentId);
+      const { score, studentComment } = req.body;
+      const student = await pgRepo.getUserById(req.user!.userId);
       if (!student) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Estudiante solicitante requerido.' } });
       }
@@ -403,10 +398,10 @@ async function startServer() {
     res.json({ success: true, data: await pgRepo.getSubjects() });
   }));
 
-  app.post('/api/subjects', requireDb, async (req, res) => {
+  app.post('/api/subjects', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId, ...dto } = req.body;
-      const admin = await pgRepo.getUserById(adminId);
+      const admin = await pgRepo.getUserById(req.user!.userId);
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -417,10 +412,10 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/subjects/:id/toggle', requireDb, async (req, res) => {
+  app.patch('/api/subjects/:id/toggle', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId } = req.body;
-      const admin = await pgRepo.getUserById(adminId);
+      const admin = await pgRepo.getUserById(req.user!.userId);
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -431,10 +426,10 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/subjects/:id', requireDb, async (req, res) => {
+  app.delete('/api/subjects/:id', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId } = req.body;
-      const admin = await pgRepo.getUserById(adminId);
+      const admin = await pgRepo.getUserById(req.user!.userId);
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -450,10 +445,10 @@ async function startServer() {
     res.json({ success: true, data: await pgRepo.getCareers() });
   }));
 
-  app.post('/api/careers', requireDb, async (req, res) => {
+  app.post('/api/careers', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId, ...dto } = req.body;
-      const admin = await pgRepo.getUserById(adminId);
+      const admin = await pgRepo.getUserById(req.user!.userId);
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -464,10 +459,10 @@ async function startServer() {
     }
   });
 
-  app.put('/api/careers/:id', requireDb, async (req, res) => {
+  app.put('/api/careers/:id', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId, ...dto } = req.body;
-      const admin = await pgRepo.getUserById(adminId);
+      const admin = await pgRepo.getUserById(req.user!.userId);
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -478,10 +473,10 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/careers/:id/toggle', requireDb, async (req, res) => {
+  app.patch('/api/careers/:id/toggle', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId } = req.body;
-      const admin = await pgRepo.getUserById(adminId);
+      const admin = await pgRepo.getUserById(req.user!.userId);
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -492,10 +487,10 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/careers/:id', requireDb, async (req, res) => {
+  app.delete('/api/careers/:id', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId } = req.body;
-      const admin = await pgRepo.getUserById(adminId);
+      const admin = await pgRepo.getUserById(req.user!.userId);
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -518,7 +513,7 @@ async function startServer() {
     res.json({ success: true, data: await pgRepo.getTeacherAvailability() });
   }));
 
-  app.patch('/api/availability/:id/toggle', requireDb, async (req, res) => {
+  app.patch('/api/availability/:id/toggle', requireDb, requireAuth, async (req, res) => {
     try {
       const item = await pgRepo.toggleTeacherAvailability(req.params.id);
       res.json({ success: true, data: item, message: `Disponibilidad ${item.isAvailable ? 'activada' : 'desactivada'}.` });
@@ -527,10 +522,10 @@ async function startServer() {
     }
   });
 
-  app.post('/api/availability', requireDb, async (req, res) => {
+  app.post('/api/availability', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { teacherId, subjectCourseId, scheduleSlotId } = req.body;
-      const teacher = await pgRepo.getUserById(teacherId);
+      const { subjectCourseId, scheduleSlotId } = req.body;
+      const teacher = await pgRepo.getUserById(req.user!.userId);
       if (!teacher) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Docente requerido.' } });
       }
@@ -541,10 +536,9 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/availability/:id', requireDb, async (req, res) => {
+  app.delete('/api/availability/:id', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { teacherId } = req.body;
-      const teacher = await pgRepo.getUserById(teacherId);
+      const teacher = await pgRepo.getUserById(req.user!.userId);
       if (!teacher) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario requerido.' } });
       }
@@ -555,10 +549,10 @@ async function startServer() {
     }
   });
 
-  app.post('/api/availability/batch', requireDb, async (req, res) => {
+  app.post('/api/availability/batch', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { teacherId, subjectCourseId, scheduleSlotIds } = req.body;
-      const teacher = await pgRepo.getUserById(teacherId);
+      const { subjectCourseId, scheduleSlotIds } = req.body;
+      const teacher = await pgRepo.getUserById(req.user!.userId);
       if (!teacher) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Docente requerido.' } });
       }
@@ -579,10 +573,10 @@ async function startServer() {
     }
   });
 
-  app.put('/api/teachers/:id/subjects', requireDb, async (req, res) => {
+  app.put('/api/teachers/:id/subjects', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { actorId, subjectIds } = req.body;
-      const actor = await pgRepo.getUserById(actorId);
+      const { subjectIds } = req.body;
+      const actor = await pgRepo.getUserById(req.user!.userId);
       if (!actor) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario requerido.' } });
       }
@@ -601,10 +595,10 @@ async function startServer() {
     }
   });
 
-  app.put('/api/teachers/:id', requireDb, async (req, res) => {
+  app.put('/api/teachers/:id', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId, fullName, phone, email, careerId, subjectIds } = req.body;
-      const admin = await pgRepo.getUserById(adminId);
+      const admin = await pgRepo.getUserById(req.user!.userId);
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -623,10 +617,10 @@ async function startServer() {
     res.json({ success: true, data: await pgRepo.getUsers() });
   }));
 
-  app.patch('/api/users/:id/toggle', requireDb, async (req, res) => {
+  app.patch('/api/users/:id/toggle', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId } = req.body;
-      const admin = await pgRepo.getUserById(adminId);
+      const admin = await pgRepo.getUserById(req.user!.userId);
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -637,10 +631,10 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/users/:id', requireDb, async (req, res) => {
+  app.delete('/api/users/:id', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId } = req.body;
-      const admin = await pgRepo.getUserById(adminId);
+      const admin = await pgRepo.getUserById(req.user!.userId);
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -652,7 +646,7 @@ async function startServer() {
   });
 
   // --- NOTIFICATIONS ---
-  app.get('/api/notifications/:userId', requireDb, async (req, res) => {
+  app.get('/api/notifications/:userId', requireDb, requireAuth, async (req, res) => {
     try {
       const list = await pgRepo.getNotifications(req.params.userId);
       res.json({ success: true, data: list });
@@ -661,7 +655,7 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/notifications/:id/read', requireDb, async (req, res) => {
+  app.patch('/api/notifications/:id/read', requireDb, requireAuth, async (req, res) => {
     try {
       await pgRepo.markNotificationRead(req.params.id);
       res.json({ success: true });
@@ -670,7 +664,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/notifications/read-all/:userId', requireDb, async (req, res) => {
+  app.post('/api/notifications/read-all/:userId', requireDb, requireAuth, async (req, res) => {
     try {
       await pgRepo.markAllNotificationsRead(req.params.userId);
       res.json({ success: true });
@@ -689,10 +683,10 @@ async function startServer() {
     res.json({ success: true, data: await pgRepo.getInstitution() });
   }));
 
-  app.put('/api/institution', requireDb, async (req, res) => {
+  app.put('/api/institution', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId, ...info } = req.body;
-      const admin = await pgRepo.getUserById(adminId);
+      const admin = await pgRepo.getUserById(req.user!.userId);
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }

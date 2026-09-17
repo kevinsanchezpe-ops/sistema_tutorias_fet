@@ -88,12 +88,6 @@ export function verifyTokenMiddleware(req: AuthenticatedRequest, res: Response, 
  */
 export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   if (!req.user) {
-    // Si no hay token JWT en header pero viene un ID en body/query, permitimos continuar en transición
-    const fallbackId = req.body?.petitionerId || req.body?.adminId || req.body?.teacherId || req.body?.userId || req.query?.userId;
-    if (fallbackId) {
-      return next();
-    }
-
     return res.status(401).json({
       success: false,
       error: { code: 'UNAUTHORIZED', message: 'Se requiere inicio de sesión para acceder a este recurso.' }
@@ -108,8 +102,10 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
 export function requireRole(...allowedRoles: UserRole[]) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
-      // Si está en modo fallback con ID en body, se delega al controlador la validación por BD
-      return next();
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Se requiere inicio de sesión para acceder a este recurso.' }
+      });
     }
 
     if (!allowedRoles.includes(req.user.role)) {
