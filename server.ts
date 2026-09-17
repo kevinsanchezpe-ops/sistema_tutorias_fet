@@ -8,6 +8,7 @@ import { createServer as createViteServer } from 'vite';
 import { initPostgres } from './src/core/infrastructure/database/pg-init';
 import { pgRepo } from './src/core/infrastructure/database/pg-repository';
 import { runBusinessRulesTests } from './src/core/tests/business-rules.test';
+import { runPostgresBusinessRulesTests } from './src/core/tests/postgres-business-rules.test';
 import { UserRole } from './src/core/types';
 import {
   generateAuthToken,
@@ -708,9 +709,25 @@ async function startServer() {
   });
 
   // --- TESTS ---
-  app.get('/api/tests', (req, res) => {
-    res.json(runBusinessRulesTests());
-  });
+  app.get('/api/tests', asyncHandler(async (req, res) => {
+    const inMemory = runBusinessRulesTests();
+    let postgres: { total: number; passed: number; results: { name: string; success: boolean; message: string }[] } = {
+      total: 0,
+      passed: 0,
+      results: [
+        {
+          name: 'PostgreSQL no conectado',
+          success: false,
+          message: 'Los tests del camino real requieren PostgreSQL activo.'
+        }
+      ]
+    };
+    if (isDbConnected) {
+      postgres = await runPostgresBusinessRulesTests();
+    }
+    const results = [...inMemory.results, ...postgres.results];
+    res.json({ total: results.length, passed: results.filter((r) => r.success).length, results });
+  }));
 
   // --- API 404 JSON (evita que rutas /api desconocidas devuelvan HTML o vacío) ---
   app.use('/api', (req, res) => {

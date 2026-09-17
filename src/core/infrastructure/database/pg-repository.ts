@@ -1066,6 +1066,16 @@ export class PgRepository {
     const tut = await this.getTutoringById(tutoringId);
     if (!tut) throw new Error('Tutoría no encontrada.');
 
+    if (teacher.role !== UserRole.TEACHER) {
+      throw new Error('Solo un docente puede iniciar tutorías.');
+    }
+    if (teacher.id !== tut.teacherId) {
+      throw new Error('Solo el docente titular puede iniciar esta tutoría.');
+    }
+    if (tut.status !== TutoringStatus.APPROVED) {
+      throw new Error(`Solo se pueden iniciar tutorías programadas (estado actual #${tut.status}).`);
+    }
+
     const startTime = new Date().toISOString().replace('T', ' ').substring(0, 16);
     await pool.query(
       `UPDATE tutorings SET status = $1, start_time = $2 WHERE id = $3;`,
@@ -1085,6 +1095,16 @@ export class PgRepository {
     const pool = await getPgPool();
     const tut = await this.getTutoringById(tutoringId);
     if (!tut) throw new Error('Tutoría no encontrada.');
+
+    if (teacher.role !== UserRole.TEACHER) {
+      throw new Error('Solo un docente puede finalizar tutorías.');
+    }
+    if (teacher.id !== tut.teacherId) {
+      throw new Error('Solo el docente titular puede finalizar esta tutoría.');
+    }
+    if (tut.status !== TutoringStatus.IN_PROGRESS) {
+      throw new Error(`Solo se pueden finalizar tutorías en curso (estado actual #${tut.status}).`);
+    }
 
     const finishTime = new Date().toISOString().replace('T', ' ').substring(0, 16);
     await pool.query(
