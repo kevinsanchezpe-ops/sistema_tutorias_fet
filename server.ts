@@ -88,6 +88,13 @@ async function startServer() {
     next();
   };
 
+  // Wrapper para manejar errores en handlers async (Express 4 no captura rechazos async)
+  const asyncHandler =
+    (fn: (req: express.Request, res: express.Response, next: express.NextFunction) => Promise<unknown>) =>
+    (req, res, next) => {
+      fn(req, res, next).catch(next);
+    };
+
   // --- HEALTH & STATUS ---
   app.get('/api/health', (req, res) => {
     res.json({
@@ -165,7 +172,19 @@ async function startServer() {
 
   app.post('/api/auth/register-teacher', authLimiter, requireDb, async (req, res) => {
     try {
-      const user = await pgRepo.registerTeacher(req.body);
+      const body = req.body || {};
+      let initialAvailability = body.initialAvailability;
+
+      // Traducir el formulario del admin (subjectIds + scheduleSlotIds) a disponibilidad inicial
+      const subjectIds: string[] = body.subjectIds || [];
+      const scheduleSlotIds: string[] = body.scheduleSlotIds || [];
+      if (subjectIds.length > 0 && scheduleSlotIds.length > 0 && !initialAvailability) {
+        initialAvailability = subjectIds.flatMap((subjectCourseId: string) =>
+          scheduleSlotIds.map((scheduleSlotId: string) => ({ subjectCourseId, scheduleSlotId }))
+        );
+      }
+
+      const user = await pgRepo.registerTeacher({ ...body, initialAvailability });
       const token = generateAuthToken({
         userId: user.id,
         username: user.username,
@@ -380,9 +399,9 @@ async function startServer() {
   });
 
   // --- CATALOGS ---
-  app.get('/api/subjects', requireDb, async (req, res) => {
+  app.get('/api/subjects', requireDb, asyncHandler(async (req, res) => {
     res.json({ success: true, data: await pgRepo.getSubjects() });
-  });
+  }));
 
   app.post('/api/subjects', requireDb, async (req, res) => {
     try {
@@ -426,17 +445,78 @@ async function startServer() {
     }
   });
 
-  app.get('/api/schedules', requireDb, async (req, res) => {
+  // --- CAREERS ---
+  app.get('/api/careers', requireDb, asyncHandler(async (req, res) => {
+    res.json({ success: true, data: await pgRepo.getCareers() });
+  }));
+
+  app.post('/api/careers', requireDb, async (req, res) => {
+    try {
+      const { adminId, ...dto } = req.body;
+      const admin = await pgRepo.getUserById(adminId);
+      if (!admin || admin.role !== UserRole.ADMIN) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
+      }
+      const career = await pgRepo.createCareer(dto, admin);
+      res.json({ success: true, data: career, message: `Carrera "${career.name}" creada con éxito.` });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: { code: 'CREATE_CAREER_ERROR', message: err.message } });
+    }
+  });
+
+  app.put('/api/careers/:id', requireDb, async (req, res) => {
+    try {
+      const { adminId, ...dto } = req.body;
+      const admin = await pgRepo.getUserById(adminId);
+      if (!admin || admin.role !== UserRole.ADMIN) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
+      }
+      const career = await pgRepo.updateCareer(req.params.id, dto, admin);
+      res.json({ success: true, data: career, message: `Carrera "${career.name}" actualizada con éxito.` });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: { code: 'UPDATE_CAREER_ERROR', message: err.message } });
+    }
+  });
+
+  app.patch('/api/careers/:id/toggle', requireDb, async (req, res) => {
+    try {
+      const { adminId } = req.body;
+      const admin = await pgRepo.getUserById(adminId);
+      if (!admin || admin.role !== UserRole.ADMIN) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
+      }
+      const career = await pgRepo.toggleCareerActive(req.params.id, admin);
+      res.json({ success: true, data: career, message: `Carrera ${career.isActive ? 'activada' : 'inhabilitada'}.` });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: { code: 'TOGGLE_CAREER_ERROR', message: err.message } });
+    }
+  });
+
+  app.delete('/api/careers/:id', requireDb, async (req, res) => {
+    try {
+      const { adminId } = req.body;
+      const admin = await pgRepo.getUserById(adminId);
+      if (!admin || admin.role !== UserRole.ADMIN) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
+      }
+      const career = await pgRepo.deleteCareer(req.params.id, admin);
+      res.json({ success: true, data: career, message: `Carrera "${career.name}" eliminada permanentemente.` });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: { code: 'DELETE_CAREER_ERROR', message: err.message } });
+    }
+  });
+
+  app.get('/api/schedules', requireDb, asyncHandler(async (req, res) => {
     res.json({ success: true, data: await pgRepo.getScheduleSlots() });
-  });
+  }));
 
-  app.get('/api/sections', requireDb, async (req, res) => {
+  app.get('/api/sections', requireDb, asyncHandler(async (req, res) => {
     res.json({ success: true, data: await pgRepo.getSections() });
-  });
+  }));
 
-  app.get('/api/availability', requireDb, async (req, res) => {
+  app.get('/api/availability', requireDb, asyncHandler(async (req, res) => {
     res.json({ success: true, data: await pgRepo.getTeacherAvailability() });
-  });
+  }));
 
   app.patch('/api/availability/:id/toggle', requireDb, async (req, res) => {
     try {
@@ -489,10 +569,59 @@ async function startServer() {
     }
   });
 
-  // --- USERS ---
-  app.get('/api/users', requireDb, async (req, res) => {
-    res.json({ success: true, data: await pgRepo.getUsers() });
+  // --- TEACHER SUBJECTS (catálogo por docente) ---
+  app.get('/api/teachers/:id/subjects', requireDb, async (req, res) => {
+    try {
+      const subjects = await pgRepo.getTeacherSubjects(req.params.id);
+      res.json({ success: true, data: subjects });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: { code: 'TEACHER_SUBJECTS_ERROR', message: err.message } });
+    }
   });
+
+  app.put('/api/teachers/:id/subjects', requireDb, async (req, res) => {
+    try {
+      const { actorId, subjectIds } = req.body;
+      const actor = await pgRepo.getUserById(actorId);
+      if (!actor) {
+        return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario requerido.' } });
+      }
+      const isAdmin = actor.role === UserRole.ADMIN;
+      const isSelf = actor.id === req.params.id;
+      if (!isAdmin && !isSelf) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Permiso insuficiente.' } });
+      }
+      if (!Array.isArray(subjectIds)) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'subjectIds requerido.' } });
+      }
+      const subjects = await pgRepo.setTeacherSubjects(req.params.id, subjectIds, actor);
+      res.json({ success: true, data: subjects, message: 'Asignaturas del docente actualizadas correctamente.' });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: { code: 'TEACHER_SUBJECTS_ERROR', message: err.message } });
+    }
+  });
+
+  app.put('/api/teachers/:id', requireDb, async (req, res) => {
+    try {
+      const { adminId, fullName, phone, email, careerId, subjectIds } = req.body;
+      const admin = await pgRepo.getUserById(adminId);
+      if (!admin || admin.role !== UserRole.ADMIN) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
+      }
+      const user = await pgRepo.updateTeacherProfile(req.params.id, { fullName, phone, email, careerId }, admin);
+      if (Array.isArray(subjectIds)) {
+        await pgRepo.setTeacherSubjects(req.params.id, subjectIds, admin);
+      }
+      res.json({ success: true, data: user, message: 'Docente actualizado correctamente.' });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: { code: 'UPDATE_TEACHER_ERROR', message: err.message } });
+    }
+  });
+
+  // --- USERS ---
+  app.get('/api/users', requireDb, asyncHandler(async (req, res) => {
+    res.json({ success: true, data: await pgRepo.getUsers() });
+  }));
 
   app.patch('/api/users/:id/toggle', requireDb, async (req, res) => {
     try {
@@ -551,14 +680,14 @@ async function startServer() {
   });
 
   // --- BINNACLE ---
-  app.get('/api/binnacle', requireDb, async (req, res) => {
+  app.get('/api/binnacle', requireDb, asyncHandler(async (req, res) => {
     res.json({ success: true, data: await pgRepo.getBinnacle() });
-  });
+  }));
 
   // --- INSTITUTION ---
-  app.get('/api/institution', requireDb, async (req, res) => {
+  app.get('/api/institution', requireDb, asyncHandler(async (req, res) => {
     res.json({ success: true, data: await pgRepo.getInstitution() });
-  });
+  }));
 
   app.put('/api/institution', requireDb, async (req, res) => {
     try {
@@ -587,6 +716,23 @@ async function startServer() {
   // --- TESTS ---
   app.get('/api/tests', (req, res) => {
     res.json(runBusinessRulesTests());
+  });
+
+  // --- API 404 JSON (evita que rutas /api desconocidas devuelvan HTML o vacío) ---
+  app.use('/api', (req, res) => {
+    res.status(404).json({
+      success: false,
+      error: { code: 'NOT_FOUND', message: `Ruta no encontrada: ${req.method} ${req.originalUrl}` }
+    });
+  });
+
+  // --- Error handler global (captura rechazos async enviados con next(err)) ---
+  app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error(`[GT-API] Error en ${req.method} ${req.originalUrl}:`, err?.message || err);
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: err?.message || 'Error interno del servidor.' }
+    });
   });
 
   // Vite middleware setup
