@@ -1,5 +1,6 @@
 import { BusinessRuleException } from '../../domain/services/schedule-conflict.service';
 import { db } from '../../infrastructure/database/database';
+import { getCareerById, getDefaultCareer } from '../../infrastructure/database/careers-data';
 import { User, UserRole } from '../../types';
 
 export interface RegisterStudentDto {
@@ -10,6 +11,7 @@ export interface RegisterStudentDto {
   admissionDate?: string;
   account: string;
   careerId?: string;
+  semester?: number;
   campusId?: string;
   username: string;
   password?: string;
@@ -41,6 +43,19 @@ export class RegisterStudentUseCase {
     const nameParts = dto.fullName.trim().split(' ');
     const alias = nameParts.length >= 2 ? `${nameParts[0]} ${nameParts[1]}` : dto.fullName;
 
+    const careerId = dto.careerId || getDefaultCareer().id;
+    const career = getCareerById(careerId);
+    if (dto.careerId && !career) {
+      throw new BusinessRuleException('La carrera seleccionada no es válida.', 'INVALID_CAREER');
+    }
+
+    if (dto.semester && (dto.semester < 1 || dto.semester > (career?.numberOfSemesters || 10))) {
+      throw new BusinessRuleException(
+        `El semestre debe estar entre 1 y ${career?.numberOfSemesters || 10}.`,
+        'INVALID_SEMESTER'
+      );
+    }
+
     const newUser: User = {
       id: `usr-student-${Date.now()}`,
       username: usernameLower,
@@ -51,11 +66,12 @@ export class RegisterStudentUseCase {
       role: UserRole.STUDENT,
       account: dto.account.trim(),
       campusId: dto.campusId || 'cmp-1',
-      campusName: 'Campus Central',
-      careerId: dto.careerId || 'car-1',
-      careerName: 'Ingeniería en Sistemas',
+      campusName: 'Sede Única',
+      careerId,
+      careerName: career?.name || getDefaultCareer().name,
       birthDate: dto.birthDate,
       admissionDate: dto.admissionDate,
+      semester: dto.semester || 1,
       isActive: true,
       createdAt: new Date().toISOString().split('T')[0]
     };

@@ -13,6 +13,7 @@ import { ApiClient } from './core/presentation/api-client';
 import { db } from './core/infrastructure/database/database';
 import {
   BinnacleEntry,
+  Career,
   InstitutionInfo,
   Notification,
   ScheduleSlot,
@@ -43,6 +44,7 @@ export default function App() {
   const [allUsers, setAllUsers] = useState<User[]>(() => [...db.users]);
   const [tutorings, setTutorings] = useState<Tutoring[]>(() => [...db.tutorings]);
   const [subjects, setSubjects] = useState<SubjectCourse[]>(() => [...db.subjects]);
+  const [careers, setCareers] = useState<Career[]>(() => [...db.careers]);
   const [schedules, setSchedules] = useState<ScheduleSlot[]>(() => [...db.scheduleSlots]);
   const [sections, setSections] = useState<SectionClassroom[]>(() => [...db.sections]);
   const [availabilities, setAvailabilities] = useState<TeacherAvailability[]>(() => [...db.teacherAvailability]);
@@ -65,7 +67,7 @@ export default function App() {
       setDbHealth(health);
     } catch (e) {}
 
-    const [uRes, tRes, sRes, schRes, secRes, avRes, bRes, instRes, anRes] = await Promise.all([
+    const [uRes, tRes, sRes, schRes, secRes, avRes, bRes, instRes, anRes, cRes] = await Promise.all([
       ApiClient.getUsers(),
       ApiClient.getTutorings(),
       ApiClient.getSubjects(),
@@ -74,7 +76,8 @@ export default function App() {
       ApiClient.getTeacherAvailability(),
       ApiClient.getBinnacle(),
       ApiClient.getInstitution(),
-      ApiClient.getAnalytics()
+      ApiClient.getAnalytics(),
+      ApiClient.getCareers()
     ]);
 
     if (uRes.data) setAllUsers(uRes.data);
@@ -86,6 +89,7 @@ export default function App() {
     if (bRes.data) setBinnacle(bRes.data);
     if (instRes.data) setInstitution(instRes.data);
     if (anRes.data) setAnalytics(anRes.data);
+    if (cRes.data) setCareers(cRes.data);
 
     if (currentUser) {
       const nRes = await ApiClient.getNotifications(currentUser.id);
@@ -218,11 +222,12 @@ export default function App() {
             currentUser={currentUser}
             tutorings={tutorings}
             subjects={subjects}
+            careers={careers}
             users={allUsers}
             binnacle={binnacle}
             institution={institution}
             schedules={schedules}
-            classrooms={sections}
+            sections={sections}
             onRefresh={refreshData}
             analytics={analytics}
           />
@@ -360,6 +365,7 @@ export default function App() {
 
       {showRegisterModal && (
         <RegisterModal
+          careers={careers}
           onClose={() => setShowRegisterModal(false)}
           onSuccess={(newUser) => {
             handleLoginSuccess(newUser);

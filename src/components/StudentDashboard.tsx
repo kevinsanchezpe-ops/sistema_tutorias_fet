@@ -26,9 +26,12 @@ import {
   History,
   Info,
   Paperclip,
-  Trash2
+  Trash2,
+  List
 } from 'lucide-react';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
+import { TutoringCalendarView } from './TutoringCalendarView';
+import { TutoringDetailModal } from './TutoringDetailModal';
 
 interface StudentDashboardProps {
   currentUser: User;
@@ -51,9 +54,16 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'requests' | 'history' | 'profile'>('requests');
 
+  // Asignaturas visibles para el estudiante: de su carrera y de su semestre
+  const coursePool = subjects.filter(
+    (s) =>
+      s.careerId === currentUser.careerId &&
+      (!currentUser.semester || !s.semester || s.semester === currentUser.semester)
+  );
+
   // Form State for New Tutoring
   const [subjectTitle, setSubjectTitle] = useState('');
-  const [selectedCourseId, setSelectedCourseId] = useState(subjects[0]?.id || '');
+  const [selectedCourseId, setSelectedCourseId] = useState<string>(() => coursePool[0]?.id || '');
   const [modality, setModality] = useState<TutoringModality>(TutoringModality.VIRTUAL);
 
   // Calculate default +2 days minimum date
@@ -71,6 +81,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null);
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [viewingAttachment, setViewingAttachment] = useState<{ fileName: string; fileUrl: string } | null>(null);
+  const [displayMode, setDisplayMode] = useState<'list' | 'calendar'>('list');
+  const [selectedCalendarTutoring, setSelectedCalendarTutoring] = useState<Tutoring | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -247,9 +259,15 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   <Send className="w-4 h-4 text-[#11770e]" />
                   Nueva Solicitud de Tutoría
                 </h3>
-                <span className="text-[11px] bg-[#eaf8ea] text-[#11770e] font-semibold px-2 py-0.5 rounded-md border border-[#bce6bc]/60">
-                  Regla: +2 días anticipación
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] bg-[#eaf8ea] text-[#11770e] font-semibold px-2 py-0.5 rounded-md border border-[#bce6bc]/60">
+                    Regla: +2 días anticipación
+                  </span>
+                  <span className="text-[11px] bg-indigo-50 text-indigo-700 font-semibold px-2 py-0.5 rounded-md border border-indigo-200/60">
+                    {currentUser.careerName}
+                    {currentUser.semester ? ` • Semestre ${currentUser.semester}` : ''}
+                  </span>
+                </div>
               </div>
 
               <form onSubmit={handleSubmitRequest} className="p-5 space-y-4 text-sm">
@@ -280,9 +298,13 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                       onChange={(e) => handleCourseChange(e.target.value)}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:ring-2 focus:ring-[#11770e]"
                     >
-                      {subjects.map((s) => (
+                      {coursePool.length === 0 && (
+                        <option value="">Sin asignaturas para tu semestre</option>
+                      )}
+                      {coursePool.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name}
+                          {s.semester ? ` (Semestre ${s.semester})` : ''}
                         </option>
                       ))}
                     </select>
@@ -542,116 +564,157 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       {activeTab === 'history' && (
         <div className="space-y-6">
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
               <h3 className="font-semibold text-slate-800 text-sm">
                 Tutorías Solicitadas por Mí ({myRequestedTutorings.length})
               </h3>
+
+              <div className="flex items-center gap-1.5 bg-slate-200/70 p-1 rounded-xl text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setDisplayMode('list')}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                    displayMode === 'list'
+                      ? 'bg-white text-[#11770e] shadow-2xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span>Lista ☰</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDisplayMode('calendar')}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                    displayMode === 'calendar'
+                      ? 'bg-white text-[#11770e] shadow-2xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Calendario 📅</span>
+                </button>
+              </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50/80 text-slate-600 font-semibold border-b border-slate-200 uppercase tracking-wider">
-                  <tr>
-                    <th className="px-4 py-3">Código</th>
-                    <th className="px-4 py-3">Asunto y Materia</th>
-                    <th className="px-4 py-3">Fecha y Hora</th>
-                    <th className="px-4 py-3">Docente</th>
-                    <th className="px-4 py-3">Espacio / Enlace</th>
-                    <th className="px-4 py-3">Estado</th>
-                    <th className="px-4 py-3 text-right">Acción / Evaluación</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {myRequestedTutorings.length === 0 ? (
+            {displayMode === 'calendar' ? (
+              <div className="p-4">
+                <TutoringCalendarView
+                  tutorings={myRequestedTutorings}
+                  currentUser={currentUser}
+                  onSelectTutoring={(tut) => setSelectedCalendarTutoring(tut)}
+                  onSelectDate={(dateStr) => {
+                    setReservDate(dateStr);
+                    setActiveTab('request');
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50/80 text-slate-600 font-semibold border-b border-slate-200 uppercase tracking-wider">
                     <tr>
-                      <td colSpan={7} className="text-center py-8 text-slate-400">
-                        No ha solicitado tutorías aún.
-                      </td>
+                      <th className="px-4 py-3">Código</th>
+                      <th className="px-4 py-3">Asunto y Materia</th>
+                      <th className="px-4 py-3">Fecha y Hora</th>
+                      <th className="px-4 py-3">Docente</th>
+                      <th className="px-4 py-3">Espacio / Enlace</th>
+                      <th className="px-4 py-3">Estado</th>
+                      <th className="px-4 py-3 text-right">Acción / Evaluación</th>
                     </tr>
-                  ) : (
-                    myRequestedTutorings.map((tut) => (
-                      <tr key={tut.id} className="hover:bg-slate-50/60">
-                        <td className="px-4 py-3.5 font-bold text-[#11770e]">{tut.code}</td>
-                        <td className="px-4 py-3.5">
-                          <div className="font-semibold text-slate-800">{tut.subject}</div>
-                          <div className="text-[11px] text-slate-500">{tut.subjectCourseName}</div>
-                          {tut.attachmentUrl ? (
-                            <button
-                              type="button"
-                              onClick={() => setViewingAttachment({ fileName: tut.attachmentName || 'Archivo adjunto', fileUrl: tut.attachmentUrl! })}
-                              className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-[#11770e] hover:text-[#0d5c0b] hover:underline bg-[#eaf8ea] px-2 py-0.5 rounded cursor-pointer transition-colors"
-                              title="Ver archivo adjunto en segundo plano"
-                            >
-                              <Paperclip className="w-3 h-3" />
-                              <span className="truncate max-w-[150px]">{tut.attachmentName || 'Ver adjunto'}</span>
-                            </button>
-                          ) : tut.attachmentName ? (
-                            <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                              <Paperclip className="w-3 h-3" />
-                              <span className="truncate max-w-[150px]">{tut.attachmentName}</span>
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-600">
-                          <div>{tut.reservDate}</div>
-                          <div className="text-[11px] text-slate-400">{tut.scheduleLabel}</div>
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-700 font-medium">{tut.teacherName}</td>
-                        <td className="px-4 py-3.5 max-w-[200px] truncate text-slate-600">
-                          {tut.space.startsWith('http') ? (
-                            <a
-                              href={tut.space}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[#11770e] hover:underline font-semibold"
-                            >
-                              Abrir enlace virtual
-                            </a>
-                          ) : (
-                            tut.space
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <StatusBadge status={tut.status} size="sm" />
-                        </td>
-                        <td className="px-4 py-3.5 text-right">
-                          {/* If status is completed and not evaluated yet */}
-                          {tut.status === TutoringStatus.COMPLETED && tut.score === 0 && (
-                            <button
-                              id={`btn-evaluate-tutoring-${tut.id}`}
-                              onClick={() => onOpenEvaluation(tut)}
-                              className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-semibold text-xs transition-colors flex items-center gap-1 ml-auto shadow-2xs"
-                            >
-                              <Star className="w-3.5 h-3.5 fill-white" />
-                              Calificar Tutoría
-                            </button>
-                          )}
-
-                          {/* If already evaluated */}
-                          {tut.status === TutoringStatus.COMPLETED && tut.score > 0 && (
-                            <div className="flex items-center justify-end gap-1 text-amber-600 font-bold">
-                              <span>{tut.score}★</span>
-                              <span className="text-[11px] text-slate-400 font-normal">Evaluada</span>
-                            </div>
-                          )}
-
-                          {/* If pending, allows cancellation */}
-                          {tut.status === TutoringStatus.PENDING && (
-                            <button
-                              id={`btn-cancel-tutoring-${tut.id}`}
-                              onClick={() => handleCancelOwn(tut.id)}
-                              className="text-rose-600 hover:text-rose-800 font-medium text-xs hover:underline"
-                            >
-                              Cancelar
-                            </button>
-                          )}
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {myRequestedTutorings.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="text-center py-8 text-slate-400">
+                          No ha solicitado tutorías aún.
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    ) : (
+                      myRequestedTutorings.map((tut) => (
+                        <tr key={tut.id} className="hover:bg-slate-50/60">
+                          <td className="px-4 py-3.5 font-bold text-[#11770e]">{tut.code}</td>
+                          <td className="px-4 py-3.5">
+                            <div className="font-semibold text-slate-800">{tut.subject}</div>
+                            <div className="text-[11px] text-slate-500">{tut.subjectCourseName}</div>
+                            {tut.attachmentUrl ? (
+                              <button
+                                type="button"
+                                onClick={() => setViewingAttachment({ fileName: tut.attachmentName || 'Archivo adjunto', fileUrl: tut.attachmentUrl! })}
+                                className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-[#11770e] hover:text-[#0d5c0b] hover:underline bg-[#eaf8ea] px-2 py-0.5 rounded cursor-pointer transition-colors"
+                                title="Ver archivo adjunto en segundo plano"
+                              >
+                                <Paperclip className="w-3 h-3" />
+                                <span className="truncate max-w-[150px]">{tut.attachmentName || 'Ver adjunto'}</span>
+                              </button>
+                            ) : tut.attachmentName ? (
+                              <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                                <Paperclip className="w-3 h-3" />
+                                <span className="truncate max-w-[150px]">{tut.attachmentName}</span>
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-600">
+                            <div>{tut.reservDate}</div>
+                            <div className="text-[11px] text-slate-400">{tut.scheduleLabel}</div>
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-700 font-medium">{tut.teacherName}</td>
+                          <td className="px-4 py-3.5 max-w-[200px] truncate text-slate-600">
+                            {tut.space.startsWith('http') ? (
+                              <a
+                                href={tut.space}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[#11770e] hover:underline font-semibold"
+                              >
+                                Abrir enlace virtual
+                              </a>
+                            ) : (
+                              tut.space
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <StatusBadge status={tut.status} size="sm" />
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            {/* If status is completed and not evaluated yet */}
+                            {tut.status === TutoringStatus.COMPLETED && tut.score === 0 && (
+                              <button
+                                id={`btn-evaluate-tutoring-${tut.id}`}
+                                onClick={() => onOpenEvaluation(tut)}
+                                className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-md font-semibold text-xs transition-colors flex items-center gap-1 ml-auto shadow-2xs"
+                              >
+                                <Star className="w-3.5 h-3.5 fill-white" />
+                                Calificar Tutoría
+                              </button>
+                            )}
+
+                            {/* If already evaluated */}
+                            {tut.status === TutoringStatus.COMPLETED && tut.score > 0 && (
+                              <div className="flex items-center justify-end gap-1 text-amber-600 font-bold">
+                                <span>{tut.score}★</span>
+                                <span className="text-[11px] text-slate-400 font-normal">Evaluada</span>
+                              </div>
+                            )}
+
+                            {/* If pending, allows cancellation */}
+                            {tut.status === TutoringStatus.PENDING && (
+                              <button
+                                id={`btn-cancel-tutoring-${tut.id}`}
+                                onClick={() => handleCancelOwn(tut.id)}
+                                className="text-rose-600 hover:text-rose-800 font-medium text-xs hover:underline"
+                              >
+                                Cancelar
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Guest Tutorings */}
@@ -719,6 +782,13 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             </div>
 
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+              <span className="text-slate-500 block">Semestre Actual:</span>
+              <span className="font-semibold text-slate-800 text-sm">
+                {currentUser.semester ? `Semestre ${currentUser.semester}` : 'No definido'}
+              </span>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
               <span className="text-slate-500 block">Campus Asignado:</span>
               <span className="font-semibold text-slate-800 text-sm">{currentUser.campusName}</span>
             </div>
@@ -746,6 +816,15 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           fileName={viewingAttachment.fileName}
           fileUrl={viewingAttachment.fileUrl}
           onClose={() => setViewingAttachment(null)}
+        />
+      )}
+
+      {selectedCalendarTutoring && (
+        <TutoringDetailModal
+          tutoring={selectedCalendarTutoring}
+          currentUser={currentUser}
+          onClose={() => setSelectedCalendarTutoring(null)}
+          onOpenEvaluation={onOpenEvaluation}
         />
       )}
     </div>

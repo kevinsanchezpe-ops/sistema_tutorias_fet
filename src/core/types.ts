@@ -35,6 +35,14 @@ export enum TutoringModality {
   VIRTUAL = 1
 }
 
+export interface Career {
+  id: string;
+  name: string;
+  codePrefix: string;
+  numberOfSemesters: number;
+  isActive: boolean;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -50,6 +58,7 @@ export interface User {
   careerName: string;
   birthDate: string;
   admissionDate: string;
+  semester?: number;
   photoUrl?: string;
   observations?: string;
   isActive: boolean;
@@ -62,6 +71,7 @@ export interface SubjectCourse {
   name: string;
   code?: string;
   credits?: number;
+  semester?: number;
   careerId: string;
   careerName: string;
   isActive: boolean;

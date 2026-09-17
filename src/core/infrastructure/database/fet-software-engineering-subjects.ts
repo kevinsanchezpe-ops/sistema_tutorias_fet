@@ -4,6 +4,7 @@ export interface FetSubjectItem {
   semester: number;
   name: string;
   code: string;
+  credits?: number;
 }
 
 export const FET_SOFTWARE_ENGINEERING_CURRICULUM: FetSubjectItem[] = [
@@ -109,7 +110,8 @@ export const INITIAL_FET_SUBJECTS: SubjectCourse[] = FET_SOFTWARE_ENGINEERING_CU
   id: `sub-fet-${index + 1}`,
   name: item.name,
   code: item.code,
-  credits: 0,
+  credits: item.credits || 0,
+  semester: item.semester,
   careerId: 'car-fet-software',
   careerName: 'Ingeniería de Software (FET)',
   isActive: true

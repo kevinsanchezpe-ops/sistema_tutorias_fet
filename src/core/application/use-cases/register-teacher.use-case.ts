@@ -1,5 +1,6 @@
 import { BusinessRuleException } from '../../domain/services/schedule-conflict.service';
 import { db } from '../../infrastructure/database/database';
+import { getCareerById, getDefaultCareer } from '../../infrastructure/database/careers-data';
 import { TeacherAvailability, User, UserRole } from '../../types';
 
 export interface RegisterTeacherDto {
@@ -63,6 +64,12 @@ export class RegisterTeacherUseCase {
     const nameParts = dto.fullName.trim().split(' ');
     const alias = nameParts.length >= 2 ? `${nameParts[0]} ${nameParts[1]}` : dto.fullName;
 
+    const careerId = dto.careerId || getDefaultCareer().id;
+    const career = getCareerById(careerId);
+    if (dto.careerId && !career) {
+      throw new BusinessRuleException('La carrera seleccionada no es válida.', 'INVALID_CAREER');
+    }
+
     const newTeacherId = `usr-teacher-${Date.now()}`;
     const newTeacher: User = {
       id: newTeacherId,
@@ -74,9 +81,9 @@ export class RegisterTeacherUseCase {
       role: UserRole.TEACHER,
       account: dto.account.trim(),
       campusId: dto.campusId || 'cmp-1',
-      campusName: 'Campus Central',
-      careerId: dto.careerId || 'car-1',
-      careerName: 'Facultad de Ingeniería',
+      campusName: 'Sede Única',
+      careerId,
+      careerName: career?.name || getDefaultCareer().name,
       birthDate: '1985-06-15',
       admissionDate: new Date().toISOString().split('T')[0],
       isActive: true,

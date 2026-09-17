@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { ApiClient } from '../core/presentation/api-client';
-import { User } from '../core/types';
+import { db } from '../core/infrastructure/database/database';
+import { Career, User } from '../core/types';
 import { GraduationCap, Sparkles, UserPlus, X } from 'lucide-react';
 
 interface RegisterModalProps {
   onClose: () => void;
   onSuccess: (newUser: User) => void;
+  careers?: Career[];
 }
 
-export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSuccess }) => {
+export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSuccess, careers = db.careers }) => {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -16,9 +18,13 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSuccess
   const [admissionDate, setAdmissionDate] = useState('2023-01-20');
   const [account, setAccount] = useState('');
   const [username, setUsername] = useState('');
+  const [careerId, setCareerId] = useState<string>(careers[0]?.id || '');
+  const [semester, setSemester] = useState(1);
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const selectedCareer = careers.find((c) => c.id === careerId);
 
   const handleQuickFill = () => {
     const rnd = Math.floor(1000 + Math.random() * 9000);
@@ -31,6 +37,10 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSuccess
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!careerId) {
+      setErrorMsg('Selecciona la carrera del estudiante.');
+      return;
+    }
     setErrorMsg(null);
     setLoading(true);
 
@@ -41,7 +51,8 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSuccess
       birthDate,
       admissionDate,
       account,
-      careerId: 'car-1',
+      careerId,
+      semester: Number(semester),
       campusId: 'cmp-1',
       username
     });
@@ -210,8 +221,50 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSuccess
             </div>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="reg-career" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Carrera / Programa
+              </label>
+              <select
+                id="reg-career"
+                value={careerId}
+                onChange={(e) => {
+                  setCareerId(e.target.value);
+                  setSemester(1);
+                }}
+                required
+                className="w-full text-sm rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                <option value="">Seleccionar carrera...</option>
+                {careers.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="reg-semester" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Semestre que cursa
+              </label>
+              <select
+                id="reg-semester"
+                value={semester}
+                onChange={(e) => setSemester(Number(e.target.value))}
+                required
+                className="w-full text-sm rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                {Array.from(
+                  { length: selectedCareer?.numberOfSemesters || 10 },
+                  (_, i) => i + 1
+                ).map((n) => (
+                  <option key={n} value={n}>Semestre {n}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div className="p-2.5 bg-[#eaf8ea] rounded-lg text-xs text-[#11770e] border border-[#bce6bc] font-medium">
-            <span className="font-semibold">Centro asignado:</span> Campus Central • Ingeniería en Sistemas
+            <span className="font-semibold">Centro asignado:</span> Sede Única • {selectedCareer?.name || 'Ingeniería de Software (FET)'} • Semestre {semester}
           </div>
 
           {errorMsg && (

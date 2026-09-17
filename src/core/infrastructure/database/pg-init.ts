@@ -11,6 +11,7 @@ import {
   INITIAL_TUTORINGS,
   INITIAL_USERS
 } from './initial-data';
+import { CAREERS } from './careers-data';
 
 export async function initPostgres(): Promise<{ success: boolean; message: string }> {
   try {
@@ -40,6 +41,28 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
     await pool.query(schemaSql);
     console.log('[PostgreSQL] Esquema de tablas verificado y actualizado con éxito.');
 
+    // Seed / asegurar el catálogo de carreras (idempotente)
+    for (const c of CAREERS) {
+      await pool.query(
+        `INSERT INTO careers (id, name, code_prefix, number_of_semesters, is_active)
+         VALUES ($1, $2, $3, $4, true)
+         ON CONFLICT (id) DO NOTHING;`,
+        [c.id, c.name, c.codePrefix, c.numberOfSemesters]
+      );
+    }
+
+    // Normalizar career_id inconsistentes de versiones previas (car-1 -> car-fet-software)
+    await pool.query(
+      `UPDATE users
+       SET career_id = 'car-fet-software', career_name = 'Ingeniería de Software (FET)'
+       WHERE career_id = 'car-1' OR career_id = '' OR career_id IS NULL;`
+    );
+    await pool.query(
+      `UPDATE subjects
+       SET career_id = 'car-fet-software', career_name = 'Ingeniería de Software (FET)'
+       WHERE career_id = 'car-1' OR career_id = '' OR career_id IS NULL;`
+    );
+
     // 3. Check if users table is populated
     const countRes = await pool.query('SELECT COUNT(*) as count FROM users;');
     const userCount = parseInt(countRes.rows[0].count, 10);
@@ -50,8 +73,8 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
       // Seed Users
       for (const u of INITIAL_USERS) {
         await pool.query(
-          `INSERT INTO users (id, username, password_hash, full_name, alias, email, phone, role, account, campus_id, campus_name, career_id, career_name, birth_date, admission_date, photo_url, observations, is_active, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+          `INSERT INTO users (id, username, password_hash, full_name, alias, email, phone, role, account, campus_id, campus_name, career_id, career_name, birth_date, admission_date, semester, photo_url, observations, is_active, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
            ON CONFLICT (id) DO NOTHING;`,
           [
             u.id,
@@ -69,6 +92,7 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
             u.careerName,
             u.birthDate,
             u.admissionDate,
+            u.semester || 0,
             u.photoUrl || '',
             u.observations || '',
             u.isActive,
@@ -227,9 +251,17 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
       console.log(`[PostgreSQL] Base de datos activa con ${userCount} usuarios registrados.`);
     }
 
-    // Sincronizar siempre el catálogo de asignaturas con el Pénsum Oficial FET de Ingeniería de Software
-    const { seedFetCurriculum } = await import('./seed-fet-subjects');
-    await seedFetCurriculum();
+    // Sincronizar siempre el catálogo de asignaturas con el Pénsum Oficial FET (5 carreras)
+    const { seedCurriculums } = await import('./seed-fet-subjects');
+    await seedCurriculums();
+
+    // Adoptar catálogo de asignaturas por docente (teacher_subjects) desde la disponibilidad existente
+    await pool.query(
+      `INSERT INTO teacher_subjects (teacher_id, subject_id)
+       SELECT DISTINCT teacher_id, subject_course_id
+       FROM teacher_availability
+       ON CONFLICT DO NOTHING;`
+    );
 
     return {
       success: true,

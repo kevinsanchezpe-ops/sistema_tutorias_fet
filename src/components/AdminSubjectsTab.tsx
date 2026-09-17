@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ApiClient } from '../core/presentation/api-client';
-import { SubjectCourse, User } from '../core/types';
+import { Career, SubjectCourse, User } from '../core/types';
 import {
   BookOpen,
   Plus,
@@ -18,23 +18,27 @@ import {
 interface AdminSubjectsTabProps {
   currentUser: User;
   subjects: SubjectCourse[];
+  careers: Career[];
   onRefresh: () => void;
 }
 
 export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
   currentUser,
   subjects,
+  careers,
   onRefresh
 }) => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [careerFilter, setCareerFilter] = useState<string>(currentUser.careerId || 'all');
 
   // Form state
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [credits, setCredits] = useState(4);
-  const [careerName, setCareerName] = useState('Ingeniería en Sistemas');
+  const [semester, setSemester] = useState(1);
+  const [selectedCareerId, setSelectedCareerId] = useState<string>(currentUser.careerId || careers[0]?.id || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -43,6 +47,8 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
   const [deletingSubject, setDeletingSubject] = useState<SubjectCourse | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const selectedCareer = careers.find((c) => c.id === selectedCareerId);
 
   const sampleSubjects = [
     { name: 'Inteligencia Artificial y Aprendizaje Automático', code: 'IA-501', credits: 4 },
@@ -57,7 +63,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
     setName(randomSample.name);
     setCode(randomSample.code);
     setCredits(randomSample.credits);
-    setCareerName('Ingeniería en Sistemas');
+    setSemester(1);
     setErrorMsg(null);
   };
 
@@ -72,7 +78,9 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
         name,
         code,
         credits: Number(credits),
-        careerName
+        semester: Number(semester),
+        careerId: selectedCareerId,
+        careerName: selectedCareer?.name || careers[0]?.name || 'Carrera sin nombre'
       },
       currentUser
     );
@@ -84,6 +92,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
       setName('');
       setCode('');
       setCredits(4);
+      setSemester(1);
       onRefresh();
       setTimeout(() => setSuccessMsg(null), 4000);
     } else {
@@ -116,7 +125,11 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
     }
   };
 
-  const filteredSubjects = subjects.filter((sub) => {
+  const careerSubjects = careerFilter === 'all'
+    ? subjects
+    : subjects.filter((sub) => sub.careerId === careerFilter);
+
+  const filteredSubjects = careerSubjects.filter((sub) => {
     const matchesQuery =
       sub.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (sub.code && sub.code.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -130,8 +143,8 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
     return matchesQuery && matchesStatus;
   });
 
-  const activeCount = subjects.filter((s) => s.isActive).length;
-  const inactiveCount = subjects.filter((s) => !s.isActive).length;
+  const activeCount = careerSubjects.filter((s) => s.isActive).length;
+  const inactiveCount = careerSubjects.filter((s) => !s.isActive).length;
 
   return (
     <div className="space-y-6">
@@ -242,7 +255,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label
                   htmlFor="input-subject-credits"
@@ -263,20 +276,40 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
 
               <div>
                 <label
+                  htmlFor="input-subject-semester"
+                  className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1"
+                >
+                  Semestre / Nivel
+                </label>
+                <select
+                  id="input-subject-semester"
+                  value={semester}
+                  onChange={(e) => setSemester(Number(e.target.value))}
+                  className="w-full text-sm rounded-xl border border-slate-300 px-3.5 py-2 text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  {Array.from({ length: selectedCareer?.numberOfSemesters || 10 }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>Semestre {n}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label
                   htmlFor="input-subject-career"
                   className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1"
                 >
                   Carrera / Departamento
                 </label>
-                <input
+                <select
                   id="input-subject-career"
-                  type="text"
-                  value={careerName}
-                  onChange={(e) => setCareerName(e.target.value)}
-                  placeholder="Ej. Ingeniería en Sistemas"
-                  required
+                  value={selectedCareerId}
+                  onChange={(e) => setSelectedCareerId(e.target.value)}
                   className="w-full text-sm rounded-xl border border-slate-300 px-3.5 py-2 text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                />
+                >
+                  {careers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -318,7 +351,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
             Total Asignaturas
           </span>
           <div className="text-2xl font-bold text-slate-900 mt-1">
-            {subjects.length}
+            {careerSubjects.length}
           </div>
         </div>
 
@@ -358,6 +391,17 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 w-full sm:w-auto">
+          <select
+            id="select-career-filter"
+            value={careerFilter}
+            onChange={(e) => setCareerFilter(e.target.value)}
+            className="text-xs rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="all">Todas las carreras</option>
+            {careers.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
           <button
             onClick={() => setStatusFilter('all')}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
@@ -366,7 +410,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            Todas ({subjects.length})
+            Todas ({careerSubjects.length})
           </button>
           <button
             onClick={() => setStatusFilter('active')}
@@ -400,6 +444,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
                 <th className="py-3 px-4">Código</th>
                 <th className="py-3 px-4">Nombre de Asignatura</th>
                 <th className="py-3 px-4">Carrera / Área</th>
+                <th className="py-3 px-4 text-center">Semestre</th>
                 <th className="py-3 px-4 text-center">Créditos (UV)</th>
                 <th className="py-3 px-4 text-center">Estado</th>
                 <th className="py-3 px-4 text-right">Acciones</th>
@@ -408,7 +453,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredSubjects.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
                     No se encontraron asignaturas con los filtros seleccionados.
                   </td>
                 </tr>
@@ -428,6 +473,11 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
                     </td>
                     <td className="py-3.5 px-4 text-slate-600">
                       {subject.careerName}
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        {subject.semester ? `Semestre ${subject.semester}` : 'N/D'}
+                      </span>
                     </td>
                     <td className="py-3.5 px-4 text-center font-bold text-slate-700">
                       {subject.credits || 4} UV

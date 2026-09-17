@@ -1,5 +1,6 @@
 import {
   BinnacleEntry,
+  Career,
   InstitutionInfo,
   Notification,
   ScheduleSlot,
@@ -11,6 +12,7 @@ import {
   User,
   UserRole
 } from '../../types';
+import { CAREERS } from './careers-data';
 import {
   INITIAL_BINNACLE,
   INITIAL_INSTITUTION,
@@ -28,6 +30,7 @@ export class AppDatabase {
   public users: User[] = [];
   public tutorings: Tutoring[] = [];
   public subjects: SubjectCourse[] = [];
+  public careers: Career[] = [];
   public scheduleSlots: ScheduleSlot[] = [];
   public sections: SectionClassroom[] = [];
   public teacherAvailability: TeacherAvailability[] = [];
@@ -41,6 +44,7 @@ export class AppDatabase {
     this.users = JSON.parse(JSON.stringify(INITIAL_USERS));
     this.tutorings = JSON.parse(JSON.stringify(INITIAL_TUTORINGS));
     this.subjects = JSON.parse(JSON.stringify(INITIAL_SUBJECTS));
+    this.careers = JSON.parse(JSON.stringify(CAREERS));
     this.scheduleSlots = JSON.parse(JSON.stringify(INITIAL_SCHEDULE_SLOTS));
     this.sections = JSON.parse(JSON.stringify(INITIAL_SECTIONS));
     this.teacherAvailability = JSON.parse(JSON.stringify(INITIAL_TEACHER_AVAILABILITY));

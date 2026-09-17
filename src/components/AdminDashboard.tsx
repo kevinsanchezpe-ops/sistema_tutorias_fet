@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, Fragment } from 'react';
 import {
   BinnacleEntry,
+  Career,
   InstitutionInfo,
   ScheduleSlot,
   SectionClassroom,
@@ -16,6 +17,7 @@ import { ApiClient } from '../core/presentation/api-client';
 import { StatusBadge } from './StatusBadge';
 import { AdminSubjectsTab } from './AdminSubjectsTab';
 import { AdminTeachersTab } from './AdminTeachersTab';
+import { AdminCareersTab } from './AdminCareersTab';
 import {
   BarChart,
   Bar,
@@ -59,7 +61,8 @@ import {
   Sparkles,
   Activity,
   CalendarCheck,
-  Paperclip
+  Paperclip,
+  SlidersHorizontal
 } from 'lucide-react';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
 
@@ -69,6 +72,7 @@ interface AdminDashboardProps {
   users: User[];
   sections: SectionClassroom[];
   subjects: SubjectCourse[];
+  careers: Career[];
   schedules?: ScheduleSlot[];
   availabilities?: TeacherAvailability[];
   binnacle: BinnacleEntry[];
@@ -105,6 +109,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   users,
   sections,
   subjects,
+  careers,
   schedules = [],
   availabilities = [],
   binnacle,
@@ -115,13 +120,64 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onOpenTests
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'subjects' | 'teachers' | 'tutorings' | 'users' | 'binnacle' | 'institution'
+    'overview' | 'careers' | 'subjects' | 'teachers' | 'tutorings' | 'users' | 'binnacle' | 'institution'
   >('overview');
 
   // Filter for tutorings list
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [tutoringSearch, setTutoringSearch] = useState<string>('');
   const [viewingAttachment, setViewingAttachment] = useState<{ fileName: string; fileUrl: string } | null>(null);
+
+  // Dashboard filters (por carrera y semestre)
+  const [dashCareerFilter, setDashCareerFilter] = useState<string>(currentUser.careerId || 'all');
+  const [dashSemesterFilter, setDashSemesterFilter] = useState<string>('all');
+  const selectedDashCareer = careers.find((c) => c.id === dashCareerFilter);
+
+  const subjectCareerMap = new Map(subjects.map((s) => [s.id, s.careerId]));
+  const subjectSemesterMap = new Map(subjects.map((s) => [s.id, s.semester]));
+
+  const dashTutorings = tutorings.filter((t) => {
+    if (dashCareerFilter === 'all') return true;
+    return subjectCareerMap.get(t.subjectCourseId) === dashCareerFilter;
+  });
+  const dashTutoringsFiltered =
+    dashSemesterFilter === 'all'
+      ? dashTutorings
+      : dashTutorings.filter((t) => {
+          const sem = subjectSemesterMap.get(t.subjectCourseId);
+          return !sem || Number(sem) === Number(dashSemesterFilter);
+        });
+  const dashUsers =
+    dashCareerFilter === 'all' ? users : users.filter((u) => u.careerId === dashCareerFilter);
+  const dashSubjects = subjects.filter((s) => {
+    if (dashCareerFilter !== 'all' && s.careerId !== dashCareerFilter) return false;
+    if (dashSemesterFilter !== 'all' && s.semester && Number(s.semester) !== Number(dashSemesterFilter)) return false;
+    return true;
+  });
+
+  const dashPerSemesterRows = careers.flatMap((c) =>
+    Array.from({ length: c.numberOfSemesters || 1 }, (_, i) => i + 1).map((sem) => ({
+      careerId: c.id,
+      careerName: c.name,
+      sem,
+      subjectCount: subjects.filter((s) => s.careerId === c.id && s.semester === sem).length,
+      studentCount: users.filter(
+        (u) => u.role === UserRole.STUDENT && u.careerId === c.id && u.semester === sem
+      ).length,
+      tutoringCount: tutorings.filter(
+        (t) =>
+          subjectCareerMap.get(t.subjectCourseId) === c.id &&
+          subjectSemesterMap.get(t.subjectCourseId) === sem
+      ).length
+    }))
+  );
+  const dashCareerRows = careers.map((c) => ({
+    careerId: c.id,
+    careerName: c.name,
+    subjectCount: subjects.filter((s) => s.careerId === c.id).length,
+    studentCount: users.filter((u) => u.role === UserRole.STUDENT && u.careerId === c.id).length,
+    tutoringCount: tutorings.filter((t) => subjectCareerMap.get(t.subjectCourseId) === c.id).length
+  }));
 
   // Approval Modal State
   const [approvingTutoring, setApprovingTutoring] = useState<Tutoring | null>(null);
@@ -155,7 +211,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [instSavedMsg, setInstSavedMsg] = useState(false);
 
   // Filtered Tutorings
-  const filteredTutorings = tutorings.filter((t) => {
+  const filteredTutorings = dashTutoringsFiltered.filter((t) => {
     const matchesStatus = statusFilter === 'all' || String(t.status) === statusFilter;
     const matchesQuery =
       t.code.toLowerCase().includes(tutoringSearch.toLowerCase()) ||
@@ -167,13 +223,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
 
   // Filtered Users
-  const filteredUsers = users.filter((u) => {
+  const filteredUsers = dashUsers.filter((u) => {
     const matchesRole = userRoleFilter === 'all' || u.role === userRoleFilter;
+    const matchesSemester =
+      dashSemesterFilter === 'all' ||
+      u.role !== UserRole.STUDENT ||
+      (u.semester != null && Number(u.semester) === Number(dashSemesterFilter));
     const matchesQuery =
       u.fullName.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.username.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.account.toLowerCase().includes(userSearch.toLowerCase());
-    return matchesRole && matchesQuery;
+    return matchesRole && matchesSemester && matchesQuery;
   });
 
   // Handle Approve Tutoring
@@ -294,6 +354,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </button>
 
         <button
+          id="tab-admin-careers"
+          onClick={() => setActiveTab('careers')}
+          className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+            activeTab === 'careers'
+              ? 'bg-[#11770e] text-white shadow-xs'
+              : 'text-stone-600 hover:bg-[#eaf8ea] hover:text-[#11770e]'
+          }`}
+        >
+          <GraduationCap className="w-4 h-4" />
+          <span>Carreras</span>
+        </button>
+
+        <button
           id="tab-admin-teachers"
           onClick={() => setActiveTab('teachers')}
           className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
@@ -359,11 +432,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </button>
       </div>
 
+      {/* TAB: CARRERAS */}
+      {activeTab === 'careers' && (
+        <AdminCareersTab
+          currentUser={currentUser}
+          careers={careers}
+          onRefresh={onRefresh}
+        />
+      )}
+
       {/* TAB: ASIGNATURAS */}
       {activeTab === 'subjects' && (
         <AdminSubjectsTab
           currentUser={currentUser}
           subjects={subjects}
+          careers={careers}
           onRefresh={onRefresh}
         />
       )}
@@ -374,6 +457,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           currentUser={currentUser}
           users={users}
           subjects={subjects}
+          careers={careers}
           schedules={schedules}
           availabilities={availabilities}
           onRefresh={onRefresh}
@@ -382,31 +466,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* TAB 1: OVERVIEW & CHARTS */}
       {activeTab === 'overview' && (() => {
-        // Fallback or enriched stats from real-time props
-        const totalTuts = tutorings.length;
-        const pendingTuts = tutorings.filter((t) => t.status === TutoringStatus.PENDING).length;
-        const approvedTuts = tutorings.filter((t) => t.status === TutoringStatus.APPROVED).length;
-        const inProgTuts = tutorings.filter((t) => t.status === TutoringStatus.IN_PROGRESS).length;
-        const completedTuts = tutorings.filter((t) => t.status === TutoringStatus.COMPLETED).length;
-        const cancelledTuts = tutorings.filter((t) => t.status === TutoringStatus.CANCELLED).length;
+        // Fallback or enriched stats from real-time props (filtered por carrera/semestre)
+        const filterActive = dashCareerFilter !== 'all' || dashSemesterFilter !== 'all';
+        const totalTuts = dashTutoringsFiltered.length;
+        const pendingTuts = dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.PENDING).length;
+        const approvedTuts = dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.APPROVED).length;
+        const inProgTuts = dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.IN_PROGRESS).length;
+        const completedTuts = dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.COMPLETED).length;
+        const cancelledTuts = dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.CANCELLED).length;
 
-        const ratedList = tutorings.filter((t) => t.score > 0);
-        const avgScore =
-          analytics?.averageRating ??
-          (ratedList.length > 0
+        const ratedList = dashTutoringsFiltered.filter((t) => t.score > 0);
+        const realAvgScore =
+          ratedList.length > 0
             ? Number((ratedList.reduce((acc, t) => acc + t.score, 0) / ratedList.length).toFixed(1))
-            : 5.0);
+            : 5.0;
+        const avgScore =
+          !filterActive && analytics?.averageRating != null ? analytics.averageRating : realAvgScore;
 
         const compRate =
-          analytics?.completionRate ??
-          (totalTuts > 0 ? Math.round((completedTuts / totalTuts) * 100) : 0);
+          !filterActive && analytics?.completionRate != null
+            ? analytics.completionRate
+            : totalTuts > 0 ? Math.round((completedTuts / totalTuts) * 100) : 0;
 
-        const attRate = analytics?.attendanceRate ?? 95;
+        const attRate = !filterActive && analytics?.attendanceRate != null ? analytics.attendanceRate : 95;
 
-        const presencialCount = tutorings.filter((t) => t.modality === TutoringModality.PRESENCIAL).length;
-        const virtualCount = tutorings.filter((t) => t.modality === TutoringModality.VIRTUAL).length;
+        const presencialCount = dashTutoringsFiltered.filter((t) => t.modality === TutoringModality.PRESENCIAL).length;
+        const virtualCount = dashTutoringsFiltered.filter((t) => t.modality === TutoringModality.VIRTUAL).length;
 
-        const modalityData = analytics?.modalityDistribution || [
+        const modalityData = !filterActive && analytics?.modalityDistribution ? analytics.modalityDistribution : [
           {
             name: 'Presencial',
             count: presencialCount,
@@ -421,7 +508,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           }
         ];
 
-        const statusData = analytics?.statusDistribution || [
+        const statusData = !filterActive && analytics?.statusDistribution ? analytics.statusDistribution : [
           { name: 'Pendientes', count: pendingTuts, color: '#F59E0B' },
           { name: 'Aprobadas', count: approvedTuts, color: '#7ce200' },
           { name: 'En Proceso', count: inProgTuts, color: '#3B82F6' },
@@ -429,10 +516,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           { name: 'Canceladas', count: cancelledTuts, color: '#EF4444' }
         ];
 
-        const activeSubjects = subjects.filter((s) => s.isActive);
+        const activeSubjects = dashSubjects.filter((s) => s.isActive);
         const courseData = activeSubjects
           .map((s) => {
-            const count = tutorings.filter(
+            const count = dashTutoringsFiltered.filter(
               (t) =>
                 t.subjectCourseId === s.id ||
                 (t.subjectCourseName && t.subjectCourseName.trim().toLowerCase() === s.name.trim().toLowerCase())
@@ -445,28 +532,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           })
           .sort((a, b) => b.count - a.count);
 
-        const ratingData = analytics?.ratingDistribution || [
-          { stars: '5 Estrellas', count: tutorings.filter((t) => t.score >= 5).length, color: '#10B981' },
-          { stars: '4 Estrellas', count: tutorings.filter((t) => t.score === 4).length, color: '#3B82F6' },
-          { stars: '3 Estrellas', count: tutorings.filter((t) => t.score === 3).length, color: '#F59E0B' },
-          { stars: '2 Estrellas', count: tutorings.filter((t) => t.score === 2).length, color: '#F97316' },
-          { stars: '1 Estrella', count: tutorings.filter((t) => t.score === 1).length, color: '#EF4444' }
+        const ratingData = !filterActive && analytics?.ratingDistribution ? analytics.ratingDistribution : [
+          { stars: '5 Estrellas', count: dashTutoringsFiltered.filter((t) => t.score >= 5).length, color: '#10B981' },
+          { stars: '4 Estrellas', count: dashTutoringsFiltered.filter((t) => t.score === 4).length, color: '#3B82F6' },
+          { stars: '3 Estrellas', count: dashTutoringsFiltered.filter((t) => t.score === 3).length, color: '#F59E0B' },
+          { stars: '2 Estrellas', count: dashTutoringsFiltered.filter((t) => t.score === 2).length, color: '#F97316' },
+          { stars: '1 Estrella', count: dashTutoringsFiltered.filter((t) => t.score === 1).length, color: '#EF4444' }
         ];
 
-        const teacherWorkload = analytics?.teacherWorkload || users
-          .filter((u) => u.role === UserRole.TEACHER)
-          .map((t) => ({
-            name: t.fullName,
-            total: tutorings.filter((tut) => tut.teacherId === t.id).length,
-            completed: tutorings.filter((tut) => tut.teacherId === t.id && tut.status === TutoringStatus.COMPLETED).length,
-            avgRating: 5.0
-          }))
-          .sort((a, b) => b.total - a.total)
-          .slice(0, 5);
+        const teacherWorkload = !filterActive && analytics?.teacherWorkload
+          ? analytics.teacherWorkload
+          : dashUsers
+              .filter((u) => u.role === UserRole.TEACHER)
+              .map((t) => ({
+                name: t.fullName,
+                total: dashTutoringsFiltered.filter((tut) => tut.teacherId === t.id).length,
+                completed: dashTutoringsFiltered.filter((tut) => tut.teacherId === t.id && tut.status === TutoringStatus.COMPLETED).length,
+                avgRating: 5.0
+              }))
+              .sort((a, b) => b.total - a.total)
+              .slice(0, 5);
 
         const topSubject = courseData.length > 0 && courseData[0].count > 0
           ? courseData[0]
           : null;
+
+        const timelineEntries =
+          !filterActive && analytics?.timeline && analytics.timeline.length > 0
+            ? analytics.timeline
+            : [];
 
         return (
           <div className="space-y-6 animate-in fade-in duration-200">
@@ -490,6 +584,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <RefreshCw className="w-3.5 h-3.5 text-[#11770e]" />
                 <span>Actualizar Métricas</span>
               </button>
+            </div>
+
+            {/* Filtros por carrera y semestre */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal className="w-4 h-4 text-[#11770e]" />
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Filtro del panel</span>
+              </div>
+              <div className="flex flex-col sm:flex-row items-center gap-2 text-xs">
+                <CareerSemesterFilter
+                  careers={careers}
+                  selectedCareer={selectedDashCareer}
+                  careerFilter={dashCareerFilter}
+                  semesterFilter={dashSemesterFilter}
+                  onCareerChange={setDashCareerFilter}
+                  onSemesterChange={setDashSemesterFilter}
+                />
+                <span className="inline-flex items-center gap-1 bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc] px-2.5 py-1 rounded-full font-bold">
+                  {dashTutoringsFiltered.length} tutorías
+                </span>
+              </div>
             </div>
 
             {/* 2. TOP PRIMARY KPI CARDS */}
@@ -564,7 +679,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
                 <div className="text-3xl font-black text-violet-700 mt-2">
-                  {users.filter((u) => u.role === UserRole.TEACHER).length}
+{dashUsers.filter((u) => u.role === UserRole.TEACHER).length}
                 </div>
                 <div className="text-[11px] text-slate-500 mt-1">Docentes habilitados</div>
               </div>
@@ -578,7 +693,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
                 <div className="text-3xl font-black text-blue-700 mt-2">
-                  {users.filter((u) => u.role === UserRole.STUDENT).length}
+                  {dashUsers.filter((u) => u.role === UserRole.STUDENT).length}
                 </div>
                 <div className="text-[11px] text-slate-500 mt-1">Alumnos activos en FET</div>
               </div>
@@ -970,6 +1085,117 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* 7. ACTIVIDAD RECIENTE (timeline) */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">Actividad Reciente</h4>
+                  <p className="text-xs text-slate-500">
+                    Tutorías solicitadas por día en los últimos 6 días con registro
+                  </p>
+                </div>
+                <Activity className="w-4 h-4 text-indigo-500" />
+              </div>
+
+              {timelineEntries.length === 0 ? (
+                <div className="text-center py-8 text-xs text-slate-400">
+                  {filterActive
+                    ? 'La actividad global se muestra cuando no hay filtro de carrera/semestre activo.'
+                    : 'Aún no hay actividad registrada.'}
+                </div>
+              ) : (
+                <div className="flex items-end gap-3 pt-2" style={{ height: '160px' }}>
+                  {timelineEntries.map((d) => {
+                    const maxCount = Math.max(...timelineEntries.map((x) => x.count), 1);
+                    const barHeight = Math.max(Math.round((d.count / maxCount) * 120), 4);
+                    const [yy, mm, dd] = String(d.date).split('-');
+                    const shortDate = dd && mm ? `${dd}/${mm}` : d.date;
+                    return (
+                      <div key={d.date} className="flex-1 flex flex-col items-center gap-1.5 justify-end h-full">
+                        <span className="text-[11px] font-bold text-slate-700">{d.count}</span>
+                        <div
+                          title={`${d.date}: ${d.count} tutorías`}
+                          className="w-full max-w-12 rounded-t-lg bg-gradient-to-t from-[#11770e] to-emerald-400 transition-all duration-500"
+                          style={{ height: `${barHeight}px` }}
+                        />
+                        <span className="text-[10px] text-slate-400 font-mono">{shortDate}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 8. RESUMEN POR CARRERA Y SEMESTRE */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">Resumen por Carrera y Semestre</h4>
+                  <p className="text-xs text-slate-500">
+                    Asignaturas activas, estudiantes y tutorías registradas por semestre de cada carrera
+                  </p>
+                </div>
+                <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
+                  {dashCareerFilter !== 'all'
+                    ? (selectedDashCareer?.name || 'Carrera específica')
+                    : 'Todas las carreras'}
+                  {dashSemesterFilter !== 'all' ? ` · Semestre ${dashSemesterFilter}` : ''}
+                </span>
+              </div>
+
+              <div className="overflow-x-auto max-h-96 overflow-y-auto rounded-xl border border-slate-100">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider border-b border-slate-200 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-3">Carrera</th>
+                      <th className="px-4 py-3">Semestre</th>
+                      <th className="px-4 py-3 text-center">Asignaturas</th>
+                      <th className="px-4 py-3 text-center">Estudiantes</th>
+                      <th className="px-4 py-3 text-center">Tutorías</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {careers.map((c) => {
+                      if (dashCareerFilter !== 'all' && c.id !== dashCareerFilter) return null;
+                      const rows = dashPerSemesterRows.filter(
+                        (r) =>
+                          r.careerId === c.id &&
+                          (dashSemesterFilter === 'all' || r.sem === Number(dashSemesterFilter))
+                      );
+                      const totals = dashCareerRows.find((r) => r.careerId === c.id);
+                      if (rows.length === 0 || !totals) return null;
+                      return (
+                        <Fragment key={c.id}>
+                          <tr className="bg-[#fafaf7]">
+                            <td colSpan={5} className="px-4 py-2.5 font-extrabold text-slate-800">
+                              {c.name}{' '}
+                              <span className="text-[10px] font-semibold text-slate-400">({c.codePrefix})</span>
+                            </td>
+                          </tr>
+                          {rows.map((r) => (
+                            <tr key={`${c.id}-${r.sem}`} className="hover:bg-slate-50/70">
+                              <td className="px-4 py-2.5 text-slate-500">—</td>
+                              <td className="px-4 py-2.5 font-semibold text-slate-700">Semestre {r.sem}</td>
+                              <td className="px-4 py-2.5 text-center">{r.subjectCount}</td>
+                              <td className="px-4 py-2.5 text-center">{r.studentCount}</td>
+                              <td className="px-4 py-2.5 text-center">{r.tutoringCount}</td>
+                            </tr>
+                          ))}
+                          <tr className="border-t-2 border-slate-200 bg-slate-50">
+                            <td className="px-4 py-2.5 font-bold text-slate-800">Totales</td>
+                            <td className="px-4 py-2.5 text-slate-500">{c.numberOfSemesters} semestres</td>
+                            <td className="px-4 py-2.5 text-center font-bold text-[#11770e]">{totals.subjectCount}</td>
+                            <td className="px-4 py-2.5 text-center font-bold text-blue-700">{totals.studentCount}</td>
+                            <td className="px-4 py-2.5 text-center font-bold text-indigo-700">{totals.tutoringCount}</td>
+                          </tr>
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         );
       })()}
@@ -1004,6 +1230,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value={String(TutoringStatus.COMPLETED)}>Finalizadas (2)</option>
                 <option value={String(TutoringStatus.CANCELLED)}>Canceladas (3)</option>
               </select>
+
+              <CareerSemesterFilter
+                careers={careers}
+                selectedCareer={selectedDashCareer}
+                careerFilter={dashCareerFilter}
+                semesterFilter={dashSemesterFilter}
+                onCareerChange={setDashCareerFilter}
+                onSemesterChange={setDashSemesterFilter}
+              />
             </div>
 
             <span className="text-xs text-slate-500">
@@ -1150,15 +1385,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value={UserRole.TEACHER}>Docentes</option>
                 <option value={UserRole.ADMIN}>Administradores</option>
               </select>
+
+              <CareerSemesterFilter
+                careers={careers}
+                selectedCareer={selectedDashCareer}
+                careerFilter={dashCareerFilter}
+                semesterFilter={dashSemesterFilter}
+                onCareerChange={setDashCareerFilter}
+                onSemesterChange={setDashSemesterFilter}
+              />
             </div>
 
-            <button
-              id="btn-admin-add-user"
-              onClick={onOpenRegister}
-              className="px-3.5 py-2 bg-[#11770e] hover:bg-[#0d5c0b] text-white rounded-xl text-xs font-semibold shadow-xs cursor-pointer transition-colors"
-            >
-              + Registrar Nuevo Estudiante
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                id="btn-admin-add-user"
+                onClick={onOpenRegister}
+                className="px-3.5 py-2 bg-[#11770e] hover:bg-[#0d5c0b] text-white rounded-xl text-xs font-semibold shadow-xs cursor-pointer transition-colors"
+              >
+                + Registrar Nuevo Estudiante
+              </button>
+              <span className="text-xs text-slate-500">
+                Mostrando {filteredUsers.length} usuarios
+              </span>
+            </div>
           </div>
 
           {deleteUserSuccess && (
@@ -1172,13 +1421,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-3">Nombre Completo</th>
-                  <th className="px-4 py-3">Usuario</th>
-                  <th className="px-4 py-3">Rol</th>
-                  <th className="px-4 py-3">Cuenta Institucional</th>
-                  <th className="px-4 py-3">Correo</th>
-                  <th className="px-4 py-3">Estado</th>
-                  <th className="px-4 py-3 text-right">Acción</th>
+<th className="px-4 py-3">Nombre Completo</th>
+                    <th className="px-4 py-3">Usuario</th>
+                    <th className="px-4 py-3">Rol</th>
+                    <th className="px-4 py-3">Cuenta Institucional</th>
+                    <th className="px-4 py-3">Carrera / Semestre</th>
+                    <th className="px-4 py-3">Correo</th>
+                    <th className="px-4 py-3">Estado</th>
+                    <th className="px-4 py-3 text-right">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1192,6 +1442,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-600">{u.account}</td>
+                    <td className="px-4 py-3">
+                      {u.careerId ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-slate-700">
+                            {careers.find((c) => c.id === u.careerId)?.name || u.careerId}
+                          </span>
+                          {u.role === UserRole.STUDENT && u.semester ? (
+                            <span className="bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc] rounded-md px-1.5 py-0.5 text-[10px] font-bold">
+                              S{u.semester}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-slate-600">{u.email}</td>
                     <td className="px-4 py-3">
                       <span
@@ -1649,3 +1915,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     </div>
   );
 };
+
+const CareerSemesterFilter: React.FC<{
+  careers: Career[];
+  selectedCareer?: Career;
+  careerFilter: string;
+  semesterFilter: string;
+  onCareerChange: (v: string) => void;
+  onSemesterChange: (v: string) => void;
+}> = ({ careers, selectedCareer, careerFilter, semesterFilter, onCareerChange, onSemesterChange }) => (
+  <div className="flex flex-col sm:flex-row items-center gap-2 text-xs">
+    <select
+      id="dash-filter-career"
+      value={careerFilter}
+      onChange={(e) => {
+        onCareerChange(e.target.value);
+        onSemesterChange('all');
+      }}
+      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-slate-700 font-semibold focus:ring-2 focus:ring-[#11770e]"
+    >
+      <option value="all">Todas las carreras</option>
+      {careers.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.name}
+        </option>
+      ))}
+    </select>
+    <select
+      id="dash-filter-semester"
+      value={semesterFilter}
+      onChange={(e) => onSemesterChange(e.target.value)}
+      disabled={careerFilter === 'all'}
+      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-slate-700 font-semibold focus:ring-2 focus:ring-[#11770e] disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      <option value="all">Todos los semestres</option>
+      {Array.from({ length: selectedCareer?.numberOfSemesters || 10 }, (_, i) => i + 1).map((n) => (
+        <option key={n} value={n}>
+          Semestre {n}
+        </option>
+      ))}
+    </select>
+  </div>
+);

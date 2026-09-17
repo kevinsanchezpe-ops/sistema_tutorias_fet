@@ -2,6 +2,7 @@ import { getPgPool } from './pg-pool';
 import {
   ApiResponse,
   BinnacleEntry,
+  Career,
   InstitutionInfo,
   Notification,
   ScheduleSlot,
@@ -22,6 +23,7 @@ import { CreateSubjectDto } from '../../application/use-cases/create-subject.use
 import { AssistanceRecordItem } from '../../application/use-cases/record-assistance.use-case';
 import { RateTutoringDto } from '../../application/use-cases/rate-tutoring.use-case';
 import { hashPassword, comparePassword } from '../security/auth-security';
+import { getCareerById, getDefaultCareer } from './careers-data';
 
 export class PgRepository {
   private static instance: PgRepository;
@@ -31,6 +33,15 @@ export class PgRepository {
       PgRepository.instance = new PgRepository();
     }
     return PgRepository.instance;
+  }
+
+  private resolveCareer(careerId?: string): Career {
+    if (!careerId) return getDefaultCareer();
+    const career = getCareerById(careerId);
+    if (!career) {
+      throw new Error('La carrera seleccionada no es válida.');
+    }
+    return career;
   }
 
   // --- BITÁCORA ---
@@ -113,7 +124,7 @@ export class PgRepository {
       `SELECT id, username, full_name as "fullName", alias, email, phone, role, account,
               campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
               career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
-              photo_url as "photoUrl", observations, is_active as "isActive", created_at as "createdAt"
+              semester, photo_url as "photoUrl", observations, is_active as "isActive", created_at as "createdAt"
        FROM users ORDER BY full_name ASC;`
     );
     return res.rows;
@@ -125,7 +136,7 @@ export class PgRepository {
       `SELECT id, username, full_name as "fullName", alias, email, phone, role, account,
               campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
               career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
-              photo_url as "photoUrl", observations, is_active as "isActive", created_at as "createdAt"
+              semester, photo_url as "photoUrl", observations, is_active as "isActive", created_at as "createdAt"
        FROM users WHERE id = $1;`,
       [id]
     );
@@ -139,7 +150,7 @@ export class PgRepository {
       `SELECT id, username, full_name as "fullName", alias, email, phone, role, account,
               campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
               career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
-              photo_url as "photoUrl", observations, is_active as "isActive", created_at as "createdAt"
+              semester, photo_url as "photoUrl", observations, is_active as "isActive", created_at as "createdAt"
        FROM users
        WHERE LOWER(email) = $1 OR LOWER(username) = $1 OR (account != '' AND LOWER(account) = $1);`,
       [cleanTerm]
@@ -218,7 +229,7 @@ export class PgRepository {
       SELECT id, username, password_hash as "passwordHash", full_name as "fullName", alias, email, phone, role, account,
              campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
              career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
-             photo_url as "photoUrl", observations, is_active as "isActive", created_at as "createdAt"
+             semester, photo_url as "photoUrl", observations, is_active as "isActive", created_at as "createdAt"
       FROM users
       WHERE (LOWER(username) = $1 OR LOWER(email) = $1 OR (account != '' AND LOWER(account) = $1))
     `;
@@ -266,11 +277,13 @@ export class PgRepository {
     const plainPass = (dto as any).password || 'password123';
     const hashedPass = await hashPassword(plainPass);
 
+    const studentCareer = this.resolveCareer(dto.careerId);
+
     await pool.query(
       `INSERT INTO users (id, username, password_hash, full_name, alias, email, phone, role, account,
                           campus_id, campus_name, career_id, career_name, birth_date, admission_date,
-                          photo_url, observations, is_active, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, true, $18);`,
+                          semester, photo_url, observations, is_active, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, true, $19);`,
       [
         id,
         dto.username,
@@ -282,11 +295,12 @@ export class PgRepository {
         UserRole.STUDENT,
         dto.account,
         dto.campusId || 'cam-1',
-        (dto as any).campusName || 'Campus Central',
-        dto.careerId || 'car-1',
-        (dto as any).careerName || 'Ingeniería en Sistemas',
+        (dto as any).campusName || 'Sede Única',
+        studentCareer.id,
+        studentCareer.name,
         dto.birthDate || '',
         dto.admissionDate || createdAt,
+        dto.semester || 0,
         (dto as any).photoUrl || '',
         (dto as any).observations || '',
         createdAt
@@ -318,11 +332,13 @@ export class PgRepository {
     const plainPass = (dto as any).password || 'password123';
     const hashedPass = await hashPassword(plainPass);
 
+    const teacherCareer = this.resolveCareer(dto.careerId);
+
     await pool.query(
       `INSERT INTO users (id, username, password_hash, full_name, alias, email, phone, role, account,
                           campus_id, campus_name, career_id, career_name, birth_date, admission_date,
-                          photo_url, observations, is_active, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, true, $18);`,
+                          semester, photo_url, observations, is_active, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 0, $16, $17, true, $18);`,
       [
         id,
         dto.username,
@@ -334,9 +350,9 @@ export class PgRepository {
         UserRole.TEACHER,
         dto.account || '',
         dto.campusId || 'cam-1',
-        (dto as any).campusName || 'Campus Central',
-        dto.careerId || 'car-1',
-        (dto as any).careerName || 'Ingeniería en Sistemas',
+        (dto as any).campusName || 'Sede Única',
+        teacherCareer.id,
+        teacherCareer.name,
         (dto as any).birthDate || '',
         (dto as any).admissionDate || createdAt,
         (dto as any).photoUrl || '',
@@ -359,6 +375,18 @@ export class PgRepository {
           `INSERT INTO teacher_availability (id, teacher_id, teacher_name, schedule_slot_id, schedule_label, subject_course_id, subject_course_name, is_available)
            VALUES ($1, $2, $3, $4, $5, $6, $7, true);`,
           [availId, id, dto.fullName, item.scheduleSlotId, slotLabel, item.subjectCourseId, subjName]
+        );
+      }
+    }
+
+    // Registrar catálogo de asignaturas del docente (teacher_subjects)
+    if (initialAvailability && initialAvailability.length > 0) {
+      const catalogSubjects = Array.from(new Set(initialAvailability.map((item) => item.subjectCourseId)));
+      for (const subId of catalogSubjects) {
+        await pool.query(
+          `INSERT INTO teacher_subjects (teacher_id, subject_id) VALUES ($1, $2)
+           ON CONFLICT (teacher_id, subject_id) DO NOTHING;`,
+          [id, subId]
         );
       }
     }
@@ -400,11 +428,93 @@ export class PgRepository {
     return current;
   }
 
+  // --- TEACHER SUBJECTS (catálogo de asignaturas por docente) ---
+  public async getTeacherSubjects(teacherId: string): Promise<SubjectCourse[]> {
+    const pool = await getPgPool();
+    const res = await pool.query(
+      `SELECT s.id, s.name, s.code, s.credits, s.semester,
+              s.career_id as "careerId", s.career_name as "careerName", s.is_active as "isActive"
+       FROM subjects s
+       JOIN teacher_subjects ts ON ts.subject_id = s.id
+       WHERE ts.teacher_id = $1
+       ORDER BY s.semester ASC, s.name ASC;`,
+      [teacherId]
+    );
+    return res.rows;
+  }
+
+  public async setTeacherSubjects(teacherId: string, subjectIds: string[], actor: User): Promise<SubjectCourse[]> {
+    const pool = await getPgPool();
+    const teacher = await this.getUserById(teacherId);
+    if (!teacher) throw new Error('Docente no encontrado.');
+
+    await pool.query('DELETE FROM teacher_subjects WHERE teacher_id = $1;', [teacherId]);
+    for (const subId of subjectIds) {
+      await pool.query(
+        `INSERT INTO teacher_subjects (teacher_id, subject_id) VALUES ($1, $2)
+         ON CONFLICT (teacher_id, subject_id) DO NOTHING;`,
+        [teacherId, subId]
+      );
+    }
+
+    // Eliminar disponibilidad de materias que dejaron de estar asignadas al docente
+    await pool.query(
+      `DELETE FROM teacher_availability
+       WHERE teacher_id = $1
+         AND subject_course_id NOT IN (SELECT subject_id FROM teacher_subjects WHERE teacher_id = $1);`,
+      [teacherId]
+    );
+
+    await this.logBinnacle(
+      'Asignación de Materias',
+      `Materias de ${teacher.fullName} actualizadas (${subjectIds.length} asignadas) por ${actor.fullName}`,
+      actor.username
+    );
+    return this.getTeacherSubjects(teacherId);
+  }
+
+  public async updateTeacherProfile(
+    userId: string,
+    dto: { fullName?: string; phone?: string; email?: string; careerId?: string },
+    actor: User
+  ): Promise<User> {
+    const pool = await getPgPool();
+    const teacher = await this.getUserById(userId);
+    if (!teacher) throw new Error('Docente no encontrado.');
+    if (teacher.role !== UserRole.TEACHER) throw new Error('El usuario seleccionado no es docente.');
+
+    let careerId = teacher.careerId;
+    let careerName = teacher.careerName;
+    if (dto.careerId && dto.careerId !== teacher.careerId) {
+      const career = this.resolveCareer(dto.careerId);
+      careerId = career.id;
+      careerName = career.name;
+    }
+
+    await pool.query(
+      `UPDATE users SET
+         full_name = COALESCE($1, full_name),
+         phone = COALESCE($2, phone),
+         email = COALESCE($3, email),
+         career_id = COALESCE($4, career_id),
+         career_name = COALESCE($5, career_name)
+       WHERE id = $6;`,
+      [dto.fullName || null, dto.phone || null, dto.email || null, careerId, careerName, userId]
+    );
+
+    await this.logBinnacle(
+      'Modificación de Docente',
+      `Perfil de ${teacher.fullName} actualizado por ${actor.fullName}`,
+      actor.username
+    );
+    return (await this.getUserById(userId))!;
+  }
+
   // --- SUBJECTS ---
   public async getSubjects(): Promise<SubjectCourse[]> {
     const pool = await getPgPool();
     const res = await pool.query(
-      `SELECT id, name, code, credits, career_id as "careerId", career_name as "careerName", is_active as "isActive"
+      `SELECT id, name, code, credits, semester, career_id as "careerId", career_name as "careerName", is_active as "isActive"
        FROM subjects ORDER BY name ASC;`
     );
     return res.rows;
@@ -413,21 +523,121 @@ export class PgRepository {
   public async createSubject(dto: CreateSubjectDto, adminUser: User): Promise<SubjectCourse> {
     const pool = await getPgPool();
     const id = `subj-${Date.now()}`;
-    const careerId = (dto as any).careerId || 'car-1';
-    const careerName = dto.careerName || 'Ingeniería en Sistemas';
+    const subjectCareer = this.resolveCareer(dto.careerId);
+    const careerId = subjectCareer.id;
+    const careerName = dto.careerName || subjectCareer.name;
     await pool.query(
-      `INSERT INTO subjects (id, name, code, credits, career_id, career_name, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, true);`,
-      [id, dto.name, dto.code || '', dto.credits || 0, careerId, careerName]
+      `INSERT INTO subjects (id, name, code, credits, semester, career_id, career_name, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true);`,
+      [id, dto.name, dto.code || '', dto.credits || 0, dto.semester || 0, careerId, careerName]
     );
 
     await this.logBinnacle('Catálogo de Materias', `Materia ${dto.name} agregada por ${adminUser.fullName}`, adminUser.username);
     const res = await pool.query(
-      `SELECT id, name, code, credits, career_id as "careerId", career_name as "careerName", is_active as "isActive"
+      `SELECT id, name, code, credits, semester, career_id as "careerId", career_name as "careerName", is_active as "isActive"
        FROM subjects WHERE id = $1;`,
       [id]
     );
     return res.rows[0];
+  }
+
+  public async getCareers(): Promise<Career[]> {
+    const pool = await getPgPool();
+    const res = await pool.query(
+      `SELECT id, name, code_prefix as "codePrefix", number_of_semesters as "numberOfSemesters", is_active as "isActive"
+       FROM careers ORDER BY name ASC;`
+    );
+    return res.rows;
+  }
+
+  public async createCareer(
+    dto: { name: string; codePrefix: string; numberOfSemesters: number },
+    adminUser: User
+  ): Promise<Career> {
+    const pool = await getPgPool();
+    const id = `car-fet-${Date.now()}`;
+    const exists = await pool.query('SELECT id FROM careers WHERE LOWER(name) = $1;', [dto.name.trim().toLowerCase()]);
+    if (exists.rows.length > 0) throw new Error('Ya existe una carrera con ese nombre.');
+
+    await pool.query(
+      `INSERT INTO careers (id, name, code_prefix, number_of_semesters, is_active)
+       VALUES ($1, $2, $3, $4, true);`,
+      [id, dto.name.trim(), dto.codePrefix || '', dto.numberOfSemesters || 10]
+    );
+    await this.logBinnacle('Catálogo de Carreras', `Carrera ${dto.name.trim()} creada`, adminUser.username);
+
+    const res = await pool.query(
+      `SELECT id, name, code_prefix as "codePrefix", number_of_semesters as "numberOfSemesters", is_active as "isActive"
+       FROM careers WHERE id = $1;`,
+      [id]
+    );
+    return res.rows[0];
+  }
+
+  public async updateCareer(
+    careerId: string,
+    dto: { name: string; codePrefix: string; numberOfSemesters: number },
+    adminUser: User
+  ): Promise<Career> {
+    const pool = await getPgPool();
+    const cur = await pool.query('SELECT name FROM careers WHERE id = $1', [careerId]);
+    if (cur.rows.length === 0) throw new Error('Carrera no encontrada.');
+
+    await pool.query(
+      `UPDATE careers SET name = $1, code_prefix = $2, number_of_semesters = $3 WHERE id = $4;`,
+      [dto.name.trim(), dto.codePrefix || '', dto.numberOfSemesters || 10, careerId]
+    );
+    await this.logBinnacle('Catálogo de Carreras', `Carrera ${cur.rows[0].name} actualizada a ${dto.name.trim()}`, adminUser.username);
+
+    const res = await pool.query(
+      `SELECT id, name, code_prefix as "codePrefix", number_of_semesters as "numberOfSemesters", is_active as "isActive"
+       FROM careers WHERE id = $1;`,
+      [careerId]
+    );
+    return res.rows[0];
+  }
+
+  public async toggleCareerActive(careerId: string, adminUser: User): Promise<Career> {
+    const pool = await getPgPool();
+    const cur = await pool.query('SELECT is_active, name FROM careers WHERE id = $1', [careerId]);
+    if (cur.rows.length === 0) throw new Error('Carrera no encontrada.');
+
+    const newActive = !cur.rows[0].is_active;
+    await pool.query('UPDATE careers SET is_active = $1 WHERE id = $2;', [newActive, careerId]);
+    await this.logBinnacle(
+      'Catálogo de Carreras',
+      `Carrera ${cur.rows[0].name} ${newActive ? 'activada' : 'inhabilitada'}`,
+      adminUser.username
+    );
+
+    const res = await pool.query(
+      `SELECT id, name, code_prefix as "codePrefix", number_of_semesters as "numberOfSemesters", is_active as "isActive"
+       FROM careers WHERE id = $1;`,
+      [careerId]
+    );
+    return res.rows[0];
+  }
+
+  public async deleteCareer(careerId: string, adminUser: User): Promise<Career> {
+    const pool = await getPgPool();
+    const cur = await pool.query(
+      `SELECT id, name, code_prefix as "codePrefix", number_of_semesters as "numberOfSemesters"
+       FROM careers WHERE id = $1;`,
+      [careerId]
+    );
+    if (cur.rows.length === 0) throw new Error('Carrera no encontrada.');
+
+    const refs = await pool.query(
+      `SELECT (SELECT COUNT(*) FROM users WHERE career_id = $1) as users, (SELECT COUNT(*) FROM subjects WHERE career_id = $1) as subjects;`,
+      [careerId]
+    );
+    if (refs.rows[0].users > 0 || refs.rows[0].subjects > 0) {
+      throw new Error('No se puede eliminar: la carrera tiene usuarios o asignaturas asociadas.');
+    }
+
+    await pool.query('DELETE FROM careers WHERE id = $1;', [careerId]);
+    await this.logBinnacle('Catálogo de Carreras', `Carrera ${cur.rows[0].name} eliminada`, adminUser.username);
+    return cur.rows[0];
   }
 
   public async toggleSubjectActive(subjectId: string, adminUser: User): Promise<SubjectCourse> {
@@ -561,6 +771,13 @@ export class PgRepository {
       `INSERT INTO teacher_availability (id, teacher_id, teacher_name, schedule_slot_id, schedule_label, subject_course_id, subject_course_name, is_available)
        VALUES ($1, $2, $3, $4, $5, $6, $7, true);`,
       [id, teacher.id, teacher.fullName, scheduleSlotId, scheduleLabel, subjectCourseId, subjectName]
+    );
+
+    // Asegurar la asignatura en el catálogo del docente
+    await pool.query(
+      `INSERT INTO teacher_subjects (teacher_id, subject_id) VALUES ($1, $2)
+       ON CONFLICT (teacher_id, subject_id) DO NOTHING;`,
+      [teacher.id, subjectCourseId]
     );
 
     await this.logBinnacle(

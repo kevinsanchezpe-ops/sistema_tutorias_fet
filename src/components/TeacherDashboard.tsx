@@ -37,9 +37,12 @@ import {
   X,
   Ban,
   Paperclip,
-  FileText
+  FileText,
+  GraduationCap,
+  List
 } from 'lucide-react';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
+import { TutoringCalendarView } from './TutoringCalendarView';
 
 interface TeacherDashboardProps {
   currentUser: User;
@@ -62,6 +65,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'tutorings' | 'availability' | 'evaluations'>('tutorings');
   const [selectedTutoringId, setSelectedTutoringId] = useState<string | null>(null);
+  const [displayMode, setDisplayMode] = useState<'list' | 'calendar'>('list');
   const [viewingAttachment, setViewingAttachment] = useState<{ fileName: string; fileUrl: string } | null>(null);
 
   // Approval state for teachers
@@ -133,9 +137,61 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     }
   };
 
+  // Catálogo de asignaturas del docente + las de su carrera
+  const [teacherCatalog, setTeacherCatalog] = useState<SubjectCourse[]>([]);
+  const [catalogMsg, setCatalogMsg] = useState<string | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [savingCatalog, setSavingCatalog] = useState(false);
+
+  React.useEffect(() => {
+    (async () => {
+      const res = await ApiClient.getTeacherSubjects(currentUser.id);
+      if (res.success && res.data) {
+        setTeacherCatalog(res.data);
+      }
+    })();
+  }, [currentUser.id]);
+
+  const subjectsInCareer = subjects.filter((s) => s.careerId === currentUser.careerId);
+
+  // Asignaturas del docente (catálogo propio; fallback a su carrera)
+  const teacherCareerSubjects =
+    teacherCatalog.length > 0 ? teacherCatalog : subjectsInCareer;
+
+  // Filtro por semestre en "Mi Carrera y Asignaturas"
+  const [catalogSemesterFilter, setCatalogSemesterFilter] = useState<string>('all');
+
+  const catalogSemesters = Array.from(
+    new Set(subjectsInCareer.map((s) => s.semester).filter((x): x is number => !!x))
+  ).sort((a, b) => a - b);
+
+  const subjectsInCareerFiltered =
+    catalogSemesterFilter === 'all'
+      ? subjectsInCareer
+      : subjectsInCareer.filter((s) => Number(s.semester) === Number(catalogSemesterFilter));
+
+  const handleToggleCatalogSubject = async (subId: string) => {
+    if (savingCatalog) return;
+    const isAssigned = teacherCatalog.some((s) => s.id === subId);
+    const nextIds = isAssigned
+      ? teacherCatalog.filter((s) => s.id !== subId).map((s) => s.id)
+      : [...teacherCatalog.map((s) => s.id), subId];
+    setSavingCatalog(true);
+    setCatalogError(null);
+    const res = await ApiClient.setTeacherSubjects(currentUser.id, nextIds, currentUser);
+    setSavingCatalog(false);
+    if (res.success && res.data) {
+      setTeacherCatalog(res.data);
+      setCatalogMsg(isAssigned ? 'Materia retirada de sus asignaciones.' : 'Materia asignada correctamente.');
+      setTimeout(() => setCatalogMsg(null), 3000);
+    } else {
+      setCatalogError(res.error?.message || 'Error al actualizar sus materias.');
+    }
+  };
+
   // New slot form state
   const [showAddSlot, setShowAddSlot] = useState(false);
-  const [newSubjectId, setNewSubjectId] = useState(subjects[0]?.id || '');
+  const [newSubjectId, setNewSubjectId] = useState(() => teacherCareerSubjects[0]?.id || '');
   const [newSlotId, setNewSlotId] = useState(schedules[0]?.id || '');
   const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([]);
   const [availabilityFilterSubject, setAvailabilityFilterSubject] = useState<string>('all');
@@ -146,10 +202,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
   // Sync newSubjectId if empty and subjects become available
   React.useEffect(() => {
-    if (!newSubjectId && subjects.length > 0) {
-      setNewSubjectId(subjects[0].id);
+    if (!newSubjectId && teacherCareerSubjects.length > 0) {
+      setNewSubjectId(teacherCareerSubjects[0].id);
     }
-  }, [subjects, newSubjectId]);
+  }, [teacherCareerSubjects.length, newSubjectId]);
 
   // Attendance local state: Map of assistantId -> boolean
   const [attendanceMap, setAttendanceMap] = useState<{ [assistantId: string]: boolean }>({});
@@ -303,7 +359,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             onClick={() => {
               setActiveTab('availability');
               setShowAddSlot(true);
-              if (subjects.length > 0 && !newSubjectId) setNewSubjectId(subjects[0].id);
+              if (teacherCareerSubjects.length > 0 && !newSubjectId) setNewSubjectId(teacherCareerSubjects[0].id);
               if (schedules.length > 0 && selectedSlotIds.length === 0) {
                 setSelectedSlotIds([schedules[0].id]);
               }
@@ -706,7 +762,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <div>
                 <div className="text-xs font-semibold text-slate-500 uppercase">Materias Asignadas</div>
                 <div className="text-xl font-bold text-slate-900">
-                  {new Set(myAvailabilities.map((a) => a.subjectCourseId)).size}
+                  {teacherCatalog.length}
                 </div>
               </div>
             </div>
@@ -748,6 +804,105 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             </div>
           )}
 
+          {/* Mi Carrera y Asignaturas (autoasignación) */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-[#eaf8ea] text-[#11770e] flex items-center justify-center border border-[#bce6bc]/60">
+                  <GraduationCap className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Mi Carrera y Asignaturas</h3>
+                  <p className="text-xs text-slate-500">
+                    Carrera: <span className="font-semibold text-slate-700">{currentUser.careerName || 'Sin asignar'}</span>
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <select
+                  id="select-catalog-semester-filter"
+                  value={catalogSemesterFilter}
+                  onChange={(e) => setCatalogSemesterFilter(e.target.value)}
+                  aria-label="Filtrar asignaturas por semestre"
+                  className="text-xs rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-slate-800 font-medium focus:ring-2 focus:ring-[#11770e] cursor-pointer"
+                >
+                  <option value="all">Todos los semestres</option>
+                  {catalogSemesters.map((sem) => (
+                    <option key={sem} value={String(sem)}>Semestre {sem}</option>
+                  ))}
+                </select>
+                <span className="text-[11px] font-semibold bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc] px-2.5 py-1 rounded-full w-fit">
+                  {teacherCatalog.length} de {subjectsInCareer.length} materias asignadas
+                </span>
+              </div>
+            </div>
+
+            {catalogMsg && (
+              <div className="p-3 bg-[#eaf8ea] border border-[#bce6bc] text-[#11770e] rounded-xl text-xs flex items-center gap-2 font-medium">
+                <CheckCircle2 className="w-4 h-4 text-[#11770e] shrink-0" />
+                <span>{catalogMsg}</span>
+              </div>
+            )}
+            {catalogError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                <span>{catalogError}</span>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-slate-500">
+                Marca o desmarca las asignaturas de su carrera que usted impartirá. Solo podrá publicar disponibilidad
+                para las materias aquí asignadas.
+              </p>
+              {catalogSemesterFilter !== 'all' && subjectsInCareer.length > 0 && (
+                <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                  Mostrando {subjectsInCareerFiltered.length} de {subjectsInCareer.length} asignaturas
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-72 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
+              {subjectsInCareer.length === 0 ? (
+                <div className="col-span-full p-5 text-center text-xs text-slate-400">
+                  No hay asignaturas registradas para su carrera todavía.
+                </div>
+              ) : subjectsInCareerFiltered.length === 0 ? (
+                <div className="col-span-full p-5 text-center text-xs text-slate-400">
+                  No hay asignaturas en el semestre seleccionado.
+                </div>
+              ) : subjectsInCareerFiltered.map((sub) => {
+                const isAssigned = teacherCatalog.some((s) => s.id === sub.id);
+                return (
+                  <label
+                    key={sub.id}
+                    className={`flex items-center gap-2 p-2 rounded-lg text-xs cursor-pointer transition-colors border ${
+                      isAssigned
+                        ? 'bg-[#eaf8ea] border-[#bce6bc] text-[#0d5c0b] font-semibold'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                    } ${savingCatalog ? 'opacity-60 pointer-events-none' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isAssigned}
+                      onChange={() => handleToggleCatalogSubject(sub.id)}
+                      className="rounded border-slate-300 text-[#11770e] focus:ring-[#11770e]"
+                    />
+                    <span className="font-mono text-[10px] text-indigo-600 bg-indigo-100/60 px-1.5 py-0.5 rounded shrink-0">
+                      {sub.code || 'S/C'}
+                    </span>
+                    <span className="truncate">{sub.name}</span>
+                    {sub.semester ? (
+                      <span className="font-mono text-[10px] text-emerald-700 bg-emerald-100/70 px-1.5 py-0.5 rounded shrink-0">
+                        S{sub.semester}
+                      </span>
+                    ) : null}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Main Card */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-6 space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
@@ -765,7 +920,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 id="btn-open-add-slot"
                 onClick={() => {
                   setShowAddSlot(!showAddSlot);
-                  if (subjects.length > 0 && !newSubjectId) setNewSubjectId(subjects[0].id);
+                  if (teacherCareerSubjects.length > 0 && !newSubjectId) setNewSubjectId(teacherCareerSubjects[0].id);
                   if (schedules.length > 0 && selectedSlotIds.length === 0) {
                     setSelectedSlotIds([schedules[0].id]);
                   }
@@ -801,9 +956,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       onChange={(e) => setNewSubjectId(e.target.value)}
                       className="w-full text-xs rounded-xl border border-slate-300 bg-white p-2.5 text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500"
                     >
-                      {subjects.map((sub) => (
+                      {teacherCareerSubjects.length === 0 ? (
+                        <option value="" disabled>
+                          {subjectsInCareer.length > 0
+                            ? 'Asigne primero sus materias en "Mi Carrera y Asignaturas"'
+                            : 'No hay asignaturas de su carrera'}
+                        </option>
+                      ) : teacherCareerSubjects.map((sub) => (
                         <option key={sub.id} value={sub.id}>
-                          {sub.name} — Código: {sub.code} ({sub.unitsValoration} UV)
+                          {sub.name}
+                          {sub.semester ? ` (Semestre ${sub.semester})` : ''} — Código: {sub.code} ({sub.credits || 4} UV)
                         </option>
                       ))}
                     </select>
@@ -946,8 +1108,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 flex items-center justify-between gap-3 transition-colors"
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="font-bold text-slate-800 text-sm truncate">
-                          {av.subjectCourseName}
+                        <div className="flex items-center gap-2">
+                          <div className="font-bold text-slate-800 text-sm truncate">
+                            {av.subjectCourseName}
+                          </div>
+                          {(() => {
+                            const avSubject = subjects.find((s) => s.id === av.subjectCourseId);
+                            return avSubject?.semester ? (
+                              <span className="font-mono text-[10px] text-emerald-700 bg-emerald-100/70 px-1.5 py-0.5 rounded shrink-0">
+                                S{avSubject.semester}
+                              </span>
+                            ) : null;
+                          })()}
                         </div>
                         <div className="text-xs text-slate-600 flex items-center gap-1.5 mt-1">
                           <Clock className="w-3.5 h-3.5 text-[#11770e] shrink-0" />

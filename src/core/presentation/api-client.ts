@@ -1,6 +1,7 @@
 import {
   ApiResponse,
   BinnacleEntry,
+  Career,
   InstitutionInfo,
   Notification,
   ScheduleSlot,
@@ -287,6 +288,62 @@ export class ApiClient {
     return res;
   }
 
+  // --- CAREERS ---
+  public static async getCareers(): Promise<ApiResponse<Career[]>> {
+    return request<Career[]>('/careers');
+  }
+
+  public static async createCareer(
+    dto: { name: string; codePrefix: string; numberOfSemesters: number },
+    adminUser: User
+  ): Promise<ApiResponse<Career>> {
+    const res = await request<Career>('/careers', {
+      method: 'POST',
+      body: JSON.stringify({ ...dto, adminId: adminUser.id })
+    });
+    if (res.success) {
+      ApiClient.notifyListeners();
+    }
+    return res;
+  }
+
+  public static async updateCareer(
+    careerId: string,
+    dto: { name: string; codePrefix: string; numberOfSemesters: number },
+    adminUser: User
+  ): Promise<ApiResponse<Career>> {
+    const res = await request<Career>(`/careers/${careerId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ ...dto, adminId: adminUser.id })
+    });
+    if (res.success) {
+      ApiClient.notifyListeners();
+    }
+    return res;
+  }
+
+  public static async toggleCareerActive(careerId: string, adminUser: User): Promise<ApiResponse<Career>> {
+    const res = await request<Career>(`/careers/${careerId}/toggle`, {
+      method: 'PATCH',
+      body: JSON.stringify({ adminId: adminUser.id })
+    });
+    if (res.success) {
+      ApiClient.notifyListeners();
+    }
+    return res;
+  }
+
+  public static async deleteCareer(careerId: string, adminUser: User): Promise<ApiResponse<Career>> {
+    const res = await request<Career>(`/careers/${careerId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ adminId: adminUser.id })
+    });
+    if (res.success) {
+      ApiClient.notifyListeners();
+    }
+    return res;
+  }
+
   public static async getScheduleSlots(): Promise<ApiResponse<ScheduleSlot[]>> {
     return request<ScheduleSlot[]>('/schedules');
   }
@@ -343,6 +400,41 @@ export class ApiClient {
     const res = await request<TeacherAvailability[]>('/availability/batch', {
       method: 'POST',
       body: JSON.stringify({ teacherId: teacher.id, subjectCourseId, scheduleSlotIds })
+    });
+    if (res.success) {
+      ApiClient.notifyListeners();
+    }
+    return res;
+  }
+
+  // --- TEACHER SUBJECTS (catálogo) ---
+  public static async getTeacherSubjects(teacherId: string): Promise<ApiResponse<SubjectCourse[]>> {
+    return request<SubjectCourse[]>(`/teachers/${teacherId}/subjects`);
+  }
+
+  public static async setTeacherSubjects(
+    teacherId: string,
+    subjectIds: string[],
+    actor: User
+  ): Promise<ApiResponse<SubjectCourse[]>> {
+    const res = await request<SubjectCourse[]>(`/teachers/${teacherId}/subjects`, {
+      method: 'PUT',
+      body: JSON.stringify({ actorId: actor.id, subjectIds })
+    });
+    if (res.success) {
+      ApiClient.notifyListeners();
+    }
+    return res;
+  }
+
+  public static async updateTeacherProfile(
+    teacherId: string,
+    dto: { fullName?: string; phone?: string; email?: string; careerId?: string; subjectIds?: string[] },
+    admin: User
+  ): Promise<ApiResponse<User>> {
+    const res = await request<User>(`/teachers/${teacherId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ adminId: admin.id, ...dto })
     });
     if (res.success) {
       ApiClient.notifyListeners();

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ApiClient } from '../core/presentation/api-client';
-import { ScheduleSlot, SubjectCourse, TeacherAvailability, User, UserRole } from '../core/types';
+import { Career, ScheduleSlot, SubjectCourse, TeacherAvailability, User, UserRole } from '../core/types';
 import {
   Briefcase,
   Plus,
@@ -16,6 +16,8 @@ import {
   Clock,
   User as UserIcon,
   Trash2,
+  Pencil,
+  GraduationCap,
   X
 } from 'lucide-react';
 
@@ -23,6 +25,7 @@ interface AdminTeachersTabProps {
   currentUser: User;
   users: User[];
   subjects: SubjectCourse[];
+  careers: Career[];
   schedules?: ScheduleSlot[];
   availabilities?: TeacherAvailability[];
   onRefresh: () => void;
@@ -32,6 +35,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
   currentUser,
   users,
   subjects,
+  careers,
   schedules = [],
   availabilities = [],
   onRefresh
@@ -46,7 +50,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('+504 9876-5432');
-  const [careerName, setCareerName] = useState('Facultad de Ingeniería');
+  const [selectedCareerId, setSelectedCareerId] = useState<string>(currentUser.careerId || careers[0]?.id || '');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
 
@@ -60,6 +64,76 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const teacherUsers = users.filter((u) => u.role === UserRole.TEACHER);
+
+  // Edit state
+  const [editingTeacher, setEditingTeacher] = useState<User | null>(null);
+  const [editCareerId, setEditCareerId] = useState<string>('');
+  const [editSubjects, setEditSubjects] = useState<string[]>([]);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Catálogo de materias por docente
+  const [teacherCatalogMap, setTeacherCatalogMap] = useState<{ [teacherId: string]: SubjectCourse[] }>({});
+  const teacherIdsKey = teacherUsers.map((t) => t.id).join('|');
+
+  React.useEffect(() => {
+    (async () => {
+      const map: { [teacherId: string]: SubjectCourse[] } = {};
+      for (const tid of teacherUsers.map((t) => t.id)) {
+        const res = await ApiClient.getTeacherSubjects(tid);
+        if (res.success && res.data) {
+          map[tid] = res.data;
+        }
+      }
+      setTeacherCatalogMap(map);
+    })();
+  }, [teacherIdsKey]);
+
+  const openEditTeacher = async (teacher: User) => {
+    setEditingTeacher(teacher);
+    setEditCareerId(teacher.careerId || careers[0]?.id || '');
+    const existing = teacherCatalogMap[teacher.id];
+    if (existing) {
+      setEditSubjects(existing.map((s) => s.id));
+    } else {
+      const res = await ApiClient.getTeacherSubjects(teacher.id);
+      setEditSubjects(res.success && res.data ? res.data.map((s) => s.id) : []);
+    }
+    setEditError(null);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTeacher) return;
+    if (editSubjects.length === 0) {
+      setEditError('Debe asignar al menos una asignatura al docente.');
+      return;
+    }
+    setEditLoading(true);
+    setEditError(null);
+    const res = await ApiClient.updateTeacherProfile(
+      editingTeacher.id,
+      { careerId: editCareerId, subjectIds: editSubjects },
+      currentUser
+    );
+    setEditLoading(false);
+    if (res.success) {
+      setSuccessMsg(`Docente "${editingTeacher.fullName}" actualizado correctamente.`);
+      setEditingTeacher(null);
+      onRefresh();
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } else {
+      setEditError(res.error?.message || 'Error al actualizar el docente.');
+    }
+  };
+
+  const editCareerSubjects = editCareerId
+    ? subjects.filter((s) => s.careerId === editCareerId)
+    : subjects;
+
+  const careerSubjects = selectedCareerId
+    ? subjects.filter((s) => s.careerId === selectedCareerId)
+    : subjects;
 
   const sampleTeachers = [
     {
@@ -93,10 +167,9 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
     setUsername(`${sample.username}_${uniqueSuffix}`);
     setEmail(`${sample.username}${uniqueSuffix}@gt.edu`);
     setPhone(sample.phone);
-    setCareerName('Facultad de Ingeniería');
 
-    // Default select active subjects (first 2)
-    const activeSubjects = subjects.filter((s) => s.isActive);
+    // Default select active subjects (first 2) of the selected career
+    const activeSubjects = careerSubjects.filter((s) => s.isActive);
     setSelectedSubjects(activeSubjects.slice(0, 2).map((s) => s.id));
 
     // Default select slots (first 3)
@@ -122,7 +195,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
       username,
       email,
       phone,
-      careerId: 'car-1',
+      careerId: selectedCareerId,
       subjectIds: selectedSubjects,
       scheduleSlotIds: selectedSlots
     });
@@ -358,6 +431,44 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
               </div>
             </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="input-teacher-career"
+                  className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1"
+                >
+                  Carrera Asignada *
+                </label>
+                <select
+                  id="input-teacher-career"
+                  value={selectedCareerId}
+                  onChange={(e) => {
+                    setSelectedCareerId(e.target.value);
+                    setSelectedSubjects([]);
+                  }}
+                  required
+                  className="w-full text-sm rounded-xl border border-slate-300 px-3.5 py-2 text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="" disabled>Seleccionar carrera...</option>
+                  {careers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="input-teacher-career-summary"
+                  className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1"
+                >
+                  Asignaturas de la Carrera
+                </label>
+                <div className="flex items-center gap-2 h-[38px] px-3.5 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-600">
+                  <BookOpen className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>{careerSubjects.length} asignaturas en el catálogo</span>
+                </div>
+              </div>
+            </div>
+
             {/* Selection of Subjects */}
             <div className="space-y-1.5 pt-2">
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center justify-between">
@@ -365,7 +476,11 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                 <span className="text-[11px] text-slate-400 font-normal">Mínimo 1 obligatoria</span>
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
-                {subjects.map((sub) => {
+                {careerSubjects.length === 0 ? (
+                  <div className="col-span-1 sm:col-span-2 p-4 text-center text-xs text-slate-400">
+                    No hay asignaturas registradas para esta carrera todavía.
+                  </div>
+                ) : careerSubjects.map((sub) => {
                   const isChecked = selectedSubjects.includes(sub.id);
                   return (
                     <label
@@ -392,6 +507,11 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                         {sub.code || 'S/C'}
                       </span>
                       <span className="truncate">{sub.name}</span>
+                      {sub.semester ? (
+                        <span className="font-mono text-[10px] text-emerald-700 bg-emerald-100/70 px-1.5 py-0.5 rounded shrink-0">
+                          S{sub.semester}
+                        </span>
+                      ) : null}
                     </label>
                   );
                 })}
@@ -555,10 +675,14 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
           </div>
         ) : (
           filteredTeachers.map((teacher) => {
-            // Find teacher's assigned subjects from availabilities
+            // Find teacher's assigned subjects from catalog + availabilities
             const teacherAvails = availabilities.filter((a) => a.teacherId === teacher.id);
+            const catalogSubjects = teacherCatalogMap[teacher.id] || [];
             const distinctSubjectNames = Array.from(
-              new Set(teacherAvails.map((a) => a.subjectCourseName))
+              new Set([
+                ...catalogSubjects.map((s) => s.name),
+                ...teacherAvails.map((a) => a.subjectCourseName)
+              ])
             );
 
             return (
@@ -584,6 +708,12 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                             @{teacher.username}
                           </span>
                         </div>
+                        {teacher.careerName && (
+                          <div className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-[#11770e] bg-[#eaf8ea] border border-[#bce6bc] px-1.5 py-0.5 rounded-md">
+                            <GraduationCap className="w-3 h-3" />
+                            {teacher.careerName}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -644,6 +774,16 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                   </span>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      id={`btn-edit-teacher-${teacher.id}`}
+                      onClick={() => openEditTeacher(teacher)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border border-[#bce6bc] bg-[#eaf8ea] text-[#11770e] hover:bg-[#d9efd9] transition-colors cursor-pointer"
+                      title="Editar carrera y materias asignadas del docente"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      <span>Editar</span>
+                    </button>
+
                     <button
                       id={`btn-toggle-teacher-${teacher.id}`}
                       onClick={() => handleToggleUserActive(teacher.id)}
@@ -766,6 +906,154 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Teacher Modal */}
+      {editingTeacher && (
+        <div
+          id="modal-edit-teacher-backdrop"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in"
+        >
+          <div
+            id="modal-edit-teacher-card"
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-[#eaf8ea]/60">
+              <div className="flex items-center gap-2 text-[#11770e] font-bold text-sm">
+                <Pencil className="w-4 h-4" />
+                <span>Editar Docente</span>
+              </div>
+              <button
+                id="btn-close-edit-teacher-modal"
+                onClick={() => setEditingTeacher(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-md cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="p-5 space-y-4">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs">
+                <div className="font-bold text-slate-900 text-sm">{editingTeacher.fullName}</div>
+                <div className="flex items-center gap-3 text-slate-500 text-[11px]">
+                  <span>Código: <strong className="font-mono text-indigo-700">{editingTeacher.account}</strong></span>
+                  <span>•</span>
+                  <span>Usuario: <strong>@{editingTeacher.username}</strong></span>
+                  <span>•</span>
+                  <span>Correo: <strong>{editingTeacher.email}</strong></span>
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="edit-teacher-career"
+                  className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1"
+                >
+                  Carrera Asignada *
+                </label>
+                <select
+                  id="edit-teacher-career"
+                  value={editCareerId}
+                  onChange={(e) => {
+                    setEditCareerId(e.target.value);
+                    setEditSubjects([]);
+                  }}
+                  required
+                  className="w-full text-sm rounded-xl border border-slate-300 px-3.5 py-2 text-slate-900 focus:ring-2 focus:ring-[#11770e]"
+                >
+                  <option value="" disabled>Seleccionar carrera...</option>
+                  {careers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                  <span>Asignaturas Asignadas para Impartir * ({editSubjects.length} seleccionadas)</span>
+                  <span className="text-[11px] text-slate-400 font-normal">Mínimo 1 obligatoria</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
+                  {editCareerSubjects.length === 0 ? (
+                    <div className="col-span-1 sm:col-span-2 p-4 text-center text-xs text-slate-400">
+                      No hay asignaturas registradas para esta carrera todavía.
+                    </div>
+                  ) : editCareerSubjects.map((sub) => {
+                    const isChecked = editSubjects.includes(sub.id);
+                    return (
+                      <label
+                        key={sub.id}
+                        className={`flex items-center gap-2 p-2 rounded-lg text-xs cursor-pointer transition-colors border ${
+                          isChecked
+                            ? 'bg-indigo-50 border-indigo-200 text-indigo-900 font-semibold'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setEditSubjects([...editSubjects, sub.id]);
+                            } else {
+                              setEditSubjects(editSubjects.filter((id) => id !== sub.id));
+                            }
+                          }}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span className="font-mono text-[10px] text-indigo-600 bg-indigo-100/60 px-1.5 py-0.5 rounded">
+                          {sub.code || 'S/C'}
+                        </span>
+                        <span className="truncate">{sub.name}</span>
+                        {sub.semester ? (
+                          <span className="font-mono text-[10px] text-emerald-700 bg-emerald-100/70 px-1.5 py-0.5 rounded shrink-0">
+                            S{sub.semester}
+                          </span>
+                        ) : null}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {editError && (
+                <div id="alert-edit-teacher-error" className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-xs text-rose-700">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingTeacher(null)}
+                  disabled={editLoading}
+                  className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 bg-white border border-slate-300 rounded-lg cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  id="btn-confirm-edit-teacher"
+                  type="submit"
+                  disabled={editLoading}
+                  className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-[#11770e] hover:bg-[#0d5c0b] rounded-lg shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {editLoading ? (
+                    <>
+                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Guardando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Guardar Cambios</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

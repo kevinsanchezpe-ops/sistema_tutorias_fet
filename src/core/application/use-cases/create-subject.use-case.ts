@@ -1,11 +1,14 @@
 import { BusinessRuleException } from '../../domain/services/schedule-conflict.service';
 import { db } from '../../infrastructure/database/database';
+import { getDefaultCareer } from '../../infrastructure/database/careers-data';
 import { SubjectCourse, User, UserRole } from '../../types';
 
 export interface CreateSubjectDto {
   name: string;
   code?: string;
   credits?: number;
+  semester?: number;
+  careerId?: string;
   careerName?: string;
 }
 
@@ -42,8 +45,9 @@ export class CreateSubjectUseCase {
       name: trimmedName,
       code: dto.code?.trim().toUpperCase() || `ASG-${Math.floor(100 + Math.random() * 900)}`,
       credits: dto.credits || 4,
-      careerId: 'car-1',
-      careerName: dto.careerName?.trim() || 'Ingeniería en Sistemas',
+      semester: dto.semester || 1,
+      careerId: dto.careerId || getDefaultCareer().id,
+      careerName: dto.careerName?.trim() || getDefaultCareer().name,
       isActive: true
     };
 

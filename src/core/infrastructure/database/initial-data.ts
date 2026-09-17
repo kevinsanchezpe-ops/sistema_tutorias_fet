@@ -23,9 +23,9 @@ export const INITIAL_USERS: User[] = [
     role: UserRole.ADMIN,
     account: 'ADM-2021001',
     campusId: 'cmp-1',
-    campusName: 'Campus Central',
-    careerId: 'car-1',
-    careerName: 'Facultad de Ingeniería',
+    campusName: 'Sede Única',
+    careerId: 'car-fet-software',
+    careerName: 'Ingeniería de Software (FET)',
     birthDate: '1988-04-12',
     admissionDate: '2019-01-15',
     observations: 'Administrador general de tutorías académicas',
@@ -42,9 +42,9 @@ export const INITIAL_USERS: User[] = [
     role: UserRole.TEACHER,
     account: 'DOC-11029',
     campusId: 'cmp-1',
-    campusName: 'Campus Central',
-    careerId: 'car-1',
-    careerName: 'Ingeniería en Sistemas',
+    campusName: 'Sede Única',
+    careerId: 'car-fet-software',
+    careerName: 'Ingeniería de Software (FET)',
     birthDate: '1985-09-22',
     admissionDate: '2018-08-01',
     observations: 'Docente titular de Programación y Estructuras de Datos',
@@ -61,9 +61,9 @@ export const INITIAL_USERS: User[] = [
     role: UserRole.TEACHER,
     account: 'DOC-11035',
     campusId: 'cmp-1',
-    campusName: 'Campus Central',
-    careerId: 'car-1',
-    careerName: 'Ingeniería en Sistemas',
+    campusName: 'Sede Única',
+    careerId: 'car-fet-software',
+    careerName: 'Ingeniería de Software (FET)',
     birthDate: '1990-03-18',
     admissionDate: '2020-02-10',
     observations: 'Especialista en Bases de Datos y Análisis de Algoritmos',
@@ -80,11 +80,12 @@ export const INITIAL_USERS: User[] = [
     role: UserRole.STUDENT,
     account: '11811054',
     campusId: 'cmp-1',
-    campusName: 'Campus Central',
-    careerId: 'car-1',
-    careerName: 'Ingeniería en Sistemas',
+    campusName: 'Sede Única',
+    careerId: 'car-fet-software',
+    careerName: 'Ingeniería de Software (FET)',
     birthDate: '1999-07-14',
     admissionDate: '2018-01-20',
+    semester: 9,
     observations: 'Estudiante de último año, cursando materias avanzadas',
     isActive: true,
     createdAt: '2021-01-22'
@@ -99,11 +100,12 @@ export const INITIAL_USERS: User[] = [
     role: UserRole.STUDENT,
     account: '11921088',
     campusId: 'cmp-1',
-    campusName: 'Campus Central',
-    careerId: 'car-1',
-    careerName: 'Ingeniería en Sistemas',
+    campusName: 'Sede Única',
+    careerId: 'car-fet-software',
+    careerName: 'Ingeniería de Software (FET)',
     birthDate: '2001-11-05',
     admissionDate: '2019-07-15',
+    semester: 4,
     observations: 'Estudiante de tercer año',
     isActive: true,
     createdAt: '2021-01-22'
@@ -111,8 +113,21 @@ export const INITIAL_USERS: User[] = [
 ];
 
 import { INITIAL_FET_SUBJECTS } from './fet-software-engineering-subjects';
+import { INITIAL_FET_SUBJECTS_ELECTRICAL } from './fet-electrical-engineering-subjects';
+import { INITIAL_FET_SUBJECTS_ENVIRONMENTAL } from './fet-environmental-engineering-subjects';
+import { INITIAL_FET_SUBJECTS_FOOD } from './fet-food-engineering-subjects';
+import { INITIAL_FET_SUBJECTS_SST } from './fet-sst-subjects';
 
-export const INITIAL_SUBJECTS: SubjectCourse[] = INITIAL_FET_SUBJECTS;
+/** Catálogo completo de asignaturas oficiales del pénsum FET (las 5 carreras). */
+export const ALL_CURRICULUM_SUBJECTS: SubjectCourse[] = [
+  ...INITIAL_FET_SUBJECTS,
+  ...INITIAL_FET_SUBJECTS_ELECTRICAL,
+  ...INITIAL_FET_SUBJECTS_ENVIRONMENTAL,
+  ...INITIAL_FET_SUBJECTS_FOOD,
+  ...INITIAL_FET_SUBJECTS_SST
+];
+
+export const INITIAL_SUBJECTS: SubjectCourse[] = ALL_CURRICULUM_SUBJECTS;
 
 export const INITIAL_SCHEDULE_SLOTS: ScheduleSlot[] = [
   { id: 'sch-1', startTime: '07:30', finishTime: '08:30', label: '07:30 - 08:30', isAvailable: true },

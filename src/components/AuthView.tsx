@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ApiClient } from '../core/presentation/api-client';
-import { User } from '../core/types';
+import { db } from '../core/infrastructure/database/database';
+import { Career, User } from '../core/types';
 import {
   GraduationCap,
   LogIn,
@@ -15,6 +16,7 @@ import {
   CheckCircle2,
   ArrowRight,
   Briefcase,
+  Layers,
   Phone,
   UserCheck,
   X,
@@ -52,6 +54,17 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [regLoading, setRegLoading] = useState(false);
   const [regError, setRegError] = useState<string | null>(null);
   const [regSuccessMsg, setRegSuccessMsg] = useState<string | null>(null);
+
+  // Careers catalog for registration
+  const [careers, setCareers] = useState<Career[]>(() => [...db.careers]);
+  const [careerId, setCareerId] = useState<string>(db.careers[0]?.id || '');
+  const [semester, setSemester] = useState(1);
+
+  useEffect(() => {
+    ApiClient.getCareers().then((res) => {
+      if (res.data && res.data.length > 0) setCareers(res.data);
+    });
+  }, []);
 
   // Forgot password modal state
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -163,6 +176,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
       setRegError('Ingresa un correo institucional válido.');
       return;
     }
+    if (!careerId) {
+      setRegError('Selecciona la carrera a la que perteneces.');
+      return;
+    }
 
     setRegLoading(true);
 
@@ -176,14 +193,19 @@ export const AuthView: React.FC<AuthViewProps> = ({
         password: password || 'password123',
         birthDate: '2004-01-01',
         admissionDate: new Date().toISOString().split('T')[0],
-        careerId: 'car-1',
+        careerId,
+        semester: Number(semester),
         campusId: 'cmp-1'
       });
       setRegLoading(false);
 
       if (res.success && res.data) {
-        setRegSuccessMsg(`¡Estudiante ${res.data.fullName} registrado con éxito! Iniciando sesión...`);
-        setTimeout(() => onLoginSuccess(res.data!), 900);
+        setRegSuccessMsg(`¡Estudiante ${res.data.fullName} registrado con éxito! Ahora inicia sesión con tus credenciales.`);
+        setTimeout(() => {
+          setActiveTab('login');
+          setRegSuccessMsg(null);
+          setLoginError(null);
+        }, 900);
       } else {
         setRegError(res.error?.message || 'Error al registrar al estudiante.');
       }
@@ -194,13 +216,18 @@ export const AuthView: React.FC<AuthViewProps> = ({
         username: username.trim().toLowerCase(),
         email: email.trim().toLowerCase(),
         phone: phone.trim(),
-        password: password || 'password123'
+        password: password || 'password123',
+        careerId
       });
       setRegLoading(false);
 
       if (res.success && res.data) {
-        setRegSuccessMsg(`¡Docente ${res.data.fullName} registrado con éxito! Iniciando sesión...`);
-        setTimeout(() => onLoginSuccess(res.data!), 900);
+        setRegSuccessMsg(`¡Docente ${res.data.fullName} registrado con éxito! Ahora inicia sesión con tus credenciales.`);
+        setTimeout(() => {
+          setActiveTab('login');
+          setRegSuccessMsg(null);
+          setLoginError(null);
+        }, 900);
       } else {
         setRegError(res.error?.message || 'Error al registrar al docente.');
       }
@@ -214,11 +241,13 @@ export const AuthView: React.FC<AuthViewProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#2b2b2b] flex flex-col justify-center py-8 px-4 sm:px-6 relative overflow-hidden">
-      {/* Decorative background effects */}
-      <div className="absolute inset-0 bg-[radial-gradient(#11770e_1px,transparent_1px)] [background-size:24px_24px] opacity-15 pointer-events-none" />
-      <div className="absolute top-1/4 -left-20 w-80 h-80 bg-[#11770e]/25 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 -right-20 w-80 h-80 bg-[#7ce200]/15 rounded-full blur-3xl pointer-events-none" />
+    <div
+      className="min-h-screen flex flex-col justify-center py-8 px-4 sm:px-6 relative overflow-hidden bg-[#2b2b2b] bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: "url('/assets/fet-background.png')" }}
+    >
+      {/* Overlay para legibilidad sobre la foto del campus FET */}
+      <div className="absolute inset-0 bg-[#2b2b2b]/70 pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-b from-[#11770e]/30 via-transparent to-[#2b2b2b]/80 pointer-events-none" />
 
       {/* Brand Header */}
       <div className="relative z-10 sm:mx-auto sm:w-full sm:max-w-md text-center mb-6">
@@ -457,6 +486,73 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   <span>Docente</span>
                 </button>
               </div>
+
+              {/* Career selector */}
+              <div>
+                <label
+                  htmlFor="reg-career"
+                  className="block text-xs font-semibold text-slate-700 mb-1"
+                >
+                  Carrera
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Briefcase className="w-4 h-4" />
+                  </div>
+                  <select
+                    id="reg-career"
+                    value={careerId}
+                    onChange={(e) => {
+                      setCareerId(e.target.value);
+                      setSemester(1);
+                    }}
+                    required
+                    className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
+                  >
+                    <option value="" disabled>
+                      Selecciona tu carrera
+                    </option>
+                    {careers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Semester selector (students only) */}
+              {registerRole === 'student' && (
+                <div>
+                  <label
+                    htmlFor="reg-semester"
+                    className="block text-xs font-semibold text-slate-700 mb-1"
+                  >
+                    Semestre que cursas
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <Layers className="w-4 h-4" />
+                    </div>
+                    <select
+                      id="reg-semester"
+                      value={semester}
+                      onChange={(e) => setSemester(Number(e.target.value))}
+                      required
+                      className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
+                    >
+                      {Array.from(
+                        { length: careers.find((c) => c.id === careerId)?.numberOfSemesters || 10 },
+                        (_, i) => i + 1
+                      ).map((n) => (
+                        <option key={n} value={n}>
+                          Semestre {n}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
 
               {/* Messages */}
               {regSuccessMsg && (

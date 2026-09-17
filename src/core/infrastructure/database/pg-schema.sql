@@ -2,6 +2,14 @@
 -- ESQUEMA RELACIONAL POSTGRESQL PARA EL SISTEMA GT (GESTIÓN DE TUTORÍAS)
 -- ===================================================================
 
+CREATE TABLE IF NOT EXISTS careers (
+  id VARCHAR(100) PRIMARY KEY,
+  name VARCHAR(200) NOT NULL,
+  code_prefix VARCHAR(10) DEFAULT '',
+  number_of_semesters INT DEFAULT 10,
+  is_active BOOLEAN DEFAULT TRUE
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id VARCHAR(100) PRIMARY KEY,
   username VARCHAR(100) UNIQUE NOT NULL,
@@ -18,21 +26,29 @@ CREATE TABLE IF NOT EXISTS users (
   career_name VARCHAR(100) DEFAULT '',
   birth_date VARCHAR(50) DEFAULT '',
   admission_date VARCHAR(50) DEFAULT '',
+  semester INT DEFAULT 0,
   photo_url TEXT DEFAULT '',
   observations TEXT DEFAULT '',
   is_active BOOLEAN DEFAULT TRUE,
   created_at VARCHAR(50) DEFAULT ''
 );
 
+-- Soporte para bases de datos creadas antes del campo semester
+ALTER TABLE users ADD COLUMN IF NOT EXISTS semester INT DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS subjects (
   id VARCHAR(100) PRIMARY KEY,
   name VARCHAR(150) NOT NULL,
   code VARCHAR(50) DEFAULT '',
   credits INT DEFAULT 0,
+  semester INT DEFAULT 0,
   career_id VARCHAR(50) DEFAULT '',
   career_name VARCHAR(100) DEFAULT '',
   is_active BOOLEAN DEFAULT TRUE
 );
+
+-- Soporte para bases de datos creadas antes del campo semester
+ALTER TABLE subjects ADD COLUMN IF NOT EXISTS semester INT DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS schedule_slots (
   id VARCHAR(100) PRIMARY KEY,
@@ -140,5 +156,12 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
   expires_at BIGINT NOT NULL,
   used BOOLEAN DEFAULT FALSE,
   created_at VARCHAR(50) NOT NULL
+);
+
+-- Catálogo de asignaturas asignadas a cada docente (autoritativo)
+CREATE TABLE IF NOT EXISTS teacher_subjects (
+  teacher_id VARCHAR(100) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  subject_id VARCHAR(100) NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+  PRIMARY KEY (teacher_id, subject_id)
 );
 

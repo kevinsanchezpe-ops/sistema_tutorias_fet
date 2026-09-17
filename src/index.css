@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
 @theme {
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: Arial, Helvetica, sans-serif;
   --color-brand-green: #11770e;
   --color-brand-green-hover: #0d5c0b;
   --color-brand-green-light: #eaf8ea;
