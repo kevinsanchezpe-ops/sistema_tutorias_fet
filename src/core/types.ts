@@ -89,6 +89,7 @@ export interface SectionClassroom {
   id: string;
   name: string; // e.g. "Laboratorio 1", "Aula Magna", "Aula 25-Edificio B2"
   isAvailable: boolean;
+  capacity: number; // 0 = sin límite
 }
 
 export type Section = SectionClassroom;

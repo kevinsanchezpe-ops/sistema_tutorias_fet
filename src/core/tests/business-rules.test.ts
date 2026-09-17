@@ -134,7 +134,7 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
     let threw = false;
     try {
       RegisterStudentUseCase.execute({
-        fullName: 'Juan Corto',
+        fullName: 'Juan Cor',
         email: 'juan@gt.edu',
         phone: '123456',
         account: '12345678',
@@ -172,6 +172,131 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
     );
     if (!createdAvail) {
       throw new Error('El docente registrado debe tener su registro de disponibilidad creado');
+    }
+  });
+
+  // 9. Regla de disponibilidad del docente (condicional)
+  test('Disponibilidad Docente: Solo agenda dentro de la disponibilidad activa registrada', () => {
+    const rnd = Date.now();
+    const student = db.users.find((u) => u.role === UserRole.STUDENT)!;
+    const subjectOk = db.subjects[0].id;
+    const subjectOther = db.subjects.find((s) => s.id !== subjectOk)!.id;
+    const slotOk = db.scheduleSlots[0].id;
+
+    const teacher = RegisterTeacherUseCase.execute({
+      fullName: `Ing. Disponibilidad Prueba ${rnd}`,
+      email: `disp.${rnd}@gt.edu`,
+      phone: '+504 9999-0001',
+      account: `DIS-${rnd}`,
+      username: `docente_disp_${rnd}`,
+      subjectIds: [subjectOk],
+      scheduleSlotIds: [slotOk]
+    });
+
+    const created: string[] = [];
+    const dOk = new Date();
+    dOk.setDate(dOk.getDate() + 3);
+    const dNo = new Date();
+    dNo.setDate(dNo.getDate() + 4);
+
+    try {
+      const ok = CreateTutoringUseCase.execute(
+        {
+          subject: 'Prueba disponibilidad válida',
+          details: 'detalle de prueba de disponibilidad',
+          reservDate: dOk.toISOString().split('T')[0],
+          scheduleSlotId: slotOk,
+          subjectCourseId: subjectOk,
+          teacherId: teacher.id,
+          modality: TutoringModality.VIRTUAL
+        },
+        student
+      );
+      created.push(ok.id);
+
+      let threw = false;
+      try {
+        CreateTutoringUseCase.execute(
+          {
+            subject: 'Prueba fuera de disponibilidad',
+            details: 'detalle fuera de disponibilidad',
+            reservDate: dNo.toISOString().split('T')[0],
+            scheduleSlotId: slotOk,
+            subjectCourseId: subjectOther,
+            teacherId: teacher.id,
+            modality: TutoringModality.VIRTUAL
+          },
+          student
+        );
+      } catch (e: any) {
+        if (e.code === 'TEACHER_UNAVAILABLE') threw = true;
+      }
+      if (!threw) throw new Error('Debería rechazar la solicitud fuera de la disponibilidad del docente');
+    } finally {
+      created.forEach((id) => {
+        const i = db.tutorings.findIndex((t) => t.id === id);
+        if (i >= 0) db.tutorings.splice(i, 1);
+      });
+    }
+  });
+
+  // 10. Regla de cupo máximo del aula (capacidad de la sección)
+  test('Cupo de Aula: No permite superar la capacidad de la sección asignada', () => {
+    const rnd = Date.now();
+    const student1 = db.users.find((u) => u.role === UserRole.STUDENT)!;
+    const student2 = db.users.find((u) => u.role === UserRole.STUDENT && u.id !== student1.id);
+    if (!student2) return;
+
+    const section = db.sections[0];
+    const prevCapacity = section.capacity;
+    const subjectId = db.subjects[0].id;
+    const slotId = db.scheduleSlots[0].id;
+
+    const teacher = RegisterTeacherUseCase.execute({
+      fullName: `Ing. Cupo Prueba ${rnd}`,
+      email: `cupo.${rnd}@gt.edu`,
+      phone: '+504 9999-0002',
+      account: `CUP-${rnd}`,
+      username: `docente_cupo_${rnd}`,
+      subjectIds: [subjectId],
+      scheduleSlotIds: [slotId]
+    });
+
+    const created: string[] = [];
+    const d = new Date();
+    d.setDate(d.getDate() + 6);
+
+    try {
+      section.capacity = 1;
+      const tut = CreateTutoringUseCase.execute(
+        {
+          subject: 'Prueba cupo de aula',
+          details: 'detalle de prueba de cupo',
+          reservDate: d.toISOString().split('T')[0],
+          scheduleSlotId: slotId,
+          subjectCourseId: subjectId,
+          teacherId: teacher.id,
+          modality: TutoringModality.PRESENCIAL
+        },
+        student1
+      );
+      created.push(tut.id);
+
+      ApproveTutoringUseCase.execute({ tutoringId: tut.id, space: section.name }, teacher);
+
+      let threw = false;
+      try {
+        JoinTutoringUseCase.execute(tut.id, student2);
+      } catch (e: any) {
+        if (e.code === 'CAPACITY_FULL') threw = true;
+      }
+      if (!threw) throw new Error('Debería rechazar la inscripción por cupo completo');
+    } finally {
+      section.capacity = prevCapacity;
+      created.forEach((id) => {
+        const i = db.tutorings.findIndex((t) => t.id === id);
+        if (i >= 0) db.tutorings.splice(i, 1);
+      });
     }
   });
 

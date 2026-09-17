@@ -61,8 +61,12 @@ CREATE TABLE IF NOT EXISTS schedule_slots (
 CREATE TABLE IF NOT EXISTS sections (
   id VARCHAR(100) PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
+  capacity INT DEFAULT 0,
   is_available BOOLEAN DEFAULT TRUE
 );
+
+-- Soporte para bases de datos creadas antes del campo capacity
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS capacity INT DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS teacher_availability (
   id VARCHAR(100) PRIMARY KEY,

@@ -3,12 +3,14 @@
  * contra el camino REAL (PostgreSQL). Requiere la BD configurada en .env.
  */
 
+import { initPostgres } from '../infrastructure/database/pg-init';
 import { runPostgresBusinessRulesTests } from './postgres-business-rules.test';
 
 (async () => {
   console.log('Ejecutando pruebas de reglas de negocio sobre PostgreSQL...');
   const t0 = Date.now();
   try {
+    await initPostgres();
     const output = await runPostgresBusinessRulesTests();
     output.results.forEach((r) =>
       console.log(`${r.success ? '✅' : '❌'} ${r.name}${r.success ? '' : ` — ${r.message}`}`)

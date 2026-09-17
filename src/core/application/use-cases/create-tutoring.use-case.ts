@@ -55,6 +55,25 @@ export class CreateTutoringUseCase {
       db.tutorings
     );
 
+    // 4. Regla de disponibilidad del docente (condicional): si el docente tiene
+    // disponibilidad registrada, la solicitud debe ajustarse a una franja/asignatura activa.
+    const teacherHasAvailability = db.teacherAvailability.some((a) => a.teacherId === dto.teacherId);
+    if (teacherHasAvailability) {
+      const matchesAvailability = db.teacherAvailability.some(
+        (a) =>
+          a.teacherId === dto.teacherId &&
+          a.scheduleSlotId === dto.scheduleSlotId &&
+          a.subjectCourseId === dto.subjectCourseId &&
+          a.isAvailable
+      );
+      if (!matchesAvailability) {
+        throw new BusinessRuleException(
+          'El docente seleccionado no tiene disponibilidad activa para esa franja horaria y asignatura.',
+          'TEACHER_UNAVAILABLE'
+        );
+      }
+    }
+
     const newId = `tut-${Date.now()}`;
     const codeNumber = db.tutorings.length + 15;
 

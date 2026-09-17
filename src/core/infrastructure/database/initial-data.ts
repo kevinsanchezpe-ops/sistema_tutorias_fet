@@ -140,12 +140,12 @@ export const INITIAL_SCHEDULE_SLOTS: ScheduleSlot[] = [
 ];
 
 export const INITIAL_SECTIONS: SectionClassroom[] = [
-  { id: 'sec-1', name: 'Laboratorio 1 - Computación', isAvailable: true },
-  { id: 'sec-2', name: 'Laboratorio 2 - Redes', isAvailable: true },
-  { id: 'sec-3', name: 'Laboratorio 3 - Software', isAvailable: true },
-  { id: 'sec-4', name: 'Aula 25 - Edificio B2', isAvailable: true },
-  { id: 'sec-5', name: 'Aula 45 - Edificio F5', isAvailable: true },
-  { id: 'sec-6', name: 'Aula Magna', isAvailable: true }
+  { id: 'sec-1', name: 'Laboratorio 1 - Computación', isAvailable: true, capacity: 30 },
+  { id: 'sec-2', name: 'Laboratorio 2 - Redes', isAvailable: true, capacity: 30 },
+  { id: 'sec-3', name: 'Laboratorio 3 - Software', isAvailable: true, capacity: 30 },
+  { id: 'sec-4', name: 'Aula 25 - Edificio B2', isAvailable: true, capacity: 40 },
+  { id: 'sec-5', name: 'Aula 45 - Edificio F5', isAvailable: true, capacity: 40 },
+  { id: 'sec-6', name: 'Aula Magna', isAvailable: true, capacity: 120 }
 ];
 
 export const INITIAL_TEACHER_AVAILABILITY: TeacherAvailability[] = [

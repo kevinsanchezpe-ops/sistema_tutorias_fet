@@ -693,7 +693,7 @@ export class PgRepository {
   public async getSections(): Promise<SectionClassroom[]> {
     const pool = await getPgPool();
     const res = await pool.query(
-      `SELECT id, name, is_available as "isAvailable"
+      `SELECT id, name, is_available as "isAvailable", capacity
        FROM sections ORDER BY name ASC;`
     );
     return res.rows;
@@ -887,6 +887,24 @@ export class PgRepository {
       throw new Error('El docente seleccionado ya tiene una tutoría programada en esa fecha y horario.');
     }
 
+    // Verify teacher availability (Business Rule 4, conditional):
+    // si el docente tiene disponibilidad registrada, la solicitud debe ajustarse a ella.
+    const availCountRes = await pool.query(
+      `SELECT COUNT(*) as count FROM teacher_availability WHERE teacher_id = $1;`,
+      [dto.teacherId]
+    );
+    const teacherHasAvailability = parseInt(availCountRes.rows[0]?.count || '0', 10) > 0;
+    if (teacherHasAvailability) {
+      const availMatch = await pool.query(
+        `SELECT id FROM teacher_availability
+         WHERE teacher_id = $1 AND schedule_slot_id = $2 AND subject_course_id = $3 AND is_available = TRUE;`,
+        [dto.teacherId, dto.scheduleSlotId, dto.subjectCourseId]
+      );
+      if (availMatch.rows.length === 0) {
+        throw new Error('El docente seleccionado no tiene disponibilidad activa para esa franja horaria y asignatura.');
+      }
+    }
+
     // Get subject and slot labels
     const subjRes = await pool.query('SELECT name FROM subjects WHERE id = $1', [dto.subjectCourseId]);
     const slotRes = await pool.query('SELECT label FROM schedule_slots WHERE id = $1', [dto.scheduleSlotId]);
@@ -979,6 +997,19 @@ export class PgRepository {
       );
       if (conflictRes.rows.length > 0) {
         throw new Error(`Conflicto de Aula: El espacio "${space}" ya está reservado para esa franja horaria.`);
+      }
+
+      const sectionRes = await pool.query('SELECT capacity FROM sections WHERE name = $1;', [space]);
+      const capacity = parseInt(sectionRes.rows[0]?.capacity ?? '0', 10);
+      if (capacity > 0) {
+        const countRes = await pool.query(
+          'SELECT COUNT(*) as count FROM tutoring_assistants WHERE tutoring_id = $1;',
+          [tutoringId]
+        );
+        const current = parseInt(countRes.rows[0]?.count ?? '0', 10);
+        if (current > capacity) {
+          throw new Error(`El cupo de "${space}" es de ${capacity} participantes y esta tutoría ya cuenta con ${current}.`);
+        }
       }
     }
 
@@ -1138,6 +1169,22 @@ export class PgRepository {
     );
     if (existing.rows.length > 0) {
       throw new Error('Ya estás registrado en esta tutoría.');
+    }
+
+    // Business Rule 5: no superar el cupo (capacidad del aula) en tutorías presenciales.
+    if (tut.modality === TutoringModality.PRESENCIAL && tut.space) {
+      const sectionRes = await pool.query('SELECT capacity FROM sections WHERE name = $1;', [tut.space]);
+      const capacity = parseInt(sectionRes.rows[0]?.capacity ?? '0', 10);
+      if (capacity > 0) {
+        const countRes = await pool.query(
+          'SELECT COUNT(*) as count FROM tutoring_assistants WHERE tutoring_id = $1;',
+          [tutoringId]
+        );
+        const current = parseInt(countRes.rows[0]?.count ?? '0', 10);
+        if (current >= capacity) {
+          throw new Error(`El cupo de esta tutoría está completo (máximo ${capacity} participantes).`);
+        }
+      }
     }
 
     const asstId = `asst-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;

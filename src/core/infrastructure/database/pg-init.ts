@@ -41,6 +41,11 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
     await pool.query(schemaSql);
     console.log('[PostgreSQL] Esquema de tablas verificado y actualizado con éxito.');
 
+    // Asegurar cupos por defecto de las aulas conocidas sin sobrescribir valores ya configurados
+    for (const sec of INITIAL_SECTIONS) {
+      await pool.query(`UPDATE sections SET capacity = $2 WHERE id = $1 AND capacity = 0;`, [sec.id, sec.capacity]);
+    }
+
     // Seed / asegurar el catálogo de carreras (idempotente)
     for (const c of CAREERS) {
       await pool.query(
@@ -124,10 +129,10 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
       // Seed Sections
       for (const sec of INITIAL_SECTIONS) {
         await pool.query(
-          `INSERT INTO sections (id, name, is_available)
-           VALUES ($1, $2, $3)
-           ON CONFLICT (id) DO NOTHING;`,
-          [sec.id, sec.name, sec.isAvailable]
+          `INSERT INTO sections (id, name, is_available, capacity)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (id) DO UPDATE SET capacity = EXCLUDED.capacity WHERE sections.capacity = 0;`,
+          [sec.id, sec.name, sec.isAvailable, sec.capacity]
         );
       }
 
