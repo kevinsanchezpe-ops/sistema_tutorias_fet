@@ -1,4 +1,4 @@
-# Sistema de Gestión de Tutorías - Fundación Escuela Tecnológica (FET)
+# Sistema de Gestión de Tutorías - Fundación Escuela Tecnológica (FET) 2026
 
 [![Estado de Pruebas](https://img.shields.io/badge/Pruebas-21%2F21%20PASADAS-brightgreen)](./docs/analisis_sistema_lanzamiento.md)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)](https://www.typescriptlang.org/)
