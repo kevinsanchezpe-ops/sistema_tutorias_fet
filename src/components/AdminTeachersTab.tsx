@@ -2,19 +2,16 @@ import React, { useState } from 'react';
 import { ApiClient } from '../core/presentation/api-client';
 import { Career, ScheduleSlot, SubjectCourse, TeacherAvailability, User, UserRole } from '../core/types';
 import {
-  Briefcase,
   Plus,
   Search,
   CheckCircle2,
   AlertCircle,
-  Sparkles,
   ToggleLeft,
   ToggleRight,
   Mail,
   Phone,
   BookOpen,
   Clock,
-  User as UserIcon,
   Trash2,
   Pencil,
   GraduationCap,
@@ -43,6 +40,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [careerFilter, setCareerFilter] = useState<string>('all');
 
   // Form State
   const [fullName, setFullName] = useState('');
@@ -57,6 +55,11 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [createdCredentials, setCreatedCredentials] = useState<{
+    fullName: string;
+    username: string;
+    temporaryPassword: string;
+  } | null>(null);
 
   // Deletion state
   const [deletingTeacher, setDeletingTeacher] = useState<User | null>(null);
@@ -140,22 +143,22 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
       fullName: 'Ing. Carlos Alberto Mendoza',
       account: 'DOC-12401',
       username: 'carlos_mendoza',
-      email: 'carlos.mendoza@gt.edu',
-      phone: '+504 9912-3456'
+      email: 'carlos.mendoza@fet.edu.co',
+      phone: '+57 310 991 2345'
     },
     {
       fullName: 'Dra. Patricia Elena Varela',
       account: 'DOC-12402',
       username: 'patricia_varela',
-      email: 'patricia.varela@gt.edu',
-      phone: '+504 9823-4567'
+      email: 'patricia.varela@fet.edu.co',
+      phone: '+57 312 982 3456'
     },
     {
       fullName: 'MSc. Jorge Luis Bustillo',
       account: 'DOC-12403',
       username: 'jorge_bustillo',
-      email: 'jorge.bustillo@gt.edu',
-      phone: '+504 9734-5678'
+      email: 'jorge.bustillo@fet.edu.co',
+      phone: '+57 315 973 4567'
     }
   ];
 
@@ -165,14 +168,11 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
     setFullName(sample.fullName);
     setAccount(`DOC-${uniqueSuffix}`);
     setUsername(`${sample.username}_${uniqueSuffix}`);
-    setEmail(`${sample.username}${uniqueSuffix}@gt.edu`);
+    setEmail(`${sample.username}${uniqueSuffix}@fet.edu.co`);
     setPhone(sample.phone);
 
-    // Default select active subjects (first 2) of the selected career
     const activeSubjects = careerSubjects.filter((s) => s.isActive);
     setSelectedSubjects(activeSubjects.slice(0, 2).map((s) => s.id));
-
-    // Default select slots (first 3)
     setSelectedSlots(schedules.slice(0, 3).map((s) => s.id));
     setErrorMsg(null);
   };
@@ -204,12 +204,20 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
 
     if (res.success && res.data) {
       setSuccessMsg(`El docente "${res.data.fullName}" (${res.data.account}) ha sido registrado con éxito.`);
+      if (res.data.temporaryPassword) {
+        setCreatedCredentials({
+          fullName: res.data.fullName,
+          username: res.data.username,
+          temporaryPassword: res.data.temporaryPassword
+        });
+      }
       setFullName('');
       setAccount('');
       setUsername('');
       setEmail('');
       setSelectedSubjects([]);
       setSelectedSlots([]);
+      setShowCreateForm(false);
       onRefresh();
       setTimeout(() => setSuccessMsg(null), 4000);
     } else {
@@ -242,7 +250,6 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
     }
   };
 
-  // Filter teachers
   const filteredTeachers = teacherUsers.filter((teacher) => {
     const matchesQuery =
       teacher.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -255,7 +262,10 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
       (statusFilter === 'active' && teacher.isActive) ||
       (statusFilter === 'inactive' && !teacher.isActive);
 
-    return matchesQuery && matchesStatus;
+    const matchesCareer =
+      careerFilter === 'all' || teacher.careerId === careerFilter;
+
+    return matchesQuery && matchesStatus && matchesCareer;
   });
 
   const activeTeachersCount = teacherUsers.filter((t) => t.isActive).length;
@@ -263,19 +273,14 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Header and Action */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+      {/* Header and Main Action */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
         <div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[#eaf8ea] text-[#11770e] flex items-center justify-center border border-[#bce6bc]">
-              <Briefcase className="w-4 h-4" />
-            </div>
-            <h2 className="text-base font-bold text-slate-900">
-              Gestión y Alta de Docentes Tutores
-            </h2>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Como Administrador, registre a los docentes tutores, asigne sus asignaturas de especialidad y configure sus horarios de atención.
+          <h2 className="text-lg font-black text-slate-900 tracking-tight">
+            Gestión y Alta de Docentes Tutores
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Administración del cuerpo docente, asignaturas asignadas y franjas horarias de atención.
           </p>
         </div>
 
@@ -290,56 +295,82 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
               setSelectedSlots(schedules.slice(0, 3).map((s) => s.id));
             }
           }}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#11770e] hover:bg-[#0d5c0b] text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#11770e] hover:bg-[#0d5c0b] text-white text-xs font-semibold rounded-xl shadow-xs transition-all cursor-pointer w-fit"
         >
           <Plus className="w-4 h-4" />
           <span>{showCreateForm ? 'Cerrar Formulario' : 'Registrar Nuevo Docente'}</span>
         </button>
       </div>
 
+      {/* Alert Messages */}
+      {successMsg && (
+        <div className="p-3.5 bg-[#eaf8ea] border border-[#bce6bc] rounded-xl flex items-center gap-2.5 text-xs text-[#0d5c0b] animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-[#11770e] shrink-0" />
+          <span className="font-semibold">{successMsg}</span>
+        </div>
+      )}
+
+      {createdCredentials && (
+        <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 animate-in fade-in">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-bold mb-1">Credenciales de Acceso Generadas</p>
+              <p className="mb-2 text-slate-600">
+                Comparta estos datos con <strong>{createdCredentials.fullName}</strong>. El docente podrá iniciar sesión y personalizar su contraseña.
+              </p>
+              <div className="font-mono bg-white border border-amber-200 rounded-lg px-3 py-2 inline-block shadow-2xs">
+                <span className="text-slate-500">Usuario:</span> <strong>{createdCredentials.username}</strong>
+                <span className="mx-2 text-slate-300">|</span>
+                <span className="text-slate-500">Contraseña temporal:</span>{' '}
+                <span className="font-bold text-[#11770e]">{createdCredentials.temporaryPassword}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCreatedCredentials(null)}
+              className="text-amber-800 hover:text-amber-950 font-bold shrink-0 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Creation Form */}
       {showCreateForm && (
-        <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-sm animate-in fade-in duration-200">
-          <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
+        <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-xs animate-in fade-in duration-200 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-stone-100">
             <div>
               <h3 className="text-sm font-bold text-slate-900">
-                Registrar Nuevo Docente en la Plataforma
+                Registrar Nuevo Docente Tutor
               </h3>
               <p className="text-xs text-slate-500">
-                El docente tendrá acceso al sistema con su usuario y podrá gestionar sus sesiones de tutoría.
+                Complete los datos personales, carrera de adscripción y asignaturas asignadas.
               </p>
             </div>
             <button
               type="button"
               id="btn-quick-sample-teacher"
               onClick={handleFillSample}
-              className="text-xs font-semibold text-[#11770e] hover:text-[#0d5c0b] flex items-center gap-1.5 hover:underline cursor-pointer"
+              className="text-xs font-semibold text-[#11770e] hover:text-[#0d5c0b] hover:underline cursor-pointer"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Rellenar ejemplo rápido</span>
+              Cargar datos de ejemplo
             </button>
           </div>
 
-          {successMsg && (
-            <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5 text-xs text-emerald-800 animate-in fade-in">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>{successMsg}</span>
-            </div>
-          )}
-
           {errorMsg && (
-            <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2.5 text-xs text-rose-800 animate-in fade-in">
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2.5 text-xs text-rose-800 animate-in fade-in">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
               <span>{errorMsg}</span>
             </div>
           )}
 
           <form onSubmit={handleRegisterTeacher} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="sm:col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+              <div className="sm:col-span-8">
                 <label
                   htmlFor="input-teacher-fullname"
-                  className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1"
+                  className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1"
                 >
                   Nombre Completo con Título *
                 </label>
@@ -348,29 +379,28 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Ej. Ing. Carlos Alberto Mendoza"
+                  placeholder="Nombre completo con título"
                   required
-                  minLength={8}
-                  className="w-full text-sm rounded-xl border border-slate-300 px-3.5 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  minLength={5}
+                  className="w-full text-xs rounded-xl border border-stone-300 px-3.5 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e]"
                 />
               </div>
 
-              <div>
+              <div className="sm:col-span-4">
                 <label
                   htmlFor="input-teacher-account"
-                  className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1"
+                  className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1"
                 >
-                  Código / Carnet Docente *
+                  Código / Carnet *
                 </label>
                 <input
                   id="input-teacher-account"
                   type="text"
                   value={account}
-                  onChange={(e) => setAccount(e.target.value)}
-                  placeholder="Ej. DOC-12405"
+                  onChange={(e) => setAccount(e.target.value.toUpperCase())}
+                  placeholder="Código o carnet"
                   required
-                  minLength={4}
-                  className="w-full text-sm rounded-xl border border-slate-300 px-3.5 py-2 text-slate-900 uppercase font-mono placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full text-xs rounded-xl border border-stone-300 px-3.5 py-2 text-slate-900 uppercase font-mono font-bold focus:ring-2 focus:ring-[#11770e]"
                 />
               </div>
             </div>
@@ -379,7 +409,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
               <div>
                 <label
                   htmlFor="input-teacher-username"
-                  className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1"
+                  className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1"
                 >
                   Usuario de Acceso *
                 </label>
@@ -388,17 +418,16 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value.toLowerCase().trim())}
-                  placeholder="Ej. carlos_mendoza"
+                  placeholder="Usuario de acceso"
                   required
-                  minLength={3}
-                  className="w-full text-sm rounded-xl border border-slate-300 px-3.5 py-2 text-slate-900 lowercase font-mono placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full text-xs rounded-xl border border-stone-300 px-3.5 py-2 text-slate-900 lowercase font-mono focus:ring-2 focus:ring-[#11770e]"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="input-teacher-email"
-                  className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1"
+                  className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1"
                 >
                   Correo Institucional *
                 </label>
@@ -407,16 +436,16 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="carlos.mendoza@gt.edu"
+                  placeholder="Correo institucional"
                   required
-                  className="w-full text-sm rounded-xl border border-slate-300 px-3.5 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full text-xs rounded-xl border border-stone-300 px-3.5 py-2 text-slate-900 focus:ring-2 focus:ring-[#11770e]"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="input-teacher-phone"
-                  className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1"
+                  className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1"
                 >
                   Teléfono Móvil
                 </label>
@@ -425,8 +454,8 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+504 9876-5432"
-                  className="w-full text-sm rounded-xl border border-slate-300 px-3.5 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder="Teléfono móvil"
+                  className="w-full text-xs rounded-xl border border-stone-300 px-3.5 py-2 text-slate-900 focus:ring-2 focus:ring-[#11770e]"
                 />
               </div>
             </div>
@@ -435,9 +464,9 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
               <div>
                 <label
                   htmlFor="input-teacher-career"
-                  className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1"
+                  className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1"
                 >
-                  Carrera Asignada *
+                  Carrera Principal *
                 </label>
                 <select
                   id="input-teacher-career"
@@ -447,84 +476,80 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                     setSelectedSubjects([]);
                   }}
                   required
-                  className="w-full text-sm rounded-xl border border-slate-300 px-3.5 py-2 text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full text-xs rounded-xl border border-stone-300 px-3 py-2 text-slate-900 focus:ring-2 focus:ring-[#11770e] bg-white font-medium"
                 >
-                  <option value="" disabled>Seleccionar carrera...</option>
                   {careers.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
                   ))}
                 </select>
               </div>
+
               <div>
-                <label
-                  htmlFor="input-teacher-career-summary"
-                  className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1"
-                >
-                  Asignaturas de la Carrera
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Catálogo de Carrera
                 </label>
-                <div className="flex items-center gap-2 h-[38px] px-3.5 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-600">
-                  <BookOpen className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span>{careerSubjects.length} asignaturas en el catálogo</span>
+                <div className="flex items-center gap-2 h-[38px] px-3.5 rounded-xl border border-stone-200 bg-slate-50 text-xs text-slate-600">
+                  <BookOpen className="w-3.5 h-3.5 text-[#11770e] shrink-0" />
+                  <span>{careerSubjects.length} asignaturas registradas</span>
                 </div>
               </div>
             </div>
 
             {/* Selection of Subjects */}
-            <div className="space-y-1.5 pt-2">
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>Asignaturas Asignadas para Impartir * ({selectedSubjects.length} seleccionadas)</span>
-                <span className="text-[11px] text-slate-400 font-normal">Mínimo 1 obligatoria</span>
+            <div className="space-y-1.5 pt-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                <span>Asignaturas Asignadas * ({selectedSubjects.length} seleccionadas)</span>
+                <span className="text-[11px] text-slate-400 font-normal">Mínimo 1 requerida</span>
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-stone-200">
                 {careerSubjects.length === 0 ? (
                   <div className="col-span-1 sm:col-span-2 p-4 text-center text-xs text-slate-400">
                     No hay asignaturas registradas para esta carrera todavía.
                   </div>
-                ) : careerSubjects.map((sub) => {
-                  const isChecked = selectedSubjects.includes(sub.id);
-                  return (
-                    <label
-                      key={sub.id}
-                      className={`flex items-center gap-2 p-2 rounded-lg text-xs cursor-pointer transition-colors border ${
-                        isChecked
-                          ? 'bg-indigo-50 border-indigo-200 text-indigo-900 font-semibold'
-                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedSubjects([...selectedSubjects, sub.id]);
-                          } else {
-                            setSelectedSubjects(selectedSubjects.filter((id) => id !== sub.id));
-                          }
-                        }}
-                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="font-mono text-[10px] text-indigo-600 bg-indigo-100/60 px-1.5 py-0.5 rounded">
-                        {sub.code || 'S/C'}
-                      </span>
-                      <span className="truncate">{sub.name}</span>
-                      {sub.semester ? (
-                        <span className="font-mono text-[10px] text-emerald-700 bg-emerald-100/70 px-1.5 py-0.5 rounded shrink-0">
-                          S{sub.semester}
+                ) : (
+                  careerSubjects.map((sub) => {
+                    const isChecked = selectedSubjects.includes(sub.id);
+                    return (
+                      <label
+                        key={sub.id}
+                        className={`flex items-center gap-2 p-2 rounded-lg text-xs cursor-pointer transition-colors border ${
+                          isChecked
+                            ? 'bg-[#eaf8ea] border-[#bce6bc] text-[#0d5c0b] font-bold'
+                            : 'bg-white border-stone-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedSubjects([...selectedSubjects, sub.id]);
+                            } else {
+                              setSelectedSubjects(selectedSubjects.filter((id) => id !== sub.id));
+                            }
+                          }}
+                          className="rounded border-stone-300 text-[#11770e] focus:ring-[#11770e]"
+                        />
+                        <span className="font-mono text-[10px] text-slate-800 bg-stone-100 px-1.5 py-0.5 rounded font-bold">
+                          {sub.code || 'S/C'}
                         </span>
-                      ) : null}
-                    </label>
-                  );
-                })}
+                        <span className="truncate">{sub.name}</span>
+                      </label>
+                    );
+                  })
+                )}
               </div>
             </div>
 
             {/* Selection of Schedule Slots */}
             <div className="space-y-1.5 pt-1">
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
                 <span>Franjas Horarias Disponibles ({selectedSlots.length} seleccionadas)</span>
                 <span className="text-[11px] text-slate-400 font-normal">Disponibilidad semanal del docente</span>
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-36 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-36 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-stone-200">
                 {schedules.map((slot) => {
                   const isChecked = selectedSlots.includes(slot.id);
                   return (
@@ -532,8 +557,8 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                       key={slot.id}
                       className={`flex items-center gap-2 p-2 rounded-lg text-xs cursor-pointer transition-colors border ${
                         isChecked
-                          ? 'bg-emerald-50 border-emerald-200 text-emerald-900 font-semibold'
-                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                          ? 'bg-[#eaf8ea] border-[#bce6bc] text-[#0d5c0b] font-bold'
+                          : 'bg-white border-stone-200 text-slate-700 hover:bg-slate-100'
                       }`}
                     >
                       <input
@@ -546,9 +571,9 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                             setSelectedSlots(selectedSlots.filter((id) => id !== slot.id));
                           }
                         }}
-                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                        className="rounded border-stone-300 text-[#11770e] focus:ring-[#11770e]"
                       />
-                      <Clock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <Clock className="w-3.5 h-3.5 text-[#11770e] shrink-0" />
                       <span className="truncate text-[11px]">{slot.label}</span>
                     </label>
                   );
@@ -556,11 +581,11 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-2">
+            <div className="flex justify-end gap-2.5 pt-2">
               <button
                 type="button"
                 onClick={() => setShowCreateForm(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
@@ -568,18 +593,15 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                 id="btn-submit-register-teacher-admin"
                 type="submit"
                 disabled={isSubmitting}
-                className="flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+                className="flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-[#11770e] hover:bg-[#0d5c0b] rounded-xl shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
               >
                 {isSubmitting ? (
                   <>
                     <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Registrando Docente...</span>
+                    <span>Registrando...</span>
                   </>
                 ) : (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Registrar y Activar Docente</span>
-                  </>
+                  <span>Registrar y Activar Docente</span>
                 )}
               </button>
             </div>
@@ -587,39 +609,42 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+      {/* KPI Cards Strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+        <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
             Total Docentes Tutores
           </span>
-          <div className="text-2xl font-bold text-slate-900 mt-1">
+          <div className="text-2xl font-black text-slate-900 mt-1">
             {teacherUsers.length}
           </div>
+          <div className="text-[11px] text-slate-500 mt-0.5">Cuerpo docente institucional</div>
         </div>
 
-        <div className="bg-emerald-50/60 p-4 rounded-xl border border-emerald-200 shadow-2xs">
-          <span className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wider">
+        <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
             Docentes Activos
           </span>
-          <div className="text-2xl font-bold text-emerald-700 mt-1">
+          <div className="text-2xl font-black text-[#11770e] mt-1">
             {activeTeachersCount}
           </div>
+          <div className="text-[11px] text-slate-500 mt-0.5">Habilitados para impartir tutorías</div>
         </div>
 
-        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+        <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
             Inactivos / Pausados
           </span>
-          <div className="text-2xl font-bold text-slate-600 mt-1">
+          <div className="text-2xl font-black text-slate-600 mt-1">
             {inactiveTeachersCount}
           </div>
+          <div className="text-[11px] text-slate-500 mt-0.5">Sin asignación temporal</div>
         </div>
       </div>
 
       {/* Search & Filter Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
-        <div className="relative w-full sm:w-80">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-stone-200 shadow-xs">
+        <div className="relative w-full sm:w-72">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
             <Search className="w-4 h-4" />
           </div>
@@ -628,54 +653,68 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por nombre, código, usuario o correo..."
-            className="w-full text-xs rounded-lg border border-slate-200 pl-9 pr-3 py-2 text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+            placeholder="Buscar por nombre, código o usuario..."
+            className="w-full text-xs rounded-xl border border-stone-200 pl-9 pr-3 py-2 text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-[#11770e]"
           />
         </div>
 
-        <div className="flex items-center gap-1.5 w-full sm:w-auto">
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-              statusFilter === 'all'
-                ? 'bg-slate-900 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <select
+            value={careerFilter}
+            onChange={(e) => setCareerFilter(e.target.value)}
+            className="text-xs rounded-xl border border-stone-200 bg-white px-3 py-2 text-slate-700 font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#11770e]"
           >
-            Todos ({teacherUsers.length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('active')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-              statusFilter === 'active'
-                ? 'bg-emerald-600 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            Activos ({activeTeachersCount})
-          </button>
-          <button
-            onClick={() => setStatusFilter('inactive')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-              statusFilter === 'inactive'
-                ? 'bg-slate-600 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            Inactivos ({inactiveTeachersCount})
-          </button>
+            <option value="all">Todas las carreras</option>
+            {careers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+
+          <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-xl text-xs font-semibold">
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                statusFilter === 'all'
+                  ? 'bg-white text-[#11770e] font-bold shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Todos ({teacherUsers.length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('active')}
+              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                statusFilter === 'active'
+                  ? 'bg-white text-[#11770e] font-bold shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Activos ({activeTeachersCount})
+            </button>
+            <button
+              onClick={() => setStatusFilter('inactive')}
+              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                statusFilter === 'inactive'
+                  ? 'bg-white text-slate-900 font-bold shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Inactivos ({inactiveTeachersCount})
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Teachers List / Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {filteredTeachers.length === 0 ? (
-          <div className="col-span-2 bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-400">
+          <div className="col-span-2 bg-white p-12 rounded-2xl border border-stone-200 text-center text-slate-400 text-xs">
             No se encontraron docentes con los criterios de búsqueda seleccionados.
           </div>
         ) : (
           filteredTeachers.map((teacher) => {
-            // Find teacher's assigned subjects from catalog + availabilities
             const teacherAvails = availabilities.filter((a) => a.teacherId === teacher.id);
             const catalogSubjects = teacherCatalogMap[teacher.id] || [];
             const distinctSubjectNames = Array.from(
@@ -688,12 +727,12 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
             return (
               <div
                 key={teacher.id}
-                className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow flex flex-col justify-between gap-4"
+                className="bg-white p-5 rounded-2xl border border-stone-200 shadow-2xs hover:shadow-xs transition-shadow flex flex-col justify-between gap-4"
               >
                 <div>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-sm shadow-2xs">
+                      <div className="w-10 h-10 rounded-xl bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc] font-bold flex items-center justify-center text-sm shadow-2xs shrink-0">
                         {teacher.fullName.charAt(0)}
                       </div>
                       <div>
@@ -701,7 +740,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                           {teacher.fullName}
                         </h4>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <span className="font-mono text-xs text-indigo-700 font-bold bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded">
+                          <span className="font-mono text-[11px] text-slate-800 font-bold bg-stone-100 border border-stone-200 px-1.5 py-0.2 rounded">
                             {teacher.account}
                           </span>
                           <span className="text-[11px] text-slate-500 font-mono">
@@ -720,8 +759,8 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
                         teacher.isActive
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : 'bg-slate-100 text-slate-500 border border-slate-200'
+                          ? 'bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc]'
+                          : 'bg-stone-100 text-stone-500 border border-stone-200'
                       }`}
                     >
                       {teacher.isActive ? 'Activo' : 'Inactivo'}
@@ -743,9 +782,9 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                   </div>
 
                   {/* Assigned subjects */}
-                  <div className="mt-3 pt-3 border-t border-slate-100">
-                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                      <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                  <div className="mt-3 pt-3 border-t border-stone-100">
+                    <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5 text-[#11770e]" />
                       <span>Asignaturas Asignadas ({distinctSubjectNames.length})</span>
                     </div>
                     {distinctSubjectNames.length === 0 ? (
@@ -757,7 +796,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                         {distinctSubjectNames.map((subName, i) => (
                           <span
                             key={i}
-                            className="bg-slate-100 text-slate-700 text-[11px] font-medium px-2 py-0.5 rounded-md border border-slate-200/80"
+                            className="bg-stone-100 text-slate-700 text-[11px] font-medium px-2 py-0.5 rounded-md border border-stone-200/80"
                           >
                             {subName}
                           </span>
@@ -768,7 +807,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                 </div>
 
                 {/* Card footer action */}
-                <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
+                <div className="flex items-center justify-between pt-3 border-t border-stone-100 text-xs">
                   <span className="text-slate-400 text-[11px]">
                     {teacherAvails.length} franjas de disponibilidad
                   </span>
@@ -777,7 +816,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                     <button
                       id={`btn-edit-teacher-${teacher.id}`}
                       onClick={() => openEditTeacher(teacher)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border border-[#bce6bc] bg-[#eaf8ea] text-[#11770e] hover:bg-[#d9efd9] transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border border-[#bce6bc] bg-[#eaf8ea] text-[#11770e] hover:bg-[#bce6bc]/40 transition-colors cursor-pointer"
                       title="Editar carrera y materias asignadas del docente"
                     >
                       <Pencil className="w-3.5 h-3.5" />
@@ -790,7 +829,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
                         teacher.isActive
                           ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
-                          : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                          : 'bg-[#eaf8ea] text-[#11770e] border-[#bce6bc] hover:bg-[#bce6bc]/40'
                       }`}
                     >
                       {teacher.isActive ? (
@@ -812,7 +851,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                         setDeletingTeacher(teacher);
                         setDeleteError(null);
                       }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-200 text-slate-600 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-stone-200 text-slate-600 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-colors cursor-pointer"
                       title="Eliminar docente definitivamente"
                     >
                       <Trash2 className="w-3.5 h-3.5 text-rose-500" />
@@ -834,11 +873,11 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
         >
           <div
             id="modal-delete-teacher-card"
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden"
+            className="bg-white rounded-2xl shadow-2xl border border-stone-200 w-full max-w-md overflow-hidden"
           >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-rose-50/50">
-              <div className="flex items-center gap-2 text-rose-700 font-bold text-sm">
-                <Trash2 className="w-4 h-4" />
+            <div className="flex items-center justify-between px-5 py-4 border-b border-rose-100 bg-rose-50/50">
+              <div className="flex items-center gap-2 text-rose-800 font-bold text-sm">
+                <Trash2 className="w-4 h-4 text-rose-600" />
                 <span>Confirmar Eliminación de Docente</span>
               </div>
               <button
@@ -852,13 +891,13 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
 
             <div className="p-5 space-y-3">
               <p className="text-xs text-slate-600 leading-relaxed">
-                ¿Estás seguro de que deseas eliminar permanentemente al siguiente docente tutor del sistema institucional?
+                ¿Está seguro de que desea eliminar permanentemente al siguiente docente tutor del sistema institucional?
               </p>
 
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs font-sans">
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs font-sans">
                 <div className="font-bold text-slate-900 text-sm">{deletingTeacher.fullName}</div>
                 <div className="flex items-center gap-3 text-slate-500 text-[11px]">
-                  <span>Código: <strong className="font-mono text-indigo-700">{deletingTeacher.account}</strong></span>
+                  <span>Código: <strong className="font-mono text-slate-800">{deletingTeacher.account}</strong></span>
                   <span>•</span>
                   <span>Usuario: <strong>@{deletingTeacher.username}</strong></span>
                 </div>
@@ -872,7 +911,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                 </div>
               )}
 
-              <p className="text-[11px] text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+              <p className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
                 Esta acción removerá permanentemente la cuenta del docente y todas sus disponibilidades horarias configuradas.
               </p>
             </div>
@@ -882,7 +921,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                 type="button"
                 onClick={() => setDeletingTeacher(null)}
                 disabled={deleteLoading}
-                className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 bg-white border border-slate-300 rounded-lg cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 bg-white border border-stone-300 rounded-lg cursor-pointer"
               >
                 Cancelar
               </button>
@@ -918,12 +957,12 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
         >
           <div
             id="modal-edit-teacher-card"
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden"
+            className="bg-white rounded-2xl shadow-2xl border border-stone-200 w-full max-w-2xl overflow-hidden"
           >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-[#eaf8ea]/60">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 bg-[#eaf8ea]/60">
               <div className="flex items-center gap-2 text-[#11770e] font-bold text-sm">
                 <Pencil className="w-4 h-4" />
-                <span>Editar Docente</span>
+                <span>Editar Docente Tutor</span>
               </div>
               <button
                 id="btn-close-edit-teacher-modal"
@@ -935,10 +974,10 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
             </div>
 
             <form onSubmit={handleSaveEdit} className="p-5 space-y-4">
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs">
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs">
                 <div className="font-bold text-slate-900 text-sm">{editingTeacher.fullName}</div>
                 <div className="flex items-center gap-3 text-slate-500 text-[11px]">
-                  <span>Código: <strong className="font-mono text-indigo-700">{editingTeacher.account}</strong></span>
+                  <span>Código: <strong className="font-mono text-slate-800">{editingTeacher.account}</strong></span>
                   <span>•</span>
                   <span>Usuario: <strong>@{editingTeacher.username}</strong></span>
                   <span>•</span>
@@ -949,7 +988,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
               <div>
                 <label
                   htmlFor="edit-teacher-career"
-                  className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1"
+                  className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1"
                 >
                   Carrera Asignada *
                 </label>
@@ -961,60 +1000,58 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                     setEditSubjects([]);
                   }}
                   required
-                  className="w-full text-sm rounded-xl border border-slate-300 px-3.5 py-2 text-slate-900 focus:ring-2 focus:ring-[#11770e]"
+                  className="w-full text-xs rounded-xl border border-stone-300 px-3.5 py-2 text-slate-900 focus:ring-2 focus:ring-[#11770e] bg-white font-medium"
                 >
-                  <option value="" disabled>Seleccionar carrera...</option>
                   {careers.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                  <span>Asignaturas Asignadas para Impartir * ({editSubjects.length} seleccionadas)</span>
-                  <span className="text-[11px] text-slate-400 font-normal">Mínimo 1 obligatoria</span>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                  <span>Asignaturas Asignadas * ({editSubjects.length} seleccionadas)</span>
+                  <span className="text-[11px] text-slate-400 font-normal">Mínimo 1 requerida</span>
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-stone-200">
                   {editCareerSubjects.length === 0 ? (
                     <div className="col-span-1 sm:col-span-2 p-4 text-center text-xs text-slate-400">
                       No hay asignaturas registradas para esta carrera todavía.
                     </div>
-                  ) : editCareerSubjects.map((sub) => {
-                    const isChecked = editSubjects.includes(sub.id);
-                    return (
-                      <label
-                        key={sub.id}
-                        className={`flex items-center gap-2 p-2 rounded-lg text-xs cursor-pointer transition-colors border ${
-                          isChecked
-                            ? 'bg-indigo-50 border-indigo-200 text-indigo-900 font-semibold'
-                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setEditSubjects([...editSubjects, sub.id]);
-                            } else {
-                              setEditSubjects(editSubjects.filter((id) => id !== sub.id));
-                            }
-                          }}
-                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                        />
-                        <span className="font-mono text-[10px] text-indigo-600 bg-indigo-100/60 px-1.5 py-0.5 rounded">
-                          {sub.code || 'S/C'}
-                        </span>
-                        <span className="truncate">{sub.name}</span>
-                        {sub.semester ? (
-                          <span className="font-mono text-[10px] text-emerald-700 bg-emerald-100/70 px-1.5 py-0.5 rounded shrink-0">
-                            S{sub.semester}
+                  ) : (
+                    editCareerSubjects.map((sub) => {
+                      const isChecked = editSubjects.includes(sub.id);
+                      return (
+                        <label
+                          key={sub.id}
+                          className={`flex items-center gap-2 p-2 rounded-lg text-xs cursor-pointer transition-colors border ${
+                            isChecked
+                              ? 'bg-[#eaf8ea] border-[#bce6bc] text-[#0d5c0b] font-bold'
+                              : 'bg-white border-stone-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setEditSubjects([...editSubjects, sub.id]);
+                              } else {
+                                setEditSubjects(editSubjects.filter((id) => id !== sub.id));
+                              }
+                            }}
+                            className="rounded border-stone-300 text-[#11770e] focus:ring-[#11770e]"
+                          />
+                          <span className="font-mono text-[10px] text-slate-800 bg-stone-100 px-1.5 py-0.5 rounded font-bold">
+                            {sub.code || 'S/C'}
                           </span>
-                        ) : null}
-                      </label>
-                    );
-                  })}
+                          <span className="truncate">{sub.name}</span>
+                        </label>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
@@ -1025,12 +1062,12 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-100">
                 <button
                   type="button"
                   onClick={() => setEditingTeacher(null)}
                   disabled={editLoading}
-                  className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 bg-white border border-slate-300 rounded-lg cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 bg-white border border-stone-300 rounded-lg cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -1046,10 +1083,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                       <span>Guardando...</span>
                     </>
                   ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Guardar Cambios</span>
-                    </>
+                    <span>Guardar Cambios</span>
                   )}
                 </button>
               </div>

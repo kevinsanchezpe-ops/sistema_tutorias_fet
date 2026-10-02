@@ -62,6 +62,7 @@ export interface User {
   photoUrl?: string;
   observations?: string;
   isActive: boolean;
+  mustChangePassword?: boolean;
   createdAt: string;
   passwordHash?: string;
 }

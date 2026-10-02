@@ -128,7 +128,7 @@ export const EvaluationModal: React.FC<EvaluationModalProps> = ({
               id="input-evaluation-comment"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Explique cómo fue la atención del docente, si logró despejar sus dudas sobre la materia..."
+              placeholder="Comentario sobre la sesión"
               rows={3}
               required
               minLength={5}

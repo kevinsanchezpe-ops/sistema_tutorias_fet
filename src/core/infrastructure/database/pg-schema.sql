@@ -30,11 +30,15 @@ CREATE TABLE IF NOT EXISTS users (
   photo_url TEXT DEFAULT '',
   observations TEXT DEFAULT '',
   is_active BOOLEAN DEFAULT TRUE,
+  must_change_password BOOLEAN DEFAULT FALSE,
   created_at VARCHAR(50) DEFAULT ''
 );
 
 -- Soporte para bases de datos creadas antes del campo semester
 ALTER TABLE users ADD COLUMN IF NOT EXISTS semester INT DEFAULT 0;
+
+-- Soporte para bases de datos creadas antes del cambio obligatorio de contraseña
+ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS subjects (
   id VARCHAR(100) PRIMARY KEY,

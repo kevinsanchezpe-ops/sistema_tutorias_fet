@@ -124,7 +124,8 @@ export class PgRepository {
       `SELECT id, username, full_name as "fullName", alias, email, phone, role, account,
               campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
               career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
-              semester, photo_url as "photoUrl", observations, is_active as "isActive", created_at as "createdAt"
+              semester, photo_url as "photoUrl", observations, is_active as "isActive",
+              must_change_password as "mustChangePassword", created_at as "createdAt"
        FROM users ORDER BY full_name ASC;`
     );
     return res.rows;
@@ -136,7 +137,8 @@ export class PgRepository {
       `SELECT id, username, full_name as "fullName", alias, email, phone, role, account,
               campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
               career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
-              semester, photo_url as "photoUrl", observations, is_active as "isActive", created_at as "createdAt"
+              semester, photo_url as "photoUrl", observations, is_active as "isActive",
+              must_change_password as "mustChangePassword", created_at as "createdAt"
        FROM users WHERE id = $1;`,
       [id]
     );
@@ -150,7 +152,8 @@ export class PgRepository {
       `SELECT id, username, full_name as "fullName", alias, email, phone, role, account,
               campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
               career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
-              semester, photo_url as "photoUrl", observations, is_active as "isActive", created_at as "createdAt"
+              semester, photo_url as "photoUrl", observations, is_active as "isActive",
+              must_change_password as "mustChangePassword", created_at as "createdAt"
        FROM users
        WHERE LOWER(email) = $1 OR LOWER(username) = $1 OR (account != '' AND LOWER(account) = $1);`,
       [cleanTerm]
@@ -221,6 +224,29 @@ export class PgRepository {
     return { success: true, message: 'Contraseña restablecida exitosamente. Ahora puedes iniciar sesión con tu nueva clave.' };
   }
 
+  public async updatePassword(userId: string, newPassword: string): Promise<User> {
+    const pool = await getPgPool();
+    const hashedPassword = await hashPassword(newPassword);
+
+    await pool.query(
+      'UPDATE users SET password_hash = $1, must_change_password = FALSE WHERE id = $2;',
+      [hashedPassword, userId]
+    );
+
+    const user = await this.getUserById(userId);
+    if (!user) {
+      throw new Error('Usuario no encontrado al actualizar la contraseña.');
+    }
+
+    await this.logBinnacle(
+      'Cambio de Contraseña',
+      `El usuario ${user.fullName} (${user.username}) actualizó su contraseña`,
+      user.username
+    );
+
+    return user;
+  }
+
   public async login(identity: string, password?: string, role?: UserRole): Promise<User | null> {
     const pool = await getPgPool();
     const term = identity.toLowerCase().trim();
@@ -229,7 +255,8 @@ export class PgRepository {
       SELECT id, username, password_hash as "passwordHash", full_name as "fullName", alias, email, phone, role, account,
              campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
              career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
-             semester, photo_url as "photoUrl", observations, is_active as "isActive", created_at as "createdAt"
+             semester, photo_url as "photoUrl", observations, is_active as "isActive",
+             must_change_password as "mustChangePassword", created_at as "createdAt"
       FROM users
       WHERE (LOWER(username) = $1 OR LOWER(email) = $1 OR (account != '' AND LOWER(account) = $1))
     `;
@@ -274,7 +301,10 @@ export class PgRepository {
 
     const nameParts = dto.fullName.trim().split(' ');
     const alias = (dto as any).alias || (nameParts.length >= 2 ? `${nameParts[0]} ${nameParts[1]}` : dto.fullName);
-    const plainPass = (dto as any).password || 'password123';
+    const plainPass = ((dto as any).password || '').trim();
+    if (plainPass.length < 6) {
+      throw new Error('La contraseña del estudiante es obligatoria (mínimo 6 caracteres).');
+    }
     const hashedPass = await hashPassword(plainPass);
 
     const studentCareer = this.resolveCareer(dto.careerId);
@@ -329,7 +359,10 @@ export class PgRepository {
 
     const nameParts = dto.fullName.trim().split(' ');
     const alias = (dto as any).alias || (nameParts.length >= 2 ? `${nameParts[0]} ${nameParts[1]}` : dto.fullName);
-    const plainPass = (dto as any).password || 'password123';
+    const plainPass = ((dto as any).password || '').trim();
+    if (plainPass.length < 6) {
+      throw new Error('La contraseña inicial del docente es obligatoria (mínimo 6 caracteres).');
+    }
     const hashedPass = await hashPassword(plainPass);
 
     const teacherCareer = this.resolveCareer(dto.careerId);
@@ -337,8 +370,8 @@ export class PgRepository {
     await pool.query(
       `INSERT INTO users (id, username, password_hash, full_name, alias, email, phone, role, account,
                           campus_id, campus_name, career_id, career_name, birth_date, admission_date,
-                          semester, photo_url, observations, is_active, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 0, $16, $17, true, $18);`,
+                          semester, photo_url, observations, is_active, must_change_password, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 0, $16, $17, true, true, $18);`,
       [
         id,
         dto.username,
@@ -507,6 +540,40 @@ export class PgRepository {
       `Perfil de ${teacher.fullName} actualizado por ${actor.fullName}`,
       actor.username
     );
+    return (await this.getUserById(userId))!;
+  }
+
+  public async updateUserProfile(
+    userId: string,
+    dto: { photoUrl?: string | null; phone?: string; alias?: string },
+    actor: User
+  ): Promise<User> {
+    const pool = await getPgPool();
+    const targetUser = await this.getUserById(userId);
+    if (!targetUser) throw new Error('Usuario no encontrado.');
+
+    const isSelf = actor.id === userId;
+    const isAdmin = actor.role === UserRole.ADMIN;
+    if (!isSelf && !isAdmin) {
+      throw new Error('No tiene permisos para modificar este perfil.');
+    }
+
+    if (dto.photoUrl !== undefined) {
+      await pool.query(`UPDATE users SET photo_url = $1 WHERE id = $2;`, [dto.photoUrl || '', userId]);
+    }
+    if (dto.phone !== undefined) {
+      await pool.query(`UPDATE users SET phone = $1 WHERE id = $2;`, [dto.phone || '', userId]);
+    }
+    if (dto.alias !== undefined) {
+      await pool.query(`UPDATE users SET alias = $1 WHERE id = $2;`, [dto.alias || '', userId]);
+    }
+
+    await this.logBinnacle(
+      'Actualización de Perfil',
+      `El usuario ${targetUser.fullName} (${targetUser.username}) actualizó su foto / datos de perfil`,
+      actor.username
+    );
+
     return (await this.getUserById(userId))!;
   }
 

@@ -114,10 +114,26 @@ export class ApiClient {
     return res;
   }
 
-  public static async registerTeacher(dto: RegisterTeacherDto): Promise<ApiResponse<User>> {
-    const res = await request<User & { token?: string }>('/auth/register-teacher', {
+  public static async registerTeacher(
+    dto: RegisterTeacherDto
+  ): Promise<ApiResponse<User & { temporaryPassword?: string }>> {
+    const res = await request<User & { temporaryPassword?: string }>('/auth/register-teacher', {
       method: 'POST',
       body: JSON.stringify(dto)
+    });
+    if (res.success && res.data) {
+      ApiClient.notifyListeners();
+    }
+    return res;
+  }
+
+  public static async changePassword(
+    newPassword: string,
+    confirmPassword?: string
+  ): Promise<ApiResponse<User>> {
+    const res = await request<User & { token?: string }>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ newPassword, confirmPassword })
     });
     if (res.success && res.data) {
       if (res.data.token) {
@@ -445,6 +461,47 @@ export class ApiClient {
   // --- USERS ---
   public static async getUsers(): Promise<ApiResponse<User[]>> {
     return request<User[]>('/users');
+  }
+
+  public static async updateUserProfile(
+    userId: string,
+    data: { photoUrl?: string | null; phone?: string; alias?: string },
+    actor: User
+  ): Promise<ApiResponse<User>> {
+    const res = await request<User>(`/users/${userId}/profile`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+    if (res.success && res.data) {
+      db.updateUserProfile(userId, res.data);
+      try {
+        const stored = localStorage.getItem('gt_auth_user');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed && parsed.id === userId) {
+            localStorage.setItem('gt_auth_user', JSON.stringify(res.data));
+          }
+        }
+      } catch {}
+      ApiClient.notifyListeners();
+    } else if (!res.success) {
+      // Offline / in-memory fallback
+      try {
+        const updated = db.updateUserProfile(userId, data as Partial<User>);
+        const stored = localStorage.getItem('gt_auth_user');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed && parsed.id === userId) {
+            localStorage.setItem('gt_auth_user', JSON.stringify(updated));
+          }
+        }
+        ApiClient.notifyListeners();
+        return { success: true, data: updated, message: 'Perfil actualizado exitosamente.' };
+      } catch (e: any) {
+        return res;
+      }
+    }
+    return res;
   }
 
   public static async toggleUserActive(userId: string, adminUser: User): Promise<ApiResponse<User>> {

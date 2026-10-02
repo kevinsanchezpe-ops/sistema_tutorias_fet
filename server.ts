@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import path from 'path';
+import crypto from 'crypto';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -132,7 +133,8 @@ async function startServer() {
         username: user.username,
         email: user.email,
         role: user.role,
-        fullName: user.fullName
+        fullName: user.fullName,
+        mustChangePassword: user.mustChangePassword === true
       });
 
       await pgRepo.logBinnacle('Inicio de Sesión', `Usuario ${user.fullName} (${user.role}) inició sesión con JWT`, user.username);
@@ -186,24 +188,51 @@ async function startServer() {
         );
       }
 
-      const user = await pgRepo.registerTeacher({ ...body, initialAvailability });
+      const temporaryPassword = `Gt-${crypto.randomBytes(4).toString('hex')}`;
+      const user = await pgRepo.registerTeacher({ ...body, password: temporaryPassword, initialAvailability });
+      res.json({
+        success: true,
+        data: {
+          ...user,
+          temporaryPassword
+        },
+        message: 'Docente registrado. Comparta la contraseña temporal; el docente deberá cambiarla en su primer ingreso.'
+      });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: { code: 'REGISTRATION_ERROR', message: err.message } });
+    }
+  });
+
+  // Cambio de contraseña del usuario autenticado (accesible aunque deba cambiarla)
+  app.post('/api/auth/change-password', requireDb, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Se requiere inicio de sesión.' } });
+      }
+      const { newPassword, confirmPassword } = req.body || {};
+      if (!newPassword || String(newPassword).trim().length < 6) {
+        return res.status(400).json({ success: false, error: { code: 'PASSWORD_TOO_SHORT', message: 'La nueva contraseña debe tener al menos 6 caracteres.' } });
+      }
+      if (confirmPassword !== undefined && newPassword !== confirmPassword) {
+        return res.status(400).json({ success: false, error: { code: 'PASSWORD_MISMATCH', message: 'Las contraseñas no coinciden.' } });
+      }
+
+      const user = await pgRepo.updatePassword(req.user.userId, String(newPassword).trim());
       const token = generateAuthToken({
         userId: user.id,
         username: user.username,
         email: user.email,
         role: user.role,
-        fullName: user.fullName
+        fullName: user.fullName,
+        mustChangePassword: false
       });
       res.json({
         success: true,
-        data: {
-          ...user,
-          token
-        },
-        message: 'Docente registrado exitosamente con sus materias, horarios y token de acceso.'
+        data: { ...user, token },
+        message: 'Contraseña actualizada correctamente.'
       });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'REGISTRATION_ERROR', message: err.message } });
+      res.status(500).json({ success: false, error: { code: 'CHANGE_PASSWORD_ERROR', message: err.message } });
     }
   });
 
@@ -618,6 +647,20 @@ async function startServer() {
   app.get('/api/users', requireDb, asyncHandler(async (req, res) => {
     res.json({ success: true, data: await pgRepo.getUsers() });
   }));
+
+  app.put('/api/users/:id/profile', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { photoUrl, phone, alias } = req.body;
+      const actor = await pgRepo.getUserById(req.user!.userId);
+      if (!actor) {
+        return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario no autenticado.' } });
+      }
+      const updatedUser = await pgRepo.updateUserProfile(req.params.id, { photoUrl, phone, alias }, actor);
+      res.json({ success: true, data: updatedUser, message: 'Perfil y foto actualizados exitosamente.' });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: { code: 'UPDATE_PROFILE_ERROR', message: err.message } });
+    }
+  });
 
   app.patch('/api/users/:id/toggle', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {

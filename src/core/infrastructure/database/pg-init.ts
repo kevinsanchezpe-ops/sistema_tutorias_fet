@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import bcrypt from 'bcryptjs';
 import { ensureDatabaseExists, getPgPool } from './pg-pool';
 import {
   INITIAL_BINNACLE,
@@ -51,20 +52,23 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
       await pool.query(
         `INSERT INTO careers (id, name, code_prefix, number_of_semesters, is_active)
          VALUES ($1, $2, $3, $4, true)
-         ON CONFLICT (id) DO NOTHING;`,
+         ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, code_prefix = EXCLUDED.code_prefix, number_of_semesters = EXCLUDED.number_of_semesters, is_active = true;`,
         [c.id, c.name, c.codePrefix, c.numberOfSemesters]
       );
     }
+    // Corrección: quitar sufijo "(FET)" si quedó de versiones previas
+    await pool.query(`UPDATE careers SET name = 'Ingeniería de Software' WHERE id = 'car-fet-software';`);
+    await pool.query(`UPDATE careers SET name = REPLACE(name, ' (FET)', '') WHERE name LIKE '% (FET)%';`);
 
     // Normalizar career_id inconsistentes de versiones previas (car-1 -> car-fet-software)
     await pool.query(
       `UPDATE users
-       SET career_id = 'car-fet-software', career_name = 'Ingeniería de Software (FET)'
+       SET career_id = 'car-fet-software', career_name = 'Ingeniería de Software'
        WHERE career_id = 'car-1' OR career_id = '' OR career_id IS NULL;`
     );
     await pool.query(
       `UPDATE subjects
-       SET career_id = 'car-fet-software', career_name = 'Ingeniería de Software (FET)'
+       SET career_id = 'car-fet-software', career_name = 'Ingeniería de Software'
        WHERE career_id = 'car-1' OR career_id = '' OR career_id IS NULL;`
     );
 
@@ -254,6 +258,48 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
       console.log('[PostgreSQL] Datos iniciales sembrados con éxito.');
     } else {
       console.log(`[PostgreSQL] Base de datos activa con ${userCount} usuarios registrados.`);
+    }
+
+    // Migración idempotente: los usuarios con hash vacío o no-bcrypt reciben la
+    // contraseña histórica 'password123' ya hasheada. Así se elimina el fallback
+    // de compatibilidad en comparePassword sin dejar cuentas sin acceso, y se
+    // obliga a esas cuentas a definir una contraseña propia en el primer ingreso.
+    const legacyUsers = await pool.query(
+      `SELECT id FROM users WHERE password_hash IS NULL OR password_hash = '' OR password_hash NOT LIKE '$2%';`
+    );
+    if (legacyUsers.rows.length > 0) {
+      const defaultHash = await bcrypt.hash('password123', 10);
+      for (const row of legacyUsers.rows) {
+        await pool.query(
+          'UPDATE users SET password_hash = $1, must_change_password = TRUE WHERE id = $2;',
+          [defaultHash, row.id]
+        );
+      }
+      console.log(
+        `[PostgreSQL] Se migraron ${legacyUsers.rows.length} contraseñas heredadas a hashes bcrypt y quedaron marcadas para cambio obligatorio.`
+      );
+    }
+
+    // Pasada idempotente (b): cuentas que ya tienen hash bcrypt pero siguen usando
+    // la contraseña por defecto quedan marcadas para cambio obligatorio en el
+    // próximo ingreso.
+    const defaultMatch = await pool.query(
+      `SELECT id, password_hash FROM users WHERE must_change_password = FALSE;`
+    );
+    if (defaultMatch.rows.length > 0) {
+      let flagged = 0;
+      for (const row of defaultMatch.rows) {
+        const isDefault = await bcrypt.compare('password123', row.password_hash);
+        if (isDefault) {
+          await pool.query('UPDATE users SET must_change_password = TRUE WHERE id = $1;', [row.id]);
+          flagged++;
+        }
+      }
+      if (flagged > 0) {
+        console.log(
+          `[PostgreSQL] ${flagged} cuentas usaban la contraseña por defecto y quedaron marcadas para cambio obligatorio.`
+        );
+      }
     }
 
     // Sincronizar siempre el catálogo de asignaturas con el Pénsum Oficial FET (5 carreras)

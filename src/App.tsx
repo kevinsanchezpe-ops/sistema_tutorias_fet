@@ -8,6 +8,7 @@ import { RegisterModal } from './components/RegisterModal';
 import { NotificationModal } from './components/NotificationModal';
 import { TestsModal } from './components/TestsModal';
 import { AuthView } from './components/AuthView';
+import { ChangePasswordView } from './components/ChangePasswordView';
 import { TutoringDetailModal } from './components/TutoringDetailModal';
 import { ApiClient } from './core/presentation/api-client';
 import { db } from './core/infrastructure/database/database';
@@ -80,7 +81,11 @@ export default function App() {
       ApiClient.getCareers()
     ]);
 
-    if (uRes.data) setAllUsers(uRes.data);
+    if (uRes.data) {
+      setAllUsers(uRes.data);
+      // Sync in-memory db so components reading db.users directly get fresh data (e.g. photoUrl)
+      db.users = uRes.data;
+    }
     if (tRes.data) setTutorings(tRes.data);
     if (sRes.data) setSubjects(sRes.data);
     if (schRes.data) setSchedules(schRes.data);
@@ -99,6 +104,12 @@ export default function App() {
       const updatedCurr = uRes.data?.find((u) => u.id === currentUser.id);
       if (updatedCurr && localStorage.getItem('gt_auth_user')) {
         setCurrentUser(updatedCurr);
+      } else if (!uRes.data && localStorage.getItem('gt_auth_user')) {
+        // Offline fallback: sync currentUser from in-memory db (e.g. after photo upload)
+        const dbUser = db.users.find((u) => u.id === currentUser.id);
+        if (dbUser) {
+          setCurrentUser({ ...dbUser });
+        }
       }
     }
   };
@@ -118,6 +129,14 @@ export default function App() {
   const handleLoginSuccess = (user: User) => {
     try {
       localStorage.setItem('gt_auth_user_id', user.id);
+      localStorage.setItem('gt_auth_user', JSON.stringify(user));
+    } catch (e) {}
+    setCurrentUser(user);
+  };
+
+  // Handle password change (clears mustChangePassword and refresh session)
+  const handlePasswordChanged = (user: User) => {
+    try {
       localStorage.setItem('gt_auth_user', JSON.stringify(user));
     } catch (e) {}
     setCurrentUser(user);
@@ -168,6 +187,20 @@ export default function App() {
           onOpenTests={() => setShowTests(true)}
         />
         {showTests && <TestsModal onClose={() => setShowTests(false)} />}
+      </>
+    );
+  }
+
+  // Force password change for accounts with a temporary credential
+  if (currentUser.mustChangePassword) {
+    return (
+      <>
+        {renderDbBanner()}
+        <ChangePasswordView
+          currentUser={currentUser}
+          onPasswordChanged={handlePasswordChanged}
+          onLogout={handleLogout}
+        />
       </>
     );
   }

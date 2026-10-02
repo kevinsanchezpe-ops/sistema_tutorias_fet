@@ -7,7 +7,7 @@ import { Career } from '../../types';
 export const CAREERS: Career[] = [
   {
     id: 'car-fet-software',
-    name: 'Ingeniería de Software (FET)',
+    name: 'Ingeniería de Software',
     codePrefix: 'IS',
     numberOfSemesters: 10,
     isActive: true

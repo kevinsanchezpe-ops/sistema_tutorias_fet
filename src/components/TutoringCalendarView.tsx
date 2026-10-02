@@ -3,7 +3,6 @@ import { Tutoring, TutoringModality, TutoringStatus, User } from '../core/types'
 import {
   ChevronLeft,
   ChevronRight,
-  Calendar as CalendarIcon,
   Clock,
   Video,
   MapPin,
@@ -147,23 +146,18 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
     <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden space-y-4">
       {/* Bar de Controles e Información del Calendario */}
       <div className="p-4 bg-slate-50/90 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#eaf8ea] text-[#11770e] flex items-center justify-center border border-[#bce6bc] shrink-0 font-bold">
-            <CalendarIcon className="w-5 h-5 text-[#11770e]" />
-          </div>
-          <div>
-            <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-              <span>{monthNames[month]} {year}</span>
-              {viewMode === 'week' && (
-                <span className="text-xs font-normal text-slate-500">
-                  (Semana del {weekDaysList[0].getDate()} al {weekDaysList[6].getDate()} de {monthNames[weekDaysList[6].getMonth()]})
-                </span>
-              )}
-            </h3>
-            <p className="text-[11px] text-slate-500">
-              {tutorings.length} tutoría{tutorings.length === 1 ? '' : 's'} en el sistema
-            </p>
-          </div>
+        <div>
+          <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+            <span>{monthNames[month]} {year}</span>
+            {viewMode === 'week' && (
+              <span className="text-xs font-normal text-slate-500">
+                (Semana del {weekDaysList[0].getDate()} al {weekDaysList[6].getDate()} de {monthNames[weekDaysList[6].getMonth()]})
+              </span>
+            )}
+          </h3>
+          <p className="text-[11px] text-slate-500">
+            {tutorings.length} tutoría{tutorings.length === 1 ? '' : 's'} en el sistema
+          </p>
         </div>
 
         {/* Botones de Navegación y Conmutador Mes/Semana */}

@@ -16,6 +16,7 @@ export interface AuthTokenPayload {
   email: string;
   role: UserRole;
   fullName: string;
+  mustChangePassword?: boolean;
 }
 
 // Extender interfaz Request de Express
@@ -34,21 +35,16 @@ export async function hashPassword(plainPassword: string): Promise<string> {
 }
 
 /**
- * Compara una contraseña en texto plano contra su hash bcrypt o contraseña de compatibilidad.
+ * Compara una contraseña en texto plano contra su hash bcrypt almacenado.
+ * Solo se aceptan hashes bcrypt válidos; no existe fallback a contraseñas
+ * por defecto ni a valores en texto plano.
  */
 export async function comparePassword(plainPassword: string, storedHash: string): Promise<boolean> {
-  if (!storedHash) {
-    // Si no hay hash almacenado, permitimos login con 'password123' por compatibilidad de datos demo
-    return plainPassword === 'password123';
-  }
-  
-  // Si el hash almacenado empieza con '$2a$', '$2b$' o '$2y$', es un hash bcrypt válido
-  if (storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$') || storedHash.startsWith('$2y$')) {
-    return bcrypt.compare(plainPassword, storedHash);
+  if (!storedHash || !storedHash.startsWith('$2')) {
+    return false;
   }
 
-  // Compatibilidad con registros antiguos en texto plano
-  return plainPassword === storedHash || plainPassword === 'password123';
+  return bcrypt.compare(plainPassword, storedHash);
 }
 
 /**
@@ -93,6 +89,15 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
       error: { code: 'UNAUTHORIZED', message: 'Se requiere inicio de sesión para acceder a este recurso.' }
     });
   }
+  if (req.user.mustChangePassword) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'PASSWORD_CHANGE_REQUIRED',
+        message: 'Debe cambiar su contraseña temporal antes de continuar.'
+      }
+    });
+  }
   next();
 }
 
@@ -112,6 +117,15 @@ export function requireRole(...allowedRoles: UserRole[]) {
       return res.status(403).json({
         success: false,
         error: { code: 'FORBIDDEN', message: 'No tienes los permisos requeridos para ejecutar esta acción.' }
+      });
+    }
+    if (req.user.mustChangePassword) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'PASSWORD_CHANGE_REQUIRED',
+          message: 'Debe cambiar su contraseña temporal antes de continuar.'
+        }
       });
     }
     next();

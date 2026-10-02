@@ -113,6 +113,6 @@ export const INITIAL_FET_SUBJECTS: SubjectCourse[] = FET_SOFTWARE_ENGINEERING_CU
   credits: item.credits || 0,
   semester: item.semester,
   careerId: 'car-fet-software',
-  careerName: 'Ingeniería de Software (FET)',
+  careerName: 'Ingeniería de Software',
   isActive: true
 }));

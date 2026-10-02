@@ -37,7 +37,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
   // Login form state
   const [loginIdentity, setLoginIdentity] = useState('');
-  const [loginPassword, setLoginPassword] = useState('password123');
+  const [loginPassword, setLoginPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -56,8 +56,8 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
   // Careers catalog for registration
   const [careers, setCareers] = useState<Career[]>(() => [...db.careers]);
-  const [careerId, setCareerId] = useState<string>(db.careers[0]?.id || '');
-  const [semester, setSemester] = useState(1);
+  const [careerId, setCareerId] = useState<string>('');
+  const [semester, setSemester] = useState<string>('');
 
   useEffect(() => {
     ApiClient.getCareers().then((res) => {
@@ -188,7 +188,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
       username: username.trim().toLowerCase(),
       email: email.trim().toLowerCase(),
       phone: phone.trim(),
-      password: password || 'password123',
+      password: password,
       birthDate: '2004-01-01',
       admissionDate: new Date().toISOString().split('T')[0],
       careerId,
@@ -207,12 +207,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
     } else {
       setRegError(res.error?.message || 'Error al registrar al estudiante.');
     }
-  };
-
-  const handleFillAdmin = () => {
-    setLoginIdentity('admin');
-    setLoginPassword('password123');
-    setLoginError(null);
   };
 
   return (
@@ -317,7 +311,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                       type="text"
                       value={loginIdentity}
                       onChange={(e) => setLoginIdentity(e.target.value)}
-                      placeholder="admin, carnet o correo..."
+                      placeholder="Usuario, correo o carnet"
                       required
                       className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
                     />
@@ -340,7 +334,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                       type={showPassword ? 'text' : 'password'}
                       value={loginPassword}
                       onChange={(e) => setLoginPassword(e.target.value)}
-                      placeholder="••••••••"
+                      placeholder="Contraseña"
                       required
                       className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-9 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
                     />
@@ -398,7 +392,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </button>
               </form>
 
-              {/* Discreet footer with links & quick demo */}
+              {/* Discreet footer with links */}
               <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
                 <span>
                   ¿No tienes cuenta?{' '}
@@ -410,14 +404,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     Regístrate
                   </button>
                 </span>
-                <button
-                  type="button"
-                  onClick={handleFillAdmin}
-                  className="text-[11px] text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
-                  title="Rellenar credenciales de administrador (admin / password123)"
-                >
-                  Acceso admin demo
-                </button>
               </div>
             </div>
           )}
@@ -483,15 +469,18 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     <select
                       id="reg-semester"
                       value={semester}
-                      onChange={(e) => setSemester(Number(e.target.value))}
+                      onChange={(e) => setSemester(e.target.value)}
                       required
                       className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
                     >
+                      <option value="" disabled>
+                        Selecciona tu semestre
+                      </option>
                       {Array.from(
                         { length: careers.find((c) => c.id === careerId)?.numberOfSemesters || 10 },
                         (_, i) => i + 1
                       ).map((n) => (
-                        <option key={n} value={n}>
+                        <option key={n} value={String(n)}>
                           Semestre {n}
                         </option>
                       ))}
@@ -538,7 +527,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                       type="text"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Ej. Juan Camilo Pérez"
+                      placeholder="Nombre completo"
                       required
                       minLength={5}
                       className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
@@ -563,7 +552,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                         type="text"
                         value={account}
                         onChange={(e) => setAccount(e.target.value)}
-                        placeholder="20241012"
+                        placeholder="Carnet institucional"
                         required
                         className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e] uppercase font-mono"
                       />
@@ -586,7 +575,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                         type="text"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        placeholder="juan_perez"
+                        placeholder="Nombre de usuario"
                         required
                         minLength={3}
                         className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e] lowercase font-mono"
@@ -611,7 +600,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="estudiante@fet.edu.co"
+                      placeholder="Correo institucional"
                       required
                       className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e]"
                     />
@@ -635,9 +624,9 @@ export const AuthView: React.FC<AuthViewProps> = ({
                         type={showRegPassword ? 'text' : 'password'}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
+placeholder="Contraseña"
                         required
-                        minLength={4}
+                        minLength={6}
                         className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-9 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e]"
                       />
                       <button
@@ -666,7 +655,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                         type="tel"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        placeholder="310 123 4567"
+                        placeholder="Teléfono"
                         className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e]"
                       />
                     </div>
@@ -771,7 +760,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                       type="text"
                       value={forgotIdentity}
                       onChange={(e) => setForgotIdentity(e.target.value)}
-                      placeholder="ejemplo@gt.edu o tu usuario..."
+                      placeholder="Correo o usuario"
                       required
                       className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
                     />
@@ -808,7 +797,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     type="text"
                     value={resetToken}
                     onChange={(e) => setResetToken(e.target.value)}
-                    placeholder="123456"
+                    placeholder="Código de 6 dígitos"
                     required
                     maxLength={6}
                     className="w-full text-center tracking-widest font-mono text-base font-bold rounded-lg border border-slate-300 py-2 text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
@@ -823,7 +812,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     type="password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder="Nueva contraseña"
                     required
                     className="w-full text-sm rounded-lg border border-slate-300 px-3 py-2 text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
                   />
@@ -837,7 +826,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Repite la contraseña"
+                    placeholder="Confirmar contraseña"
                     required
                     className="w-full text-sm rounded-lg border border-slate-300 px-3 py-2 text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
                   />

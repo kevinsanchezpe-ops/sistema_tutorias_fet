@@ -27,7 +27,9 @@ async function cleanupTestData(p: Pool): Promise<void> {
   await p.query(`DELETE FROM tutoring_assistants WHERE tutoring_id IN (SELECT id FROM tutorings WHERE subject LIKE 'PGTEST %');`);
   await p.query(`DELETE FROM tutorings WHERE subject LIKE 'PGTEST %';`);
   await p.query(`DELETE FROM binnacle WHERE description LIKE '%PGTEST%';`);
+  await p.query(`DELETE FROM binnacle WHERE username LIKE 'pgtest_tmp_%';`);
   await p.query(`DELETE FROM users WHERE username LIKE 'pgtest_teacher_%';`);
+  await p.query(`DELETE FROM users WHERE username LIKE 'pgtest_tmp_%';`);
 }
 
 async function findFreeTeacherSlot(p: Pool, dateStr: string): Promise<{ teacherId: string; slotId: string; subjectCourseId: string }> {
@@ -353,6 +355,52 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
       } finally {
         await cleanupBySubject(p, subj);
         await p.query('DELETE FROM sections WHERE id = $1;', [sectionId]);
+      }
+    });
+
+    // --- 10. Contraseña temporal obligatoria (camino Postgres) ---
+    await run('PG: Contraseña temporal — docente debe cambiarla en su primer ingreso', async () => {
+      const suffix = `${RUN_ID}-${Math.random().toString(36).slice(2, 6)}`;
+      const username = `pgtest_tmp_${suffix}`;
+      const temporaryPassword = `Tmp-${Math.random().toString(36).slice(2, 10)}`;
+      const newPassword = `Final-${Math.random().toString(36).slice(2, 10)}`;
+      let teacherId = '';
+      try {
+        const created = await pgRepo.registerTeacher({
+          fullName: `Docente Temporal PG ${RUN_ID}`,
+          email: `${username}@mail.test`,
+          phone: '+504 9999-9999',
+          account: `DOC-TMP-${suffix}`,
+          username,
+          password: temporaryPassword
+        });
+        teacherId = created.id;
+
+        if (created.mustChangePassword !== true) {
+          throw new Error('El docente recién registrado debe tener mustChangePassword = true');
+        }
+
+        const loginBefore = await pgRepo.login(username, temporaryPassword);
+        if (!loginBefore) throw new Error('Debe poder iniciar sesión con la contraseña temporal');
+        if (loginBefore.mustChangePassword !== true) {
+          throw new Error('El token/login debe señalar el cambio de contraseña obligatorio');
+        }
+
+        const updated = await pgRepo.updatePassword(teacherId, newPassword);
+        if (updated.mustChangePassword !== false) {
+          throw new Error('updatePassword debe limpiar must_change_password');
+        }
+
+        const loginAfter = await pgRepo.login(username, newPassword);
+        if (!loginAfter) throw new Error('Debe poder iniciar sesión con la nueva contraseña');
+        if (loginAfter.mustChangePassword === true) {
+          throw new Error('Tras el cambio, mustChangePassword debe ser false');
+        }
+
+        const staleLogin = await pgRepo.login(username, temporaryPassword);
+        if (staleLogin) throw new Error('La contraseña temporal antigua no debe seguir funcionando');
+      } finally {
+        if (teacherId) await p.query('DELETE FROM users WHERE id = $1;', [teacherId]);
       }
     });
   } finally {

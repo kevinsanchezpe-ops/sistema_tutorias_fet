@@ -18,6 +18,8 @@ import {
   Paperclip
 } from 'lucide-react';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
+import { UserAvatar } from './UserAvatar';
+import { db } from '../core/infrastructure/database/database';
 
 interface TutoringDetailModalProps {
   tutoring: Tutoring;
@@ -121,53 +123,107 @@ export const TutoringDetailModal: React.FC<TutoringDetailModalProps> = ({
           )}
 
           {/* Horario y Fecha */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-white border border-stone-200 rounded-xl space-y-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
-                <Calendar className="w-3 h-3 text-[#11770e]" />
-                Fecha
-              </span>
-              <p className="text-xs font-semibold text-slate-800">
-                {tutoring.reservDate}
-              </p>
-            </div>
+          {(() => {
+            let dayName = '';
+            let formattedDate = tutoring.reservDate || 'Fecha sin definir';
+            if (tutoring.reservDate) {
+              const parts = tutoring.reservDate.split('-');
+              if (parts.length === 3) {
+                const year = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10) - 1;
+                const day = parseInt(parts[2], 10);
+                const d = new Date(year, month, day);
+                const rawDay = d.toLocaleDateString('es-CO', { weekday: 'long' });
+                dayName = rawDay.charAt(0).toUpperCase() + rawDay.slice(1);
+                const rawMonth = d.toLocaleDateString('es-CO', { month: 'short' });
+                formattedDate = `${dayName}, ${day} ${rawMonth} ${year}`;
+              }
+            }
+            return (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-white border border-stone-200 rounded-xl space-y-1 shadow-2xs">
+                  <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-[#11770e]" />
+                    Fecha Programada
+                  </span>
+                  <p className="text-xs font-bold text-slate-800">
+                    {formattedDate}
+                  </p>
+                  {tutoring.reservDate && (
+                    <span className="text-[10px] font-mono text-stone-400 block">
+                      {tutoring.reservDate}
+                    </span>
+                  )}
+                </div>
 
-            <div className="p-3 bg-white border border-stone-200 rounded-xl space-y-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
-                <Clock className="w-3 h-3 text-[#11770e]" />
-                Horario
-              </span>
-              <p className="text-xs font-semibold text-slate-800">
-                {tutoring.scheduleLabel}
-              </p>
-            </div>
-          </div>
+                <div className="p-3 bg-white border border-stone-200 rounded-xl space-y-1 shadow-2xs">
+                  <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-[#11770e]" />
+                    Horario
+                  </span>
+                  <div className="pt-0.5">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc]/60">
+                      {tutoring.reservTime || tutoring.scheduleLabel || 'Por definir'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Personas involucradas */}
-          <div className="p-4 bg-white border border-stone-200 rounded-xl space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-[10px]">
-                  E
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase block">Estudiante Solicitante</span>
-                  <span className="font-semibold text-slate-800">{tutoring.petitionerStudentName}</span>
-                </div>
-              </div>
-            </div>
+          <div className="p-4 bg-white border border-stone-200 rounded-xl space-y-3">
+            {(() => {
+              const petitionerUser = db.users.find(
+                (u) => u.id === tutoring.petitionerStudentId || u.fullName === tutoring.petitionerStudentName
+              );
+              const teacherUser = db.users.find(
+                (u) => u.id === tutoring.teacherId || u.fullName === tutoring.teacherName
+              );
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-[#11770e]/20 text-[#11770e] flex items-center justify-center font-bold text-[10px]">
-                  D
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase block">Docente Titular</span>
-                  <span className="font-semibold text-slate-800">{tutoring.teacherName}</span>
-                </div>
-              </div>
-            </div>
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <UserAvatar
+                        user={petitionerUser}
+                        name={tutoring.petitionerStudentName}
+                        photoUrl={petitionerUser?.photoUrl}
+                        role={UserRole.STUDENT}
+                        size="md"
+                        className="border border-[#bce6bc]/60 shadow-2xs"
+                      />
+                      <div>
+                        <span className="text-[10px] text-stone-400 uppercase font-bold block">Estudiante Solicitante</span>
+                        <span className="font-bold text-slate-900 text-xs">{tutoring.petitionerStudentName}</span>
+                        {petitionerUser?.careerName && (
+                          <span className="text-[10px] text-stone-500 block truncate">
+                            {petitionerUser.careerName} {petitionerUser.semester ? `• Sem. ${petitionerUser.semester}` : ''}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2.5 border-t border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <UserAvatar
+                        user={teacherUser}
+                        name={tutoring.teacherName}
+                        photoUrl={teacherUser?.photoUrl}
+                        role={UserRole.TEACHER}
+                        size="md"
+                        className="border border-[#bce6bc]/60 shadow-2xs"
+                      />
+                      <div>
+                        <span className="text-[10px] text-stone-400 uppercase font-bold block">Docente Titular</span>
+                        <span className="font-bold text-slate-900 text-xs">{tutoring.teacherName}</span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           {/* Modalidad y Espacio / Link */}
@@ -186,7 +242,7 @@ export const TutoringDetailModal: React.FC<TutoringDetailModalProps> = ({
                   </>
                 )}
               </span>
-              <span className="text-[11px] text-stone-500">
+              <span className="text-[11px] text-stone-500 font-medium">
                 {tutoring.space ? `Asignado: ${tutoring.space}` : 'Pendiente de confirmación'}
               </span>
             </div>
@@ -213,13 +269,25 @@ export const TutoringDetailModal: React.FC<TutoringDetailModalProps> = ({
                   Asistentes Registrados ({tutoring.assistants.length})
                 </span>
               </div>
-              <div className="space-y-1">
-                {tutoring.assistants.map((a) => (
-                  <div key={a.id} className="flex items-center justify-between py-1 px-2 rounded-md bg-slate-50 text-xs">
-                    <span className="font-medium text-slate-700">{a.studentName}</span>
-                    <span className="text-[10px] text-slate-400">{a.isPetitioner ? 'Solicitante' : 'Par inscrito'}</span>
-                  </div>
-                ))}
+              <div className="space-y-1.5">
+                {tutoring.assistants.map((a) => {
+                  const astUser = db.users.find((u) => u.id === a.studentId || u.account === a.studentAccount);
+                  return (
+                    <div key={a.id} className="flex items-center justify-between py-1.5 px-2.5 rounded-xl bg-slate-50 text-xs gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <UserAvatar
+                          user={astUser}
+                          name={a.studentName}
+                          photoUrl={astUser?.photoUrl}
+                          role={UserRole.STUDENT}
+                          size="xs"
+                        />
+                        <span className="font-semibold text-slate-800 truncate">{a.studentName}</span>
+                      </div>
+                      <span className="text-[10px] text-stone-500 shrink-0 font-medium">{a.isPetitioner ? 'Solicitante' : 'Par inscrito'}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

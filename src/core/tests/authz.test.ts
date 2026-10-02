@@ -80,6 +80,46 @@ export function runAuthzTests(): { total: number; passed: number; results: TestR
     if (!nextCalled) throw new Error('El administrador debe pasar requireRole(ADMIN)');
   });
 
+  test('requireAuth: usuario con contraseña temporal recibe 403 PASSWORD_CHANGE_REQUIRED', () => {
+    const { nextCalled, res } = callMiddleware(requireAuth, {
+      user: { role: UserRole.STUDENT, mustChangePassword: true }
+    });
+    if (nextCalled) throw new Error('No debe llamar a next() si debe cambiar la contraseña');
+    if (res.statusCode !== 403) throw new Error(`Esperaba 403, recibió ${res.statusCode}`);
+    if (res.body?.error?.code !== 'PASSWORD_CHANGE_REQUIRED') {
+      throw new Error('Esperaba código PASSWORD_CHANGE_REQUIRED');
+    }
+  });
+
+  test('requireRole(ADMIN): bloquea aunque el rol sea correcto si debe cambiar la contraseña', () => {
+    const { nextCalled, res } = callMiddleware(requireRole(UserRole.ADMIN), {
+      user: { role: UserRole.ADMIN, mustChangePassword: true }
+    });
+    if (nextCalled) throw new Error('No debe llamar a next() si debe cambiar la contraseña');
+    if (res.statusCode !== 403) throw new Error(`Esperaba 403, recibió ${res.statusCode}`);
+  });
+
+  test('server.ts: /api/auth/change-password no exige requireAuth (accesible con contraseña temporal)', () => {
+    const source = fs.readFileSync(path.join(process.cwd(), 'server.ts'), 'utf8');
+    const routeLine = source
+      .split('\n')
+      .find((line) => line.includes("'/api/auth/change-password'"));
+    if (!routeLine) throw new Error('No se encontró la ruta /api/auth/change-password');
+    if (routeLine.includes('requireAuth')) throw new Error('La ruta no debe exigir requireAuth');
+    if (routeLine.includes('requireRole')) throw new Error('La ruta no debe exigir requireRole');
+    if (!routeLine.includes('requireDb')) throw new Error('La ruta debe exigir requireDb');
+  });
+
+  test('server.ts: /api/auth/register-teacher devuelve contraseña temporal y notifica el cambio obligatorio', () => {
+    const source = fs.readFileSync(path.join(process.cwd(), 'server.ts'), 'utf8');
+    if (!source.includes('temporaryPassword')) {
+      throw new Error('server.ts no genera una contraseña temporal al registrar docentes');
+    }
+    if (!source.includes('primer ingreso')) {
+      throw new Error('server.ts no notifica al administrador sobre el cambio obligatorio');
+    }
+  });
+
   test('server.ts: /api/auth/register-teacher exige requireAuth y requireRole(ADMIN)', () => {
     const source = fs.readFileSync(path.join(process.cwd(), 'server.ts'), 'utf8');
     const routeLine = source
@@ -101,6 +141,15 @@ export function runAuthzTests(): { total: number; passed: number; results: TestR
     if (source.includes('registerRole')) {
       throw new Error('AuthView aún expone la selección del rol docente');
     }
+  });
+
+  test('AuthView.tsx: ya no expone la contraseña por defecto admin/password123', () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), 'src/components/AuthView.tsx'),
+      'utf8'
+    );
+    const demoLinks = source.match(/Acceso admin demo|password123/g);
+    if (demoLinks) throw new Error('AuthView aún conserva el acceso demo con password123');
   });
 
   return { total: results.length, passed: results.filter((r) => r.success).length, results };

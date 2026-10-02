@@ -12,7 +12,7 @@ interface CurriculumSeeds {
 }
 
 const CURRICULA: CurriculumSeeds[] = [
-  { careerName: 'Ingeniería de Software (FET)', subjects: INITIAL_FET_SUBJECTS },
+  { careerName: 'Ingeniería de Software', subjects: INITIAL_FET_SUBJECTS },
   { careerName: 'Ingeniería Eléctrica', subjects: INITIAL_FET_SUBJECTS_ELECTRICAL },
   { careerName: 'Ingeniería Ambiental', subjects: INITIAL_FET_SUBJECTS_ENVIRONMENTAL },
   { careerName: 'Ingeniería de Alimentos', subjects: INITIAL_FET_SUBJECTS_FOOD },

@@ -117,6 +117,17 @@ export class AppDatabase {
     };
     this.notifications.unshift(notif);
   }
+
+  public updateUserProfile(userId: string, data: Partial<User>): User {
+    const idx = this.users.findIndex((u) => u.id === userId);
+    if (idx === -1) throw new Error('Usuario no encontrado');
+    this.users[idx] = {
+      ...this.users[idx],
+      ...data
+    };
+    this.notify();
+    return this.users[idx];
+  }
 }
 
 export const db = AppDatabase.getInstance();

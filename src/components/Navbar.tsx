@@ -8,6 +8,7 @@ import {
   Shield,
   Briefcase
 } from 'lucide-react';
+import { UserAvatar } from './UserAvatar';
 
 interface NavbarProps {
   currentUser: User;
@@ -82,11 +83,13 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Right Navigation: Current User Profile & Actions */}
           <div className="flex items-center gap-2 sm:gap-4">
             {/* User identity card */}
-            <div className="hidden sm:flex items-center gap-2.5 pl-3 pr-2 py-1.5 bg-[#fffaed]/70 border border-stone-200 rounded-xl">
-              <div className="w-7 h-7 rounded-lg bg-[#11770e]/15 text-[#11770e] font-bold text-xs flex items-center justify-center uppercase">
-                {currentUser.fullName ? currentUser.fullName.charAt(0) : <UserIcon className="w-4 h-4" />}
-              </div>
-              <div className="text-left pr-2">
+            <div className="hidden sm:flex items-center gap-2.5 pl-2 pr-3 py-1.5 bg-[#fffaed]/70 border border-stone-200 rounded-xl">
+              <UserAvatar
+                user={currentUser}
+                size="sm"
+                className="border border-[#bce6bc]/50 shadow-2xs"
+              />
+              <div className="text-left">
                 <p className="text-xs font-semibold text-[#2b2b2b] leading-tight truncate max-w-[160px]">
                   {currentUser.fullName}
                 </p>
