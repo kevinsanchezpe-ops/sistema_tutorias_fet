@@ -163,8 +163,9 @@ export class PgRepository {
 
   public async createPasswordResetToken(userId: string): Promise<string> {
     const pool = await getPgPool();
-    // Generar un código aleatorio de 6 dígitos legible o token hexadecimal
-    const resetToken = Math.floor(100000 + Math.random() * 900000).toString();
+    // Código de 6 dígitos con RNG criptográfico (Math.random es predecible)
+    const { randomInt } = await import('crypto');
+    const resetToken = randomInt(100000, 1000000).toString();
     const id = `rst-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const expiresAt = Date.now() + 30 * 60 * 1000; // 30 minutos de vigencia
     const createdAt = new Date().toISOString();

@@ -50,6 +50,10 @@ export async function ensureDatabaseExists(): Promise<void> {
     await testPool.end();
     return; // Database exists and connection succeeded
   } catch (err: any) {
+    // En producción no crear BD automáticamente: fallar explícito
+    if (process.env.NODE_ENV === 'production') {
+      throw err;
+    }
     // Error 3D000 means database does not exist
     if (err.code === '3D000') {
       console.log(`[PostgreSQL] La base de datos "${targetDb}" no existe. Creándola automáticamente...`);
@@ -71,7 +75,15 @@ export async function getPgPool(): Promise<pg.Pool> {
   if (pool) return pool;
 
   const config = getPgConfig();
-  pool = new Pool(config);
+  const isLocal = (config.host || '').includes('localhost') || (config.host || '').includes('127.0.0.1');
+  const needsSsl =
+    typeof config.connectionString === 'string' &&
+    !config.connectionString.includes('localhost') &&
+    !config.connectionString.includes('127.0.0.1');
+  pool = new Pool({
+    ...config,
+    ssl: needsSsl && !isLocal ? { rejectUnauthorized: false } : undefined
+  } as any);
 
   pool.on('error', (err) => {
     console.error('[PostgreSQL] Error inesperado en el pool de conexiones:', err.message);

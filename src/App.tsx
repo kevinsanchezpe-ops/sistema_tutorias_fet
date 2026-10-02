@@ -125,6 +125,22 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser?.id]);
 
+  // Renovación deslizante de sesión (token 2h): refresca cada 90 min si hay sesión
+  useEffect(() => {
+    if (!currentUser) return;
+    const id = window.setInterval(async () => {
+      try {
+        const res = await ApiClient.refreshSession();
+        if (!res.success) {
+          handleLogout();
+        }
+      } catch {
+        /* offline: se reintenta en el siguiente ciclo */
+      }
+    }, 90 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [currentUser?.id]);
+
   // Handle Login success
   const handleLoginSuccess = (user: User) => {
     try {
@@ -142,8 +158,9 @@ export default function App() {
     setCurrentUser(user);
   };
 
-  // Handle Logout
+  // Handle Logout (limpia cookie HttpOnly en servidor + sesión local)
   const handleLogout = () => {
+    ApiClient.logout().catch(() => {});
     try {
       localStorage.clear(); // Limpiar de raíz todo token, usuario y clave temporal
     } catch (e) {}

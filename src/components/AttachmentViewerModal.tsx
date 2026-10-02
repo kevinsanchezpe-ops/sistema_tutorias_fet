@@ -12,7 +12,9 @@ export const AttachmentViewerModal: React.FC<AttachmentViewerModalProps> = ({
   fileUrl,
   onClose
 }) => {
-  const isImage = /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(fileName) || fileUrl.startsWith('data:image/');
+  // SVG excluido del preview: un SVG data-URL renderizado puede ejecutar JS (XSS)
+  const isSvg = /\.svg$/i.test(fileName) || fileUrl.startsWith('data:image/svg');
+  const isImage = !isSvg && (/\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(fileName) || fileUrl.startsWith('data:image/'));
   const isPdf = /\.pdf$/i.test(fileName) || fileUrl.startsWith('data:application/pdf');
 
   return (
@@ -75,6 +77,7 @@ export const AttachmentViewerModal: React.FC<AttachmentViewerModalProps> = ({
             <iframe
               src={fileUrl}
               title={fileName}
+              sandbox=""
               className="w-full h-[70vh] rounded-lg border border-stone-200 bg-white shadow-xs"
             />
           ) : (

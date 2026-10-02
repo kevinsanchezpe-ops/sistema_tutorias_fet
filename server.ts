@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import cors from 'cors';
@@ -17,7 +18,8 @@ import {
   verifyTokenMiddleware,
   requireAuth,
   requireRole,
-  AuthenticatedRequest
+  AuthenticatedRequest,
+  AUTH_COOKIE_MAX_AGE
 } from './src/core/infrastructure/security/auth-security';
 import { emailService } from './src/core/infrastructure/email/email-service';
 
@@ -25,21 +27,76 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  // 1. Security Headers with Helmet
+  // Validación dura de secretos en producción
+  if (process.env.NODE_ENV === 'production') {
+    const jwt = process.env.JWT_SECRET || '';
+    const db = process.env.DATABASE_URL || '';
+    if (jwt.length < 32 || /secret|change|example|test/i.test(jwt)) {
+      throw new Error('JWT_SECRET inseguro o ausente en producción. Genera uno de 32+ caracteres.');
+    }
+    if (!db || /TU_PASSWORD_AQUI|localhost/.test(db)) {
+      console.warn('⚠️ [Config] DATABASE_URL parece de desarrollo. Usa una URL gestionada con SSL en producción.');
+    }
+  }
+
+  // 0. Trust proxy (Render/Railway/Nginx) para IP real y rate-limit correcto
+  app.set('trust proxy', 1);
+
+  // Adjuntos en disco (no base64 en PG): carpeta pública /uploads
+  const uploadsDir = path.join(process.cwd(), 'uploads');
+  try {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  } catch {}
+  app.use('/uploads', express.static(uploadsDir, { maxAge: '7d', dotfiles: 'deny' }));
+  const saveAttachmentToDisk = (originalName: string, dataUrl: string): string => {
+    const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+    const buf = Buffer.from(base64, 'base64');
+    if (buf.length > 8 * 1024 * 1024) throw new Error('El archivo no debe exceder los 8 MB.');
+    const ext = originalName.trim().toLowerCase().split('.').pop() || 'bin';
+    const fname = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}.${ext}`;
+    fs.writeFileSync(path.join(uploadsDir, fname), buf);
+    return `/uploads/${fname}`;
+  };
+
+  // 1. Security Headers with Helmet (CSP activa en producción)
+  const isProd = process.env.NODE_ENV === 'production';
   app.use(
     helmet({
-      contentSecurityPolicy: false, // Permitir Vite scripts e inline styles en dev/preview
+      contentSecurityPolicy: isProd
+        ? {
+            directives: {
+              defaultSrc: ["'self'"],
+              scriptSrc: ["'self'"],
+              styleSrc: ["'self'", "'unsafe-inline'"],
+              imgSrc: ["'self'", 'data:', 'blob:'],
+              connectSrc: ["'self'"],
+              frameSrc: ["'self'", 'https://meet.google.com'],
+              objectSrc: ["'none'"],
+              baseUri: ["'self'"]
+            }
+          }
+        : false,
       crossOriginEmbedderPolicy: false
     })
   );
 
-  // 2. CORS configuration
-  app.use(cors());
+  // 2. CORS restringido por origen + cookies
+  const allowedOrigins = [process.env.FRONTEND_URL, 'http://localhost:3000', 'http://localhost:5173'].filter(Boolean) as string[];
+  app.use(
+    cors({
+      origin: (origin, cb) => {
+        if (!origin) return cb(null, true); // curl / mismo origen / healthchecks
+        if (allowedOrigins.includes(origin)) return cb(null, true);
+        return cb(new Error('CORS_BLOCKED'));
+      },
+      credentials: true
+    })
+  );
 
-  // 3. Body parser
+  // 3. Body parser (límite para adjuntos base64 de hasta 8MB + overhead)
   app.use(express.json({ limit: '10mb' }));
 
-  // 4. Rate Limiting for Auth Endpoints (Prevents brute force attacks)
+  // 4. Rate Limiting: auth estricto + global API anti-abuso
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutos
     max: 50, // máximo 50 intentos por ventana por IP
@@ -53,6 +110,64 @@ async function startServer() {
       }
     }
   });
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' }
+    }
+  });
+  app.use('/api/', apiLimiter);
+
+  // Helpers: cookies HttpOnly (sin dependencia extra) + validación de borde
+  const setAuthCookie = (res: express.Response, token: string) => {
+    const secure = process.env.NODE_ENV === 'production';
+    res.appendHeader(
+      'Set-Cookie',
+      `gt_token=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${AUTH_COOKIE_MAX_AGE}; SameSite=Lax${secure ? '; Secure' : ''}`
+    );
+  };
+  // Anti-fuerza-bruta en reset-password: 5 fallos por usuario => bloqueo 15 min
+  const resetAttempts = new Map<string, { count: number; until: number }>();
+  const RESET_MAX_FAILS = 5;
+  const RESET_LOCK_MS = 15 * 60 * 1000;
+  const clearAuthCookie = (res: express.Response) => {
+    const secure = process.env.NODE_ENV === 'production';
+    res.appendHeader(
+      'Set-Cookie',
+      `gt_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax${secure ? '; Secure' : ''}`
+    );
+  };
+  const isValidEmail = (v: unknown): v is string =>
+    typeof v === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim()) && v.trim().length <= 160;
+  const cleanStr = (v: unknown, max = 500): string =>
+    typeof v === 'string' ? v.trim().slice(0, max) : '';
+  const ALLOWED_ATTACHMENT_MIMES = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'image/png',
+    'image/jpeg',
+    'image/gif',
+    'image/webp'
+  ];
+  const ALLOWED_ATTACHMENT_EXTS = ['pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg', 'gif', 'webp'];
+  function validateAttachment(name: unknown, dataUrl: unknown): string | null {
+    if (!name && !dataUrl) return null; // opcional
+    if (typeof name !== 'string' || typeof dataUrl !== 'string' || !name.trim() || !dataUrl.trim()) {
+      return 'Adjunto inválido.';
+    }
+    const ext = name.trim().toLowerCase().split('.').pop() || '';
+    if (!ALLOWED_ATTACHMENT_EXTS.includes(ext)) return 'Tipo de archivo no permitido.';
+    const m = dataUrl.match(/^data:([^;,]+)(;base64)?,/);
+    if (!m || !ALLOWED_ATTACHMENT_MIMES.includes(m[1])) return 'Tipo de archivo no permitido.';
+    const approxBytes = Math.floor((dataUrl.length * 3) / 4);
+    if (approxBytes > 8 * 1024 * 1024) return 'El archivo no debe exceder los 8 MB.';
+    return null;
+  }
 
   // 5. JWT token decoder middleware
   app.use(verifyTokenMiddleware as any);
@@ -113,6 +228,12 @@ async function startServer() {
   app.post('/api/auth/login', authLimiter, requireDb, async (req: AuthenticatedRequest, res) => {
     try {
       const { username, password, role } = req.body;
+      if (typeof username !== 'string' || username.trim().length < 3 || username.trim().length > 80) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Usuario inválido.' } });
+      }
+      if (typeof password !== 'string' || password.length < 6 || password.length > 100) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Credenciales inválidas.' } });
+      }
       const user = await pgRepo.login(username, password, role);
       if (!user) {
         return res.status(400).json({
@@ -138,12 +259,11 @@ async function startServer() {
       });
 
       await pgRepo.logBinnacle('Inicio de Sesión', `Usuario ${user.fullName} (${user.role}) inició sesión con JWT`, user.username);
+      setAuthCookie(res, token);
+      // Sesión solo-cookie: el token ya no se expone en el cuerpo JSON
       res.json({
         success: true,
-        data: {
-          ...user,
-          token
-        },
+        data: user,
         message: `Bienvenido de vuelta, ${user.fullName}`
       });
     } catch (err: any) {
@@ -153,6 +273,19 @@ async function startServer() {
 
   app.post('/api/auth/register', authLimiter, requireDb, async (req, res) => {
     try {
+      const b = req.body || {};
+      if (!isValidEmail(b.email)) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Correo institucional inválido.' } });
+      }
+      if (typeof b.username !== 'string' || b.username.trim().length < 3 || b.username.trim().length > 40) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Nombre de usuario inválido.' } });
+      }
+      if (typeof b.fullName !== 'string' || b.fullName.trim().length < 5 || b.fullName.trim().length > 120) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Nombre completo inválido.' } });
+      }
+      if (typeof b.password !== 'string' || b.password.length < 6 || b.password.length > 100) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'La contraseña debe tener entre 6 y 100 caracteres.' } });
+      }
       const user = await pgRepo.registerStudent(req.body);
       const token = generateAuthToken({
         userId: user.id,
@@ -161,12 +294,11 @@ async function startServer() {
         role: user.role,
         fullName: user.fullName
       });
+      setAuthCookie(res, token);
+      // Sesión solo-cookie: el token ya no se expone en el cuerpo JSON
       res.json({
         success: true,
-        data: {
-          ...user,
-          token
-        },
+        data: user,
         message: 'Estudiante registrado exitosamente con credenciales seguras.'
       });
     } catch (err: any) {
@@ -226,9 +358,11 @@ async function startServer() {
         fullName: user.fullName,
         mustChangePassword: false
       });
+      setAuthCookie(res, token);
+      // Sesión solo-cookie: el token ya no se expone en el cuerpo JSON
       res.json({
         success: true,
-        data: { ...user, token },
+        data: user,
         message: 'Contraseña actualizada correctamente.'
       });
     } catch (err: any) {
@@ -248,6 +382,34 @@ async function startServer() {
       res.json({ success: true, data: user });
     } catch (err: any) {
       res.status(500).json({ success: false, error: { code: 'AUTH_ERROR', message: err.message } });
+    }
+  });
+
+  app.post('/api/auth/logout', (req, res) => {
+    clearAuthCookie(res);
+    res.json({ success: true, message: 'Sesión cerrada.' });
+  });
+
+  // Refresh deslizante: con token aún válido se emite uno nuevo de 2h
+  app.post('/api/auth/refresh', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = await pgRepo.getUserById(req.user!.userId);
+      if (!user || !user.isActive) {
+        clearAuthCookie(res);
+        return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Sesión no válida.' } });
+      }
+      const token = generateAuthToken({
+        userId: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        fullName: user.fullName,
+        mustChangePassword: user.mustChangePassword === true
+      });
+      setAuthCookie(res, token);
+      res.json({ success: true, data: user, message: 'Sesión renovada.' });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: { code: 'REFRESH_ERROR', message: err.message } });
     }
   });
 
@@ -286,6 +448,11 @@ async function startServer() {
   app.post('/api/auth/reset-password', authLimiter, requireDb, async (req, res) => {
     try {
       const { token, newPassword } = req.body;
+      const ipKey = `ip:${req.ip || 'unknown'}`;
+      const attempt = resetAttempts.get(ipKey);
+      if (attempt && attempt.until > Date.now()) {
+        return res.status(429).json({ success: false, error: { code: 'RESET_LOCKED', message: 'Demasiados intentos fallidos. Intenta de nuevo en 15 minutos.' } });
+      }
       if (!token || !token.trim()) {
         return res.status(400).json({ success: false, error: { code: 'TOKEN_REQUIRED', message: 'El código de seguridad es requerido.' } });
       }
@@ -295,9 +462,15 @@ async function startServer() {
 
       const result = await pgRepo.resetPasswordWithToken(token.trim(), newPassword.trim());
       if (!result.success) {
+        const prev = resetAttempts.get(ipKey) || { count: 0, until: 0 };
+        const count = prev.count + 1;
+        resetAttempts.set(ipKey, count >= RESET_MAX_FAILS
+          ? { count, until: Date.now() + RESET_LOCK_MS }
+          : { count, until: 0 });
         return res.status(400).json({ success: false, error: { code: 'RESET_FAILED', message: result.message } });
       }
 
+      resetAttempts.delete(ipKey);
       res.json({ success: true, message: result.message });
     } catch (err: any) {
       res.status(500).json({ success: false, error: { code: 'RESET_PASSWORD_ERROR', message: err.message } });
@@ -305,7 +478,7 @@ async function startServer() {
   });
 
   // --- TUTORINGS ---
-  app.get('/api/tutorings', requireDb, async (req, res) => {
+  app.get('/api/tutorings', requireDb, requireAuth, async (req, res) => {
     try {
       const tutorings = await pgRepo.getTutorings();
       res.json({ success: true, data: tutorings });
@@ -316,7 +489,27 @@ async function startServer() {
 
   app.post('/api/tutorings', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const dto = req.body;
+      let dto = req.body;
+      const subject = cleanStr(dto?.subject, 70);
+      const details = cleanStr(dto?.details, 2000);
+      if (subject.length < 3) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Tema o asunto inválido.' } });
+      }
+      if (details.length < 5) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Descripción inválida.' } });
+      }
+      const attachErr = validateAttachment(dto?.attachmentName, dto?.attachmentUrl);
+      if (attachErr) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: attachErr } });
+      }
+      // Persistir adjunto en disco y guardar solo la ruta (compat: data-URLs antiguas siguen visibles)
+      if (typeof dto?.attachmentUrl === 'string' && dto.attachmentUrl.startsWith('data:')) {
+        try {
+          dto = { ...dto, attachmentUrl: saveAttachmentToDisk(String(dto.attachmentName), dto.attachmentUrl) };
+        } catch (e: any) {
+          return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: e?.message || 'Adjunto inválido.' } });
+        }
+      }
       const user = await pgRepo.getUserById(req.user!.userId);
       if (!user) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario estudiante requerido.' } });
@@ -331,11 +524,15 @@ async function startServer() {
   app.patch('/api/tutorings/:id/approve', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const { space } = req.body;
+      const cleanSpace = cleanStr(space, 500);
+      if (!cleanSpace) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Espacio o enlace requerido.' } });
+      }
       const approver = await pgRepo.getUserById(req.user!.userId);
       if (!approver || (approver.role !== UserRole.ADMIN && approver.role !== UserRole.TEACHER)) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Permiso de administrador o docente requerido.' } });
       }
-      const tutoring = await pgRepo.approveTutoring(req.params.id, space, approver);
+      const tutoring = await pgRepo.approveTutoring(req.params.id, cleanSpace, approver);
       res.json({ success: true, data: tutoring, message: 'Tutoría aprobada y programada correctamente.' });
     } catch (err: any) {
       res.status(400).json({ success: false, error: { code: 'APPROVE_ERROR', message: err.message } });
@@ -644,7 +841,7 @@ async function startServer() {
   });
 
   // --- USERS ---
-  app.get('/api/users', requireDb, asyncHandler(async (req, res) => {
+  app.get('/api/users', requireDb, requireAuth, asyncHandler(async (req, res) => {
     res.json({ success: true, data: await pgRepo.getUsers() });
   }));
 
@@ -691,8 +888,11 @@ async function startServer() {
   });
 
   // --- NOTIFICATIONS ---
-  app.get('/api/notifications/:userId', requireDb, requireAuth, async (req, res) => {
+  app.get('/api/notifications/:userId', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      if (req.user!.userId !== req.params.userId && req.user!.role !== UserRole.ADMIN) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'No puedes leer notificaciones de otro usuario.' } });
+      }
       const list = await pgRepo.getNotifications(req.params.userId);
       res.json({ success: true, data: list });
     } catch (err: any) {
@@ -709,8 +909,11 @@ async function startServer() {
     }
   });
 
-  app.post('/api/notifications/read-all/:userId', requireDb, requireAuth, async (req, res) => {
+  app.post('/api/notifications/read-all/:userId', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      if (req.user!.userId !== req.params.userId && req.user!.role !== UserRole.ADMIN) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'No puedes modificar notificaciones de otro usuario.' } });
+      }
       await pgRepo.markAllNotificationsRead(req.params.userId);
       res.json({ success: true });
     } catch (err: any) {
@@ -719,7 +922,7 @@ async function startServer() {
   });
 
   // --- BINNACLE ---
-  app.get('/api/binnacle', requireDb, asyncHandler(async (req, res) => {
+  app.get('/api/binnacle', requireDb, requireAuth, asyncHandler(async (req, res) => {
     res.json({ success: true, data: await pgRepo.getBinnacle() });
   }));
 
@@ -743,7 +946,7 @@ async function startServer() {
   });
 
   // --- ANALYTICS ---
-  app.get('/api/analytics', requireDb, async (req, res) => {
+  app.get('/api/analytics', requireDb, requireAuth, async (req, res) => {
     try {
       const data = await pgRepo.getAnalytics();
       res.json({ success: true, data });
@@ -752,8 +955,14 @@ async function startServer() {
     }
   });
 
-  // --- TESTS ---
-  app.get('/api/tests', asyncHandler(async (req, res) => {
+  // --- TESTS (protegido en producción: solo ADMIN) ---
+  const testsGuard = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (process.env.NODE_ENV === 'production') {
+      return (requireRole(UserRole.ADMIN) as any)(req, res, next);
+    }
+    return next();
+  };
+  app.get('/api/tests', testsGuard, asyncHandler(async (req, res) => {
     const inMemory = runBusinessRulesTests();
     let postgres: { total: number; passed: number; results: { name: string; success: boolean; message: string }[] } = {
       total: 0,

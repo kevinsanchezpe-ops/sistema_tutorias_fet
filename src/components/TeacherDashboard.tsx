@@ -202,7 +202,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     try {
       const records = Object.entries(attendanceMap).map(([astId, hasAttended]) => ({
         assistantId: astId,
-        attended: hasAttended
+        hasAttended: Boolean(hasAttended)
       }));
       await ApiClient.recordAssistance(tutoringId, records, currentUser);
       const res = await ApiClient.finishTutoring(tutoringId, currentUser, teacherComment);
@@ -223,7 +223,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     try {
       const records = Object.entries(attendanceMap).map(([astId, hasAttended]) => ({
         assistantId: astId,
-        attended: hasAttended
+        hasAttended: Boolean(hasAttended)
       }));
       const res = await ApiClient.recordAssistance(activeTutoring.id, records, currentUser);
       if (res.success) {
@@ -276,9 +276,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       ? teacherCatalog
       : teacherCatalog.filter((s) => String(s.semester) === addSlotSemesterFilter);
 
-  const teacherCatalogSemesters = Array.from(
-    new Set(teacherCatalog.map((s) => s.semester).filter((sem): sem is number => Boolean(sem)))
-  ).sort((a, b) => a - b);
+  const teacherCatalogSemesters = Array.from<number>(
+    new Set(teacherCatalog.map((s) => s.semester).filter((sem): sem is number => typeof sem === 'number'))
+  ).sort((a: number, b: number) => a - b);
 
   const handleAddSlotSemesterChange = (semester: string) => {
     setAddSlotSemesterFilter(semester);

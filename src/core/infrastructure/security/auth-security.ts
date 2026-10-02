@@ -8,7 +8,9 @@ const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET no está definido. Configúralo en tu archivo .env antes de iniciar el servidor.');
 }
-const JWT_EXPIRATION = '12h';
+// Sesión corta (2h) + refresh deslizante vía /api/auth/refresh
+const JWT_EXPIRATION = '2h';
+export const AUTH_COOKIE_MAX_AGE = 2 * 3600;
 
 export interface AuthTokenPayload {
   userId: string;
@@ -59,10 +61,33 @@ export function generateAuthToken(payload: AuthTokenPayload): string {
  * Si no hay token pero viene petitionerId / approverId en body (modo transición suave),
  * permite procesarlo y advertir, asegurando retrocompatibilidad total sin romper llamadas existentes.
  */
+function getTokenFromCookies(req: Request): string | null {
+  const raw = (req.headers as any)?.cookie;
+  if (!raw || typeof raw !== 'string') return null;
+  const parts = raw.split(';');
+  for (const p of parts) {
+    const idx = p.indexOf('=');
+    if (idx < 0) continue;
+    const k = p.slice(0, idx).trim();
+    const v = p.slice(idx + 1).trim();
+    if (k === 'gt_token' && v) {
+      try {
+        return decodeURIComponent(v);
+      } catch {
+        return v;
+      }
+    }
+  }
+  return null;
+}
+
 export function verifyTokenMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
+  const cookieToken = getTokenFromCookies(req);
+  const token = authHeader && authHeader.startsWith('Bearer ')
+    ? authHeader.substring(7)
+    : cookieToken;
+  if (token) {
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as AuthTokenPayload;
       req.user = decoded;
@@ -75,7 +100,7 @@ export function verifyTokenMiddleware(req: AuthenticatedRequest, res: Response, 
     }
   }
 
-  // Si no viene Authorization header, continúa pero req.user queda indefinido
+  // Si no viene token (header ni cookie), continúa pero req.user queda indefinido
   next();
 }
 

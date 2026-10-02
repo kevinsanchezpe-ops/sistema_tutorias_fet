@@ -40,6 +40,7 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<ApiR
     }
 
     const res = await fetch(`${BASE_URL}${endpoint}`, {
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         ...authHeaders,
@@ -88,11 +89,8 @@ export class ApiClient {
       body: JSON.stringify({ username: identity, password, role })
     });
     if (res.success && res.data) {
-      if (res.data.token) {
-        try {
-          localStorage.setItem('gt_auth_token', res.data.token);
-        } catch {}
-      }
+      // Solo-cookie: no se persiste token en localStorage; la cookie HttpOnly la maneja el navegador.
+      // Se conserva lectura legacy de gt_auth_token para sesiones antiguas hasta que expiren.
       ApiClient.notifyListeners();
     }
     return res;
@@ -104,11 +102,7 @@ export class ApiClient {
       body: JSON.stringify(dto)
     });
     if (res.success && res.data) {
-      if (res.data.token) {
-        try {
-          localStorage.setItem('gt_auth_token', res.data.token);
-        } catch {}
-      }
+      // Solo-cookie: no se persiste token en localStorage.
       ApiClient.notifyListeners();
     }
     return res;
@@ -127,6 +121,17 @@ export class ApiClient {
     return res;
   }
 
+  public static async logout(): Promise<void> {
+    try {
+      await request('/auth/logout', { method: 'POST', body: JSON.stringify({}) });
+    } catch {}
+    try {
+      localStorage.removeItem('gt_auth_token');
+      localStorage.removeItem('gt_auth_user');
+    } catch {}
+    ApiClient.notifyListeners();
+  }
+
   public static async changePassword(
     newPassword: string,
     confirmPassword?: string
@@ -136,13 +141,18 @@ export class ApiClient {
       body: JSON.stringify({ newPassword, confirmPassword })
     });
     if (res.success && res.data) {
-      if (res.data.token) {
-        try {
-          localStorage.setItem('gt_auth_token', res.data.token);
-        } catch {}
-      }
+      // Solo-cookie: no se persiste token en localStorage.
       ApiClient.notifyListeners();
     }
+    return res;
+  }
+
+  public static async refreshSession(): Promise<ApiResponse<User>> {
+    const res = await request<User>('/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    if (res.success) ApiClient.notifyListeners();
     return res;
   }
 
@@ -160,7 +170,7 @@ export class ApiClient {
     });
   }
 
-  public static logout(): void {
+  public static clearLocalSession(): void {
     try {
       localStorage.removeItem('gt_auth_token');
       localStorage.removeItem('gt_auth_user');
