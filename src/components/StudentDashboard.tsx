@@ -367,13 +367,20 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   // Total student tutorings
   const totalMyTutorings = myRequestedTutorings.length + myGuestTutorings.length;
 
-  // Upcoming peer tutorings that student can join
-  const peerUpcomingTutorings = tutorings.filter(
-    (t) =>
-      t.petitionerStudentId !== currentUser.id &&
-      (t.status === TutoringStatus.PENDING || t.status === TutoringStatus.APPROVED) &&
-      !(t.assistants || []).some((a) => a.studentId === currentUser.id)
-  );
+  // Upcoming peer tutorings that student can join:
+  // solo de su misma carrera y su mismo semestre (según la materia de la tutoría).
+  // Ej: una tutoría de POO creada por un estudiante de semestre 2 no le aparece a uno de semestre 3.
+  const mySemester = currentUser.semester ? Number(currentUser.semester) : null;
+  const subjectById = new Map<string, SubjectCourse>(subjects.map((s) => [s.id, s]));
+  const peerUpcomingTutorings = tutorings.filter((t) => {
+    if (t.petitionerStudentId === currentUser.id) return false;
+    if (!(t.status === TutoringStatus.PENDING || t.status === TutoringStatus.APPROVED)) return false;
+    if ((t.assistants || []).some((a) => a.studentId === currentUser.id)) return false;
+    const subj = t.subjectCourseId ? subjectById.get(t.subjectCourseId) : undefined;
+    if (currentUser.careerId && subj?.careerId && subj.careerId !== currentUser.careerId) return false;
+    if (mySemester && subj?.semester && Number(subj.semester) !== mySemester) return false;
+    return true;
+  });
 
   // Format Date & Time helper
   const formatTutoringDateTime = (
@@ -874,7 +881,17 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                           </div>
                         </div>
 
-                        <div className="pt-2 flex justify-end">
+                        <div className="pt-2 flex justify-end gap-2">
+                          <button
+                            type="button"
+                            id={`btn-view-peer-tutoring-${tut.id}`}
+                            onClick={() => setSelectedDetailTutoring(tut)}
+                            className="h-9 px-4 rounded-xl bg-white text-slate-700 hover:bg-stone-100 border border-stone-200 text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                            title="Ver detalle antes de unirme"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>Ver Detalle</span>
+                          </button>
                           <button
                             type="button"
                             id={`btn-join-tutoring-${tut.id}`}
@@ -1080,25 +1097,35 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                                 {/* Acciones */}
                                 <td className="px-4 py-3.5 text-right align-middle">
                                   <div className="flex items-center justify-end gap-2">
-                                    {/* Botón Calificar si ya completó */}
-                                    {tut.status === TutoringStatus.COMPLETED && tut.score === 0 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => onOpenEvaluation(tut)}
-                                        className="h-8 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-2xs flex items-center gap-1 transition-colors cursor-pointer"
-                                      >
-                                        <Star className="w-3 h-3 fill-white" />
-                                        <span>Calificar</span>
-                                      </button>
-                                    )}
+                                    {(() => {
+                                      const myRating = (tut.ratings || []).find((r) => r.studentId === currentUser.id);
+                                      return (
+                                        <>
+                                          {/* Botón Calificar si completó y aún no califiqué */}
+                                          {tut.status === TutoringStatus.COMPLETED && !myRating && (
+                                            <button
+                                              type="button"
+                                              onClick={() => onOpenEvaluation(tut)}
+                                              className="h-8 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-2xs flex items-center gap-1 transition-colors cursor-pointer"
+                                            >
+                                              <Star className="w-3 h-3 fill-white" />
+                                              <span>Calificar</span>
+                                            </button>
+                                          )}
 
-                                    {/* Puntuación si ya evaluó */}
-                                    {tut.status === TutoringStatus.COMPLETED && tut.score > 0 && (
-                                      <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg text-xs font-bold">
-                                        <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
-                                        {tut.score}★
-                                      </span>
-                                    )}
+                                          {/* Mi puntuación si ya evalué */}
+                                          {tut.status === TutoringStatus.COMPLETED && myRating && (
+                                            <span
+                                              className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg text-xs font-bold"
+                                              title={myRating.studentComment || ''}
+                                            >
+                                              <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
+                                              {myRating.score}★
+                                            </span>
+                                          )}
+                                        </>
+                                      );
+                                    })()}
 
                                     {/* Botón Cancelar si está pendiente */}
                                     {tut.status === TutoringStatus.PENDING && (
@@ -1159,6 +1186,32 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                             </div>
                             <div className="text-stone-600">Docente: <strong>Prof. {g.teacherName}</strong> | {g.subjectCourseName}</div>
                             <div className="text-stone-500">Fecha: {dt.formattedDate} • {dt.timeDisplay}</div>
+                            {(() => {
+                              const myRating = (g.ratings || []).find((r) => r.studentId === currentUser.id);
+                              return (
+                                <>
+                                  {g.status === TutoringStatus.COMPLETED && !myRating && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onOpenEvaluation(g)}
+                                      className="mt-1 h-8 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-2xs flex items-center gap-1 transition-colors cursor-pointer w-fit"
+                                    >
+                                      <Star className="w-3 h-3 fill-white" />
+                                      <span>Calificar</span>
+                                    </button>
+                                  )}
+                                  {g.status === TutoringStatus.COMPLETED && myRating && (
+                                    <span
+                                      className="mt-1 inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg text-xs font-bold w-fit"
+                                      title={myRating.studentComment || ''}
+                                    >
+                                      <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
+                                      Mi calificación: {myRating.score}★
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            })()}
                             <div className="pt-2 flex items-center justify-between border-t border-stone-100">
                               <span className="text-stone-500">
                                 {g.space && g.space.startsWith('http') ? (

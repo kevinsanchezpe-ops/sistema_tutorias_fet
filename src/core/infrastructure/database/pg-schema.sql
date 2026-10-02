@@ -93,6 +93,8 @@ CREATE TABLE IF NOT EXISTS tutorings (
   modality INT NOT NULL,
   status INT NOT NULL,
   space TEXT DEFAULT '',
+  block TEXT DEFAULT '',
+  cancel_reason TEXT DEFAULT '',
   subject_course_id VARCHAR(100) NOT NULL,
   subject_course_name VARCHAR(150) NOT NULL,
   teacher_id VARCHAR(100) NOT NULL,
@@ -124,6 +126,17 @@ CREATE TABLE IF NOT EXISTS tutoring_assistants (
   is_petitioner BOOLEAN DEFAULT FALSE,
   has_attended BOOLEAN DEFAULT FALSE,
   joined_at VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tutoring_ratings (
+  id VARCHAR(100) PRIMARY KEY,
+  tutoring_id VARCHAR(100) NOT NULL REFERENCES tutorings(id) ON DELETE CASCADE,
+  student_id VARCHAR(100) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  student_name VARCHAR(150) NOT NULL,
+  score INT NOT NULL,
+  student_comment TEXT DEFAULT '',
+  created_at VARCHAR(50) NOT NULL,
+  UNIQUE (tutoring_id, student_id)
 );
 
 CREATE TABLE IF NOT EXISTS notifications (

@@ -56,6 +56,17 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
         [c.id, c.name, c.codePrefix, c.numberOfSemesters]
       );
     }
+    // Soporte para bases creadas antes de los campos block / cancel_reason en tutorings
+    await pool.query(`ALTER TABLE tutorings ADD COLUMN IF NOT EXISTS block TEXT DEFAULT '';`);
+    await pool.query(`ALTER TABLE tutorings ADD COLUMN IF NOT EXISTS cancel_reason TEXT DEFAULT '';`);
+    // Migración: calificaciones históricas (score único) a ratings por participante
+    await pool.query(
+      `INSERT INTO tutoring_ratings (id, tutoring_id, student_id, student_name, score, student_comment, created_at)
+       SELECT 'rate-seed-' || t.id, t.id, t.petitioner_student_id, t.petitioner_student_name, t.score, COALESCE(t.student_comment, ''), t.created_at
+       FROM tutorings t
+       WHERE t.score > 0
+         AND NOT EXISTS (SELECT 1 FROM tutoring_ratings r WHERE r.tutoring_id = t.id AND r.student_id = t.petitioner_student_id);`
+    );
     // Corrección: quitar sufijo "(FET)" si quedó de versiones previas
     await pool.query(`UPDATE careers SET name = 'Ingeniería de Software' WHERE id = 'car-fet-software';`);
     await pool.query(`UPDATE careers SET name = REPLACE(name, ' (FET)', '') WHERE name LIKE '% (FET)%';`);
@@ -162,8 +173,8 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
       // Seed Tutorings
       for (const t of INITIAL_TUTORINGS) {
         await pool.query(
-          `INSERT INTO tutorings (id, code, subject, details, reserv_date, request_date, modality, status, space, subject_course_id, subject_course_name, teacher_id, teacher_name, petitioner_student_id, petitioner_student_name, schedule_slot_id, schedule_label, approved_by_id, approved_by_name, start_time, finish_time, score, student_comment, teacher_comment, attachment_name, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+          `INSERT INTO tutorings (id, code, subject, details, reserv_date, request_date, modality, status, space, block, subject_course_id, subject_course_name, teacher_id, teacher_name, petitioner_student_id, petitioner_student_name, schedule_slot_id, schedule_label, approved_by_id, approved_by_name, start_time, finish_time, score, student_comment, teacher_comment, attachment_name, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
            ON CONFLICT (id) DO NOTHING;`,
           [
             t.id,
@@ -175,6 +186,7 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
             t.modality,
             t.status,
             t.space,
+            (t as any).block || '',
             t.subjectCourseId,
             t.subjectCourseName,
             t.teacherId,

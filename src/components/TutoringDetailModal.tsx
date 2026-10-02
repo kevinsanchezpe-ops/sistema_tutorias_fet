@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tutoring, TutoringModality, User, UserRole } from '../core/types';
+import { Tutoring, TutoringModality, TutoringStatus, User, UserRole } from '../core/types';
 import { StatusBadge } from './StatusBadge';
 import {
   X,
@@ -92,6 +92,16 @@ export const TutoringDetailModal: React.FC<TutoringDetailModalProps> = ({
               </p>
             )}
           </div>
+
+          {/* Motivo de cancelación */}
+          {tutoring.status === TutoringStatus.CANCELLED && tutoring.cancelReason && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800">
+              <span className="text-[10px] uppercase font-bold text-rose-500 tracking-wider block mb-1">
+                Motivo de cancelación
+              </span>
+              <span>{tutoring.cancelReason}</span>
+            </div>
+          )}
 
           {/* Archivo Adjunto */}
           {tutoring.attachmentName && (
@@ -243,7 +253,9 @@ export const TutoringDetailModal: React.FC<TutoringDetailModalProps> = ({
                 )}
               </span>
               <span className="text-[11px] text-stone-500 font-medium">
-                {tutoring.space ? `Asignado: ${tutoring.space}` : 'Pendiente de confirmación'}
+                {tutoring.space
+                  ? `Asignado: ${tutoring.space}${tutoring.modality === TutoringModality.PRESENCIAL && tutoring.block ? ` (Bloque ${tutoring.block})` : ''}`
+                  : 'Pendiente de confirmación'}
               </span>
             </div>
 
@@ -293,15 +305,30 @@ export const TutoringDetailModal: React.FC<TutoringDetailModalProps> = ({
           )}
 
           {/* Reseña / Calificación si existe */}
-          {tutoring.score && (
+          {((tutoring.ratings && tutoring.ratings.length > 0) || tutoring.score > 0) && (
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5">
               <span className="text-[10px] uppercase font-bold text-amber-800 flex items-center gap-1">
                 <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
-                Evaluación del Estudiante ({tutoring.score} / 5 estrellas)
+                Evaluaciones de Participantes
+                {(tutoring.ratings || []).length > 0
+                  ? ` (promedio ${(tutoring.ratings!.reduce((s, r) => s + r.score, 0) / tutoring.ratings!.length).toFixed(1)} / 5)`
+                  : ` (${tutoring.score} / 5 estrellas)`}
               </span>
-              {tutoring.studentComment && (
-                <p className="text-xs text-amber-900 italic">"{tutoring.studentComment}"</p>
-              )}
+              {(tutoring.ratings && tutoring.ratings.length > 0
+                ? tutoring.ratings
+                : tutoring.studentComment
+                  ? [{ studentName: tutoring.petitionerStudentName, score: tutoring.score, studentComment: tutoring.studentComment }]
+                  : []
+              ).map((r: any, i: number) => (
+                <div key={i} className="bg-white/70 rounded-lg px-2.5 py-1.5 border border-amber-100">
+                  <span className="text-xs font-bold text-amber-900 block">
+                    {r.studentName} — {r.score}★
+                  </span>
+                  {r.studentComment && (
+                    <p className="text-xs text-amber-900 italic">"{r.studentComment}"</p>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -313,7 +340,7 @@ export const TutoringDetailModal: React.FC<TutoringDetailModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {currentUser.role === UserRole.STUDENT && tutoring.status === 2 && !tutoring.score && onOpenEvaluation && (
+            {currentUser.role === UserRole.STUDENT && tutoring.status === TutoringStatus.COMPLETED && !(tutoring.ratings || []).some((r) => r.studentId === currentUser.id) && onOpenEvaluation && (
               <button
                 type="button"
                 onClick={() => {

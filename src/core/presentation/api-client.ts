@@ -195,10 +195,10 @@ export class ApiClient {
     return res;
   }
 
-  public static async approveTutoring(tutoringId: string, space: string, approver: User): Promise<ApiResponse<Tutoring>> {
+  public static async approveTutoring(tutoringId: string, space: string, approver: User, block: string = ''): Promise<ApiResponse<Tutoring>> {
     const res = await request<Tutoring>(`/tutorings/${tutoringId}/approve`, {
       method: 'PATCH',
-      body: JSON.stringify({ space, approverId: approver.id })
+      body: JSON.stringify({ space, block, approverId: approver.id })
     });
     if (res.success) {
       ApiClient.notifyListeners();

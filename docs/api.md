@@ -65,7 +65,7 @@ En caso de error:
 - `PATCH /api/tutorings/:id/start`: Iniciar tutoría (Solo TEACHER asignado).
 - `PATCH /api/tutorings/:id/stop`: Finalizar tutoría (Solo TEACHER asignado).
 - `POST /api/tutorings/:id/assistance`: Registrar asistencia de los estudiantes (Solo TEACHER).
-- `POST /api/tutorings/:id/rate`: Calificar tutoría finalizada (Solo STUDENT solicitante).
+- `POST /api/tutorings/:id/rate`: Calificar tutoría finalizada (cualquier participante, una vez cada uno; `score` es el promedio).
   - *Body:* `{ score: 1..5, comment: string }`
 
 ---

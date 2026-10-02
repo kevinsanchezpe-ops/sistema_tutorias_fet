@@ -29,6 +29,22 @@ export class JoinTutoringUseCase {
       throw new BusinessRuleException('Ya se encuentra registrado como participante en esta tutoría.', 'ALREADY_JOINED');
     }
 
+    // Regla grupal: solo estudiantes de la misma carrera y semestre de la materia.
+    const subject = db.subjects.find((s) => s.id === tutoring.subjectCourseId);
+    if (subject?.careerId && student.careerId && subject.careerId !== student.careerId) {
+      throw new BusinessRuleException('Solo pueden unirse estudiantes de la misma carrera de la materia.', 'DIFFERENT_CAREER');
+    }
+    if (
+      subject?.semester &&
+      student.semester &&
+      Number(subject.semester) !== Number(student.semester)
+    ) {
+      throw new BusinessRuleException(
+        `Solo pueden unirse estudiantes del semestre ${subject.semester} de la materia.`,
+        'DIFFERENT_SEMESTER'
+      );
+    }
+
     // Regla de cupo: no superar la capacidad del aula en tutorías presenciales.
     if (tutoring.modality === TutoringModality.PRESENCIAL) {
       const section = db.sections.find((s) => s.name.toLowerCase() === tutoring.space.trim().toLowerCase());

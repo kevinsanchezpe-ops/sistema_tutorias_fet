@@ -76,25 +76,30 @@ export class ScheduleConflictService {
     scheduleSlotId: string,
     modality: TutoringModality,
     existingTutorings: Tutoring[],
-    excludeTutoringId?: string
+    excludeTutoringId?: string,
+    blockName?: string
   ): void {
     if (modality === TutoringModality.VIRTUAL) {
       return; // Enlaces virtuales no colisionan aulas físicas
     }
 
+    const normSpace = spaceName.trim().toLowerCase();
+    const normBlock = (blockName || '').trim().toLowerCase();
     const conflict = existingTutorings.find(
       (t) =>
         t.id !== excludeTutoringId &&
         t.modality === TutoringModality.PRESENCIAL &&
-        t.space.toLowerCase() === spaceName.trim().toLowerCase() &&
+        t.space.toLowerCase() === normSpace &&
+        (t.block || '').toLowerCase() === normBlock &&
         t.reservDate === reservDate &&
         t.scheduleSlotId === scheduleSlotId &&
         (t.status === TutoringStatus.APPROVED || t.status === TutoringStatus.IN_PROGRESS)
     );
 
     if (conflict) {
+      const where = normBlock ? `'${spaceName.trim()}' (Bloque ${blockName!.trim()})` : `'${spaceName.trim()}'`;
       throw new BusinessRuleException(
-        `La sección/aula '${spaceName}' ya está reservada para la tutoría ${conflict.code} en ese mismo horario.`,
+        `La sección/aula ${where} ya está reservada para la tutoría ${conflict.code} en ese mismo horario.`,
         'SECTION_NOT_AVAILABLE'
       );
     }

@@ -119,6 +119,16 @@ export interface TutoringAssistant {
   joinedAt: string;
 }
 
+export interface TutoringRating {
+  id: string;
+  tutoringId: string;
+  studentId: string;
+  studentName: string;
+  score: number; // 1 a 5
+  studentComment: string;
+  createdAt: string;
+}
+
 export interface Tutoring {
   id: string;
   code: string; // e.g. "#14", "#28"
@@ -128,7 +138,9 @@ export interface Tutoring {
   requestDate: string;
   modality: TutoringModality;
   status: TutoringStatus;
-  space: string; // Aula física o enlace virtual (o motivo de cancelación)
+  space: string; // Aula física o enlace virtual
+  block?: string; // Bloque/edificio del aula en presenciales (ej. "B2"), escrito manualmente
+  cancelReason?: string | null; // Motivo de cancelación/rechazo (no sobrescribe space)
   subjectCourseId: string;
   subjectCourseName: string;
   teacherId: string;
@@ -141,8 +153,9 @@ export interface Tutoring {
   approvedByName?: string;
   startTime?: string | null; // e.g. "24-01-2021 2:00pm"
   finishTime?: string | null; // e.g. "24-01-2021 3:15pm"
-  score: number; // 0 if not evaluated, 1 to 5 stars
-  studentComment?: string | null;
+  score: number; // Promedio de ratings (0 si nadie ha evaluado); se mantiene por compatibilidad
+  studentComment?: string | null; // Comentario más reciente (compatibilidad)
+  ratings?: TutoringRating[]; // Calificaciones por participante
   teacherComment?: string | null;
   attachmentName?: string | null;
   attachmentUrl?: string | null;

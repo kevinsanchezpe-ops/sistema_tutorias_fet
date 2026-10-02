@@ -5,7 +5,8 @@ import { Tutoring, TutoringModality, TutoringStatus, User, UserRole } from '../.
 
 export interface ApproveTutoringDto {
   tutoringId: string;
-  space: string; // Aula física (e.g. "Laboratorio 1") o Enlace URL (e.g. "https://meet.google.com/xyz")
+  space: string; // Aula física escrita manualmente (e.g. "Aula 25") o Enlace URL (e.g. "https://meet.google.com/xyz")
+  block?: string; // Bloque/edificio escrito manualmente en presenciales (e.g. "B2")
 }
 
 export class ApproveTutoringUseCase {
@@ -36,7 +37,15 @@ export class ApproveTutoringUseCase {
       );
     }
 
-    // Si es presencial, validar que el aula no esté ocupada en la misma fecha y bloque horario
+    const block = (dto.block || '').trim();
+    if (tutoring.modality === TutoringModality.PRESENCIAL && block.length === 0) {
+      throw new BusinessRuleException(
+        'Debe ingresar el bloque/edificio del aula para la tutoría presencial.',
+        'BLOCK_REQUIRED'
+      );
+    }
+
+    // Si es presencial, validar que el aula + bloque no esté ocupada en la misma fecha y horario
     if (tutoring.modality === TutoringModality.PRESENCIAL) {
       ScheduleConflictService.validateSectionState(
         dto.space.trim(),
@@ -44,7 +53,8 @@ export class ApproveTutoringUseCase {
         tutoring.scheduleSlotId,
         tutoring.modality,
         db.tutorings,
-        tutoring.id
+        tutoring.id,
+        block
       );
 
       // Regla de cupo: la sección asignada debe tener capacidad para los participantes ya inscritos.
@@ -59,15 +69,21 @@ export class ApproveTutoringUseCase {
 
     tutoring.status = TutoringStatus.APPROVED;
     tutoring.space = dto.space.trim();
+    tutoring.block = tutoring.modality === TutoringModality.PRESENCIAL ? block : '';
     tutoring.approvedById = approver.id;
     tutoring.approvedByName = approver.alias || approver.fullName;
 
     const approverRoleLabel = approver.role === UserRole.ADMIN ? 'Administrador' : 'Docente';
 
+    const placeLabel =
+      tutoring.modality === TutoringModality.PRESENCIAL && tutoring.block
+        ? `${tutoring.space} (Bloque ${tutoring.block})`
+        : tutoring.space;
+
     // Bitácora
     db.logBinnacle(
       'Aprobación',
-      `${approverRoleLabel} ${approver.username} aprobó la tutoría ${tutoring.code} asignando '${tutoring.space}'`,
+      `${approverRoleLabel} ${approver.username} aprobó la tutoría ${tutoring.code} asignando '${placeLabel}'`,
       approver.username
     );
 
@@ -75,7 +91,7 @@ export class ApproveTutoringUseCase {
     db.addNotification(
       tutoring.petitionerStudentId,
       'Solicitud Aprobada',
-      `Su solicitud de tutoría con asunto "${tutoring.subject}" fue aprobada por ${approver.alias || approver.fullName} para el día ${tutoring.reservDate} en el horario ${tutoring.scheduleLabel}. Impartida en: ${tutoring.space}`
+      `Su solicitud de tutoría con asunto "${tutoring.subject}" fue aprobada por ${approver.alias || approver.fullName} para el día ${tutoring.reservDate} en el horario ${tutoring.scheduleLabel}. Impartida en: ${placeLabel}`
     );
 
     // Si quien aprueba es administrador, notificar al docente asignado
@@ -83,7 +99,7 @@ export class ApproveTutoringUseCase {
       db.addNotification(
         tutoring.teacherId,
         'Solicitud Asignada',
-        `Se le ha programado la tutoría con asunto "${tutoring.subject}", para el día ${tutoring.reservDate} en el horario ${tutoring.scheduleLabel}. Impartida en: ${tutoring.space}`
+        `Se le ha programado la tutoría con asunto "${tutoring.subject}", para el día ${tutoring.reservDate} en el horario ${tutoring.scheduleLabel}. Impartida en: ${placeLabel}`
       );
     }
 

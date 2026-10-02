@@ -189,7 +189,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
       email: email.trim().toLowerCase(),
       phone: phone.trim(),
       password: password,
-      birthDate: '2004-01-01',
+      birthDate: '',
       admissionDate: new Date().toISOString().split('T')[0],
       careerId,
       semester: Number(semester),

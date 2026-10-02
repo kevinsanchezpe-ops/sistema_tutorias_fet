@@ -19,8 +19,10 @@ export class RateTutoringUseCase {
       throw new BusinessRuleException('La tutoría no existe.', 'NOT_FOUND');
     }
 
-    if (tutoring.petitionerStudentId !== student.id) {
-      throw new BusinessRuleException('Solo el estudiante creador de la solicitud puede evaluar la sesión.', 'FORBIDDEN');
+    // Regla grupal: cualquier participante (solicitante o invitado) puede evaluar, una sola vez
+    const isParticipant = (tutoring.assistants || []).some((a) => a.studentId === student.id);
+    if (!isParticipant) {
+      throw new BusinessRuleException('Solo los participantes de esta tutoría pueden evaluarla.', 'FORBIDDEN');
     }
 
     // Regla: la tutoría debe estar finalizada (status == 2)
@@ -28,12 +30,13 @@ export class RateTutoringUseCase {
       throw new BusinessRuleException('Solo se pueden evaluar tutorías que hayan finalizado con éxito.', 'NOT_COMPLETED');
     }
 
-    // Regla original: no se puede calificar más de una vez
-    if (tutoring.score > 0) {
-      throw new BusinessRuleException('Esta tutoría ya fue evaluada previamente y no puede modificarse.', 'ALREADY_RATED');
+    // Regla: un participante no puede calificar más de una vez
+    const ratings = tutoring.ratings || (tutoring.ratings = []);
+    if (ratings.some((r) => r.studentId === student.id)) {
+      throw new BusinessRuleException('Esta tutoría ya fue calificada por ti anteriormente.', 'ALREADY_RATED');
     }
 
-    if (!dto.score || dto.score < 1 || dto.score > 5) {
+    if (!Number.isInteger(dto.score) || dto.score < 1 || dto.score > 5) {
       throw new BusinessRuleException('La calificación debe estar entre 1 y 5 estrellas.', 'INVALID_SCORE');
     }
 
@@ -41,8 +44,19 @@ export class RateTutoringUseCase {
       throw new BusinessRuleException('Por favor agregue un comentario sobre su experiencia en la tutoría.', 'COMMENT_REQUIRED');
     }
 
-    tutoring.score = dto.score;
-    tutoring.studentComment = dto.studentComment.trim();
+    ratings.push({
+      id: `rate-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      tutoringId: tutoring.id,
+      studentId: student.id,
+      studentName: student.fullName,
+      score: dto.score,
+      studentComment: dto.studentComment.trim(),
+      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
+    });
+    // Compatibilidad: score = promedio, studentComment = más reciente
+    const avg = ratings.reduce((s, r) => s + r.score, 0) / ratings.length;
+    tutoring.score = Math.round(avg * 10) / 10;
+    tutoring.studentComment = ratings[ratings.length - 1].studentComment;
 
     db.logBinnacle(
       'Evaluación',

@@ -320,6 +320,17 @@ export const INITIAL_TUTORINGS: Tutoring[] = [
     studentComment: 'Excelente explicación de la profesora Karen, resolvió todas las dudas sobre 3FN.',
     teacherComment: 'El estudiante demostró dominio rápido de las formas normales.',
     attachmentName: 'ejercicios_3fn.pdf',
+    ratings: [
+      {
+        id: 'rate-3',
+        tutoringId: 'tut-3',
+        studentId: 'usr-student-1',
+        studentName: 'Dennis M. Andino',
+        score: 5,
+        studentComment: 'Excelente explicación de la profesora Karen, resolvió todas las dudas sobre 3FN.',
+        createdAt: '2026-08-28 09:00'
+      }
+    ],
     assistants: [
       {
         id: 'ast-4',

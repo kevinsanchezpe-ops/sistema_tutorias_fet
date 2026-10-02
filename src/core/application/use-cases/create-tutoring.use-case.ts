@@ -75,7 +75,12 @@ export class CreateTutoringUseCase {
     }
 
     const newId = `tut-${Date.now()}`;
-    const codeNumber = db.tutorings.length + 15;
+    // Código correlativo sin colisiones (MAX sufijo numérico + 1, no length)
+    const codeNumber =
+      db.tutorings.reduce((max, t) => {
+        const n = parseInt(String(t.code).replace(/[^0-9]/g, ''), 10);
+        return Number.isFinite(n) && n > max ? n : max;
+      }, 0) + 1;
 
     const newTutoring: Tutoring = {
       id: newId,
@@ -87,6 +92,7 @@ export class CreateTutoringUseCase {
       modality: dto.modality,
       status: TutoringStatus.PENDING,
       space: dto.modality === TutoringModality.VIRTUAL ? 'Pendiente enlace virtual' : 'Pendiente aula',
+      block: '',
       subjectCourseId: course.id,
       subjectCourseName: course.name,
       teacherId: teacher.id,
@@ -96,6 +102,7 @@ export class CreateTutoringUseCase {
       scheduleSlotId: slot.id,
       scheduleLabel: slot.label,
       score: 0,
+      ratings: [],
       attachmentName: dto.attachmentName || null,
       assistants: [
         {

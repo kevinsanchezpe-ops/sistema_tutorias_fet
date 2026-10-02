@@ -68,16 +68,24 @@ export default function App() {
       setDbHealth(health);
     } catch (e) {}
 
+    // Catálogos públicos siempre; datos sensibles solo con sesión (evita 401s en login)
+    const hasSession = (() => {
+      try {
+        return !!localStorage.getItem('gt_auth_user');
+      } catch {
+        return false;
+      }
+    })();
     const [uRes, tRes, sRes, schRes, secRes, avRes, bRes, instRes, anRes, cRes] = await Promise.all([
-      ApiClient.getUsers(),
-      ApiClient.getTutorings(),
+      hasSession ? ApiClient.getUsers() : Promise.resolve({ success: false as const, data: undefined }),
+      hasSession ? ApiClient.getTutorings() : Promise.resolve({ success: false as const, data: undefined }),
       ApiClient.getSubjects(),
       ApiClient.getScheduleSlots(),
       ApiClient.getSections(),
       ApiClient.getTeacherAvailability(),
-      ApiClient.getBinnacle(),
+      hasSession ? ApiClient.getBinnacle() : Promise.resolve({ success: false as const, data: undefined }),
       ApiClient.getInstitution(),
-      ApiClient.getAnalytics(),
+      hasSession ? ApiClient.getAnalytics() : Promise.resolve({ success: false as const, data: undefined }),
       ApiClient.getCareers()
     ]);
 

@@ -200,6 +200,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Approval Modal State
   const [approvingTutoring, setApprovingTutoring] = useState<Tutoring | null>(null);
   const [assignedSpace, setAssignedSpace] = useState<string>('');
+  const [assignedBlock, setAssignedBlock] = useState<string>('');
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [approving, setApproving] = useState<boolean>(false);
 
@@ -291,12 +292,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setApprovalError(null);
     setApproving(true);
 
-    const res = await ApiClient.approveTutoring(approvingTutoring.id, assignedSpace, currentUser);
+    const res = await ApiClient.approveTutoring(approvingTutoring.id, assignedSpace, currentUser, assignedBlock);
     setApproving(false);
 
     if (res.success) {
       setApprovingTutoring(null);
       setAssignedSpace('');
+      setAssignedBlock('');
       onRefresh();
     } else {
       setApprovalError(res.error?.message || 'Error al aprobar la tutoría.');
@@ -1876,7 +1878,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               );
                             })()}
                           </td>
-                          <td className="px-4 py-3.5 text-slate-600 max-w-[150px] truncate">{tut.space}</td>
+                          <td className="px-4 py-3.5 text-slate-600 max-w-[150px] truncate" title={tut.block ? `${tut.space} (Bloque ${tut.block})` : tut.space}>{tut.space}{tut.block ? ` — Bl. ${tut.block}` : ''}</td>
                           <td className="px-4 py-3.5 text-center">
                             <StatusBadge status={tut.status} size="sm" />
                           </td>
@@ -1899,9 +1901,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       setApprovingTutoring(tut);
                                       setAssignedSpace(
                                         tut.modality === TutoringModality.PRESENCIAL
-                                          ? sections[0]?.name || 'Aula 101'
+                                          ? tut.space && tut.space !== 'Pendiente aula' ? tut.space : ''
                                           : 'https://meet.google.com/gt-tutoria-live'
                                       );
+                                      setAssignedBlock(tut.block || '');
                                     }}
                                     className="px-2.5 py-1 bg-[#11770e] hover:bg-[#0d5c0b] text-white rounded-lg font-semibold text-xs transition-colors flex items-center gap-1 shadow-xs cursor-pointer"
                                     title="Aprobar y asignar aula o enlace"
@@ -2441,19 +2444,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     : 'Asignar Enlace de Videollamada (Meet / Zoom)'}
                 </label>
                 {approvingTutoring.modality === TutoringModality.PRESENCIAL ? (
-                  <select
-                    id="select-approve-section"
-                    value={assignedSpace}
-                    onChange={(e) => setAssignedSpace(e.target.value)}
-                    required
-                    className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:ring-2 focus:ring-emerald-500"
-                  >
-                    {sections.map((s) => (
-                      <option key={s.id} value={s.name}>
-                        {s.name} (Capacidad: {s.capacity} alumnos)
-                      </option>
-                    ))}
-                  </select>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      id="input-approve-classroom"
+                      type="text"
+                      value={assignedSpace}
+                      onChange={(e) => setAssignedSpace(e.target.value)}
+                      required
+                      maxLength={200}
+                      placeholder="Salón o aula"
+                      className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <input
+                      id="input-approve-block"
+                      type="text"
+                      value={assignedBlock}
+                      onChange={(e) => setAssignedBlock(e.target.value)}
+                      required
+                      maxLength={50}
+                      placeholder="Bloque o edificio"
+                      className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
                 ) : (
                   <input
                     id="input-approve-link"

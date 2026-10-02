@@ -891,7 +891,7 @@ export class PgRepository {
     const pool = await getPgPool();
     const tutRes = await pool.query(
       `SELECT id, code, subject, details, reserv_date as "reservDate", request_date as "requestDate",
-              modality, status, space, subject_course_id as "subjectCourseId",
+              modality, status, space, block, subject_course_id as "subjectCourseId",
               subject_course_name as "subjectCourseName", teacher_id as "teacherId",
               teacher_name as "teacherName", petitioner_student_id as "petitionerStudentId",
               petitioner_student_name as "petitionerStudentName", schedule_slot_id as "scheduleSlotId",
@@ -899,7 +899,7 @@ export class PgRepository {
               approved_by_name as "approvedByName", start_time as "startTime",
               finish_time as "finishTime", score, student_comment as "studentComment",
               teacher_comment as "teacherComment", attachment_name as "attachmentName",
-              attachment_url as "attachmentUrl", created_at as "createdAt"
+              attachment_url as "attachmentUrl", cancel_reason as "cancelReason", created_at as "createdAt"
        FROM tutorings
        ORDER BY created_at DESC;`
     );
@@ -921,15 +921,61 @@ export class PgRepository {
       assistantsByTutoring[a.tutoringId].push(a);
     }
 
+    const rateRes = await pool.query(
+      `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
+              student_name as "studentName", score,
+              student_comment as "studentComment", created_at as "createdAt"
+       FROM tutoring_ratings;`
+    );
+    const ratingsByTutoring: { [key: string]: any[] } = {};
+    for (const r of rateRes.rows) {
+      if (!ratingsByTutoring[r.tutoringId]) {
+        ratingsByTutoring[r.tutoringId] = [];
+      }
+      ratingsByTutoring[r.tutoringId].push(r);
+    }
+
     return tutRes.rows.map((t) => ({
       ...t,
-      assistants: assistantsByTutoring[t.id] || []
+      assistants: assistantsByTutoring[t.id] || [],
+      ratings: ratingsByTutoring[t.id] || []
     }));
   }
 
   public async getTutoringById(id: string): Promise<Tutoring | null> {
-    const tutorings = await this.getTutorings();
-    return tutorings.find((t) => t.id === id) || null;
+    const pool = await getPgPool();
+    const tutRes = await pool.query(
+      `SELECT id, code, subject, details, reserv_date as "reservDate", request_date as "requestDate",
+              modality, status, space, block, cancel_reason as "cancelReason", subject_course_id as "subjectCourseId",
+              subject_course_name as "subjectCourseName", teacher_id as "teacherId",
+              teacher_name as "teacherName", petitioner_student_id as "petitionerStudentId",
+              petitioner_student_name as "petitionerStudentName", schedule_slot_id as "scheduleSlotId",
+              schedule_label as "scheduleLabel", approved_by_id as "approvedById",
+              approved_by_name as "approvedByName", start_time as "startTime",
+              finish_time as "finishTime", score, student_comment as "studentComment",
+              teacher_comment as "teacherComment", attachment_name as "attachmentName",
+              attachment_url as "attachmentUrl", created_at as "createdAt"
+       FROM tutorings WHERE id = $1;`,
+      [id]
+    );
+    if (tutRes.rows.length === 0) return null;
+    const asstRes = await pool.query(
+      `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
+              student_name as "studentName", student_account as "studentAccount",
+              student_phone as "studentPhone", student_email as "studentEmail",
+              is_petitioner as "isPetitioner", has_attended as "hasAttended",
+              joined_at as "joinedAt"
+       FROM tutoring_assistants WHERE tutoring_id = $1;`,
+      [id]
+    );
+    const oneRateRes = await pool.query(
+      `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
+              student_name as "studentName", score,
+              student_comment as "studentComment", created_at as "createdAt"
+       FROM tutoring_ratings WHERE tutoring_id = $1 ORDER BY created_at ASC;`,
+      [id]
+    );
+    return { ...tutRes.rows[0], assistants: asstRes.rows, ratings: oneRateRes.rows };
   }
 
   public async createTutoring(dto: CreateTutoringDto, user: User): Promise<Tutoring> {
@@ -982,18 +1028,21 @@ export class PgRepository {
     const scheduleLabel = slotRes.rows[0]?.label || 'Horario';
     const teacherName = teacherRes.rows[0]?.full_name || 'Docente';
 
-    const countRes = await pool.query('SELECT COUNT(*) as count FROM tutorings;');
-    const nextCodeNum = parseInt(countRes.rows[0].count, 10) + 1;
+    // Código correlativo sin colisiones (MAX sufijo numérico + 1, no COUNT)
+    const maxRes = await pool.query(
+      `SELECT COALESCE(MAX(CAST(NULLIF(REGEXP_REPLACE(code, '[^0-9]', '', 'g'), '') AS INT)), 0) AS maxcode FROM tutorings;`
+    );
+    const nextCodeNum = parseInt(maxRes.rows[0]?.maxcode ?? '0', 10) + 1;
     const code = `#${nextCodeNum}`;
     const id = `tut-${Date.now()}`;
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
 
     await pool.query(
       `INSERT INTO tutorings (id, code, subject, details, reserv_date, request_date, modality, status, space,
-                              subject_course_id, subject_course_name, teacher_id, teacher_name,
+                              block, subject_course_id, subject_course_name, teacher_id, teacher_name,
                               petitioner_student_id, petitioner_student_name, schedule_slot_id, schedule_label,
                               attachment_name, attachment_url, score, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 0, $20);`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 0, $21);`,
       [
         id,
         code,
@@ -1003,6 +1052,7 @@ export class PgRepository {
         nowStr,
         dto.modality,
         TutoringStatus.PENDING,
+        '',
         '',
         dto.subjectCourseId,
         subjectName,
@@ -1043,7 +1093,7 @@ export class PgRepository {
     return (await this.getTutoringById(id))!;
   }
 
-  public async approveTutoring(tutoringId: string, space: string, approver: User): Promise<Tutoring> {
+  public async approveTutoring(tutoringId: string, space: string, approver: User, block: string = ''): Promise<Tutoring> {
     const pool = await getPgPool();
     const tut = await this.getTutoringById(tutoringId);
     if (!tut) throw new Error('Tutoría no encontrada.');
@@ -1052,19 +1102,25 @@ export class PgRepository {
       throw new Error('Un docente solo puede aprobar las tutorías que le han sido asignadas.');
     }
 
-    // Presencial conflict validation (Business Rule 3)
+    const cleanBlock = (block || '').trim();
+    if (tut.modality === 0 && cleanBlock.length === 0) {
+      throw new Error('Debe ingresar el bloque/edificio del aula para la tutoría presencial.');
+    }
+
+    // Presencial conflict validation (Business Rule 3): mismo salón + bloque, fecha y franja
     if (tut.modality === 0) {
       const conflictRes = await pool.query(
         `SELECT id, code, teacher_name FROM tutorings
          WHERE reserv_date = $1
            AND schedule_slot_id = $2
-           AND space = $3
-           AND id != $4
-           AND status IN ($5, $6);`,
-        [tut.reservDate, tut.scheduleSlotId, space, tutoringId, TutoringStatus.APPROVED, TutoringStatus.IN_PROGRESS]
+           AND LOWER(space) = LOWER($3)
+           AND COALESCE(LOWER(block), '') = LOWER($4)
+           AND id != $5
+           AND status IN ($6, $7);`,
+        [tut.reservDate, tut.scheduleSlotId, space, cleanBlock, tutoringId, TutoringStatus.APPROVED, TutoringStatus.IN_PROGRESS]
       );
       if (conflictRes.rows.length > 0) {
-        throw new Error(`Conflicto de Aula: El espacio "${space}" ya está reservado para esa franja horaria.`);
+        throw new Error(`Conflicto de Aula: El espacio "${space}" (Bloque ${cleanBlock}) ya está reservado para esa franja horaria.`);
       }
 
       const sectionRes = await pool.query('SELECT capacity FROM sections WHERE name = $1;', [space]);
@@ -1081,14 +1137,15 @@ export class PgRepository {
       }
     }
 
+    const placeLabel = tut.modality === 0 && cleanBlock ? `${space} (Bloque ${cleanBlock})` : space;
     await pool.query(
-      `UPDATE tutorings SET status = $1, space = $2, approved_by_id = $3, approved_by_name = $4 WHERE id = $5;`,
-      [TutoringStatus.APPROVED, space, approver.id, approver.fullName, tutoringId]
+      `UPDATE tutorings SET status = $1, space = $2, block = $3, approved_by_id = $4, approved_by_name = $5 WHERE id = $6;`,
+      [TutoringStatus.APPROVED, space, tut.modality === 0 ? cleanBlock : '', approver.id, approver.fullName, tutoringId]
     );
 
     await this.logBinnacle(
       'Aprobación de Tutoría',
-      `Tutoría ${tut.code} aprobada por ${approver.fullName} con espacio ${space}`,
+      `Tutoría ${tut.code} aprobada por ${approver.fullName} con espacio ${placeLabel}`,
       approver.username
     );
 
@@ -1096,7 +1153,7 @@ export class PgRepository {
     await this.addNotification(
       tut.petitionerStudentId,
       'Tutoría Aprobada',
-      `Su tutoría ${tut.code} (${tut.subjectCourseName}) fue aprobada. Espacio asignado: ${space}`,
+      `Su tutoría ${tut.code} (${tut.subjectCourseName}) fue aprobada. Espacio asignado: ${placeLabel}`,
       tutoringId
     );
 
@@ -1105,7 +1162,7 @@ export class PgRepository {
       await this.addNotification(
         tut.teacherId,
         'Tutoría Confirmada',
-        `La tutoría ${tut.code} con ${tut.petitionerStudentName} ha sido confirmada en ${space}.`,
+        `La tutoría ${tut.code} con ${tut.petitionerStudentName} ha sido confirmada en ${placeLabel}.`,
         tutoringId
       );
     }
@@ -1126,9 +1183,18 @@ export class PgRepository {
       throw new Error('No tiene permisos para cancelar esta tutoría.');
     }
 
+    if (!reason || reason.trim().length < 4) {
+      throw new Error('Debe indicar un motivo de cancelación detallado.');
+    }
+
+    // Máquina de estados: solo PENDING/APPROVED pueden cancelarse
+    if (tut.status !== TutoringStatus.PENDING && tut.status !== TutoringStatus.APPROVED) {
+      throw new Error('Solo se pueden cancelar tutorías pendientes o programadas.');
+    }
+
     await pool.query(
-      `UPDATE tutorings SET status = $1, space = $2 WHERE id = $3;`,
-      [TutoringStatus.CANCELLED, `Cancelada: ${reason}`, tutoringId]
+      `UPDATE tutorings SET status = $1, cancel_reason = $2 WHERE id = $3;`,
+      [TutoringStatus.CANCELLED, reason.trim(), tutoringId]
     );
 
     await this.logBinnacle(
@@ -1231,6 +1297,23 @@ export class PgRepository {
     const tut = await this.getTutoringById(tutoringId);
     if (!tut) throw new Error('Tutoría no encontrada.');
 
+    // Regla grupal: solo estudiantes de la misma carrera y semestre de la materia.
+    const subjRes = await pool.query(
+      'SELECT career_id as "careerId", semester FROM subjects WHERE id = $1;',
+      [tut.subjectCourseId]
+    );
+    const subj = subjRes.rows[0];
+    if (subj?.careerId && student.careerId && subj.careerId !== student.careerId) {
+      throw new Error('Solo pueden unirse estudiantes de la misma carrera de la materia.');
+    }
+    if (
+      subj?.semester &&
+      student.semester &&
+      Number(subj.semester) !== Number(student.semester)
+    ) {
+      throw new Error(`Solo pueden unirse estudiantes del semestre ${subj.semester} de la materia.`);
+    }
+
     const existing = await pool.query(
       'SELECT id FROM tutoring_assistants WHERE tutoring_id = $1 AND student_id = $2;',
       [tutoringId, student.id]
@@ -1275,6 +1358,17 @@ export class PgRepository {
 
   public async recordAssistance(tutoringId: string, records: AssistanceRecordItem[], teacher: User): Promise<Tutoring> {
     const pool = await getPgPool();
+    if (teacher.role !== UserRole.TEACHER) {
+      throw new Error('Solo el docente puede registrar la asistencia.');
+    }
+    const tutForAuth = await this.getTutoringById(tutoringId);
+    if (!tutForAuth) throw new Error('Tutoría no encontrada.');
+    if (tutForAuth.teacherId !== teacher.id) {
+      throw new Error('Solo el docente titular puede registrar asistencia.');
+    }
+    if (tutForAuth.status !== TutoringStatus.IN_PROGRESS && tutForAuth.status !== TutoringStatus.COMPLETED) {
+      throw new Error('Solo se puede registrar asistencia en tutorías en proceso o finalizadas.');
+    }
     for (const r of records) {
       await pool.query(
         `UPDATE tutoring_assistants SET has_attended = $1 WHERE tutoring_id = $2 AND (id = $3 OR student_id = $3);`,
@@ -1296,17 +1390,53 @@ export class PgRepository {
     const tut = await this.getTutoringById(dto.tutoringId);
     if (!tut) throw new Error('Tutoría no encontrada.');
 
+    if (student.role !== UserRole.STUDENT) {
+      throw new Error('Solo los estudiantes pueden calificar tutorías.');
+    }
+    // Regla grupal: cualquier participante (solicitante o invitado) puede evaluar
+    const partRes = await pool.query(
+      'SELECT 1 FROM tutoring_assistants WHERE tutoring_id = $1 AND student_id = $2;',
+      [dto.tutoringId, student.id]
+    );
+    if (partRes.rows.length === 0) {
+      throw new Error('Solo los participantes de esta tutoría pueden evaluarla.');
+    }
     if (tut.status !== TutoringStatus.COMPLETED) {
       throw new Error('Solo se pueden calificar tutorías que hayan finalizado.');
     }
-    if (tut.score > 0) {
-      throw new Error('Esta tutoría ya ha sido calificada anteriormente.');
+    const dupRes = await pool.query(
+      'SELECT 1 FROM tutoring_ratings WHERE tutoring_id = $1 AND student_id = $2;',
+      [dto.tutoringId, student.id]
+    );
+    if (dupRes.rows.length > 0) {
+      throw new Error('Esta tutoría ya fue calificada por ti anteriormente.');
+    }
+    if (!Number.isInteger(dto.score) || dto.score < 1 || dto.score > 5) {
+      throw new Error('La calificación debe estar entre 1 y 5 estrellas.');
+    }
+    if (!dto.studentComment || dto.studentComment.trim().length < 5) {
+      throw new Error('Agregue un comentario sobre su experiencia en la tutoría.');
     }
 
+    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
     await pool.query(
-      `UPDATE tutorings SET score = $1, student_comment = $2 WHERE id = $3;`,
-      [dto.score, dto.studentComment || null, dto.tutoringId]
+      `INSERT INTO tutoring_ratings (id, tutoring_id, student_id, student_name, score, student_comment, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7);`,
+      [`rate-${Date.now()}`, dto.tutoringId, student.id, student.fullName, dto.score, dto.studentComment.trim(), nowStr]
     );
+
+    // Compatibilidad: score = promedio, student_comment = más reciente
+    const allRes = await pool.query(
+      'SELECT score, student_comment as "studentComment", created_at as "createdAt" FROM tutoring_ratings WHERE tutoring_id = $1 ORDER BY created_at ASC;',
+      [dto.tutoringId]
+    );
+    const avg = allRes.rows.reduce((s: number, r: any) => s + Number(r.score), 0) / allRes.rows.length;
+    const latest = allRes.rows[allRes.rows.length - 1]?.studentComment || null;
+    await pool.query('UPDATE tutorings SET score = $1, student_comment = $2 WHERE id = $3;', [
+      Math.round(avg * 10) / 10,
+      latest,
+      dto.tutoringId
+    ]);
 
     await this.logBinnacle(
       'Calificación de Tutoría',

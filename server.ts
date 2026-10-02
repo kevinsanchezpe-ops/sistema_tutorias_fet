@@ -523,16 +523,17 @@ async function startServer() {
 
   app.patch('/api/tutorings/:id/approve', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { space } = req.body;
-      const cleanSpace = cleanStr(space, 500);
+      const { space, block } = req.body;
+      const cleanSpace = cleanStr(space, 200);
+      const cleanBlock = cleanStr(block, 50);
       if (!cleanSpace) {
-        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Espacio o enlace requerido.' } });
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Salón o enlace requerido.' } });
       }
       const approver = await pgRepo.getUserById(req.user!.userId);
       if (!approver || (approver.role !== UserRole.ADMIN && approver.role !== UserRole.TEACHER)) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Permiso de administrador o docente requerido.' } });
       }
-      const tutoring = await pgRepo.approveTutoring(req.params.id, cleanSpace, approver);
+      const tutoring = await pgRepo.approveTutoring(req.params.id, cleanSpace, approver, cleanBlock);
       res.json({ success: true, data: tutoring, message: 'Tutoría aprobada y programada correctamente.' });
     } catch (err: any) {
       res.status(400).json({ success: false, error: { code: 'APPROVE_ERROR', message: err.message } });
@@ -542,6 +543,9 @@ async function startServer() {
   app.patch('/api/tutorings/:id/cancel', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const { reason } = req.body;
+      if (typeof reason !== 'string' || reason.trim().length < 4) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Debe indicar un motivo de cancelación detallado.' } });
+      }
       const user = await pgRepo.getUserById(req.user!.userId);
       if (!user) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario no identificado.' } });
@@ -610,6 +614,12 @@ async function startServer() {
   app.post('/api/tutorings/:id/rate', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const { score, studentComment } = req.body;
+      if (!Number.isInteger(score) || score < 1 || score > 5) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'La calificación debe estar entre 1 y 5 estrellas.' } });
+      }
+      if (typeof studentComment !== 'string' || studentComment.trim().length < 5) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Agregue un comentario sobre su experiencia.' } });
+      }
       const student = await pgRepo.getUserById(req.user!.userId);
       if (!student) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Estudiante solicitante requerido.' } });

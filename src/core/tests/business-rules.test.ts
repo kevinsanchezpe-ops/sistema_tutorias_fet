@@ -4,6 +4,7 @@
  */
 
 import { ApproveTutoringUseCase } from '../application/use-cases/approve-tutoring.use-case';
+import { CancelTutoringUseCase } from '../application/use-cases/cancel-tutoring.use-case';
 import { CreateTutoringUseCase } from '../application/use-cases/create-tutoring.use-case';
 import { FinishTutoringUseCase } from '../application/use-cases/finish-tutoring.use-case';
 import { JoinTutoringUseCase } from '../application/use-cases/join-tutoring.use-case';
@@ -249,7 +250,10 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
 
     const section = db.sections[0];
     const prevCapacity = section.capacity;
-    const subjectId = db.subjects[0].id;
+    // Materia del mismo semestre/carrera de student2 para no activar la regla grupal
+    const subjectId = (db.subjects.find(
+      (s) => Number(s.semester) === Number(student2.semester) && s.careerId === student2.careerId
+    ) || db.subjects[0]).id;
     const slotId = db.scheduleSlots[0].id;
 
     const teacher = RegisterTeacherUseCase.execute({
@@ -282,7 +286,7 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
       );
       created.push(tut.id);
 
-      ApproveTutoringUseCase.execute({ tutoringId: tut.id, space: section.name }, teacher);
+      ApproveTutoringUseCase.execute({ tutoringId: tut.id, space: section.name, block: 'B1' }, teacher);
 
       let threw = false;
       try {
@@ -297,6 +301,302 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
         const i = db.tutorings.findIndex((t) => t.id === id);
         if (i >= 0) db.tutorings.splice(i, 1);
       });
+    }
+  });
+
+  // 11. Grupales misma carrera y semestre (Juan sem 2 / Kevin sem 3)
+  test('Grupal: Rechaza unirse a tutoría de otro semestre', () => {
+    const rnd = Date.now();
+    const petitioner = db.users.find((u) => u.id === 'usr-student-1')!;
+    const guest = db.users.find((u) => u.id === 'usr-student-2')!;
+    // Materia de software de un semestre distinto al del invitado
+    const subject = db.subjects.find(
+      (s) => s.careerId === guest.careerId && Number(s.semester) !== Number(guest.semester)
+    );
+    if (!subject) return; // sin datos para el caso, se omite
+    const slotId = db.scheduleSlots[1].id;
+    const teacher = RegisterTeacherUseCase.execute({
+      fullName: `Ing. Semestre Prueba ${rnd}`,
+      email: `semestre.${rnd}@gt.edu`,
+      phone: '+504 9999-0003',
+      account: `SEM-${rnd}`,
+      username: `docente_semestre_${rnd}`,
+      subjectIds: [subject.id],
+      scheduleSlotIds: [slotId]
+    });
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    const tut = CreateTutoringUseCase.execute(
+      {
+        subject: 'Prueba semestre distinto',
+        details: 'detalle de prueba de semestre',
+        reservDate: d.toISOString().split('T')[0],
+        scheduleSlotId: slotId,
+        subjectCourseId: subject.id,
+        teacherId: teacher.id,
+        modality: TutoringModality.VIRTUAL
+      },
+      petitioner
+    );
+    try {
+      let threw = false;
+      try {
+        JoinTutoringUseCase.execute(tut.id, guest);
+      } catch (e: any) {
+        if (e.code === 'DIFFERENT_SEMESTER') threw = true;
+      }
+      if (!threw) throw new Error('Debería rechazar la inscripción por semestre distinto');
+    } finally {
+      const i = db.tutorings.findIndex((t) => t.id === tut.id);
+      if (i >= 0) db.tutorings.splice(i, 1);
+      const ti = db.users.findIndex((u) => u.id === teacher.id);
+      if (ti >= 0) db.users.splice(ti, 1);
+    }
+  });
+
+  // 12. Grupales misma carrera
+  test('Grupal: Rechaza unirse a tutoría de otra carrera', () => {
+    const rnd = Date.now() + 1;
+    const petitioner = db.users.find((u) => u.id === 'usr-student-1')!;
+    const guest = db.users.find((u) => u.id === 'usr-student-2')!;
+    // Materia de otra carrera
+    const subject = db.subjects.find((s) => s.careerId && s.careerId !== guest.careerId);
+    if (!subject) return; // sin datos para el caso, se omite
+    const slotId = db.scheduleSlots[2].id;
+    const teacher = RegisterTeacherUseCase.execute({
+      fullName: `Ing. Carrera Prueba ${rnd}`,
+      email: `carrera.${rnd}@gt.edu`,
+      phone: '+504 9999-0004',
+      account: `CAR-${rnd}`,
+      username: `docente_carrera_${rnd}`,
+      subjectIds: [subject.id],
+      scheduleSlotIds: [slotId]
+    });
+    const d = new Date();
+    d.setDate(d.getDate() + 8);
+    const tut = CreateTutoringUseCase.execute(
+      {
+        subject: 'Prueba otra carrera',
+        details: 'detalle de prueba de carrera',
+        reservDate: d.toISOString().split('T')[0],
+        scheduleSlotId: slotId,
+        subjectCourseId: subject.id,
+        teacherId: teacher.id,
+        modality: TutoringModality.VIRTUAL
+      },
+      petitioner
+    );
+    try {
+      let threw = false;
+      try {
+        JoinTutoringUseCase.execute(tut.id, guest);
+      } catch (e: any) {
+        if (e.code === 'DIFFERENT_CAREER') threw = true;
+      }
+      if (!threw) throw new Error('Debería rechazar la inscripción por carrera distinta');
+    } finally {
+      const i = db.tutorings.findIndex((t) => t.id === tut.id);
+      if (i >= 0) db.tutorings.splice(i, 1);
+      const ti = db.users.findIndex((u) => u.id === teacher.id);
+      if (ti >= 0) db.users.splice(ti, 1);
+    }
+  });
+
+  // 13. Presencial exige salón y bloque manuales
+  test('Presencial: Aprobar exige salón y bloque escritos manualmente', () => {
+    const rnd = Date.now() + 2;
+    const petitioner = db.users.find((u) => u.id === 'usr-student-1')!;
+    const subjectId = db.subjects[0].id;
+    const slotId = db.scheduleSlots[3].id;
+    const teacher = RegisterTeacherUseCase.execute({
+      fullName: `Ing. Bloque Prueba ${rnd}`,
+      email: `bloque.${rnd}@gt.edu`,
+      phone: '+504 9999-0005',
+      account: `BLQ-${rnd}`,
+      username: `docente_bloque_${rnd}`,
+      subjectIds: [subjectId],
+      scheduleSlotIds: [slotId]
+    });
+    const d = new Date();
+    d.setDate(d.getDate() + 9);
+    const tut = CreateTutoringUseCase.execute(
+      {
+        subject: 'Prueba bloque requerido',
+        details: 'detalle de prueba de bloque',
+        reservDate: d.toISOString().split('T')[0],
+        scheduleSlotId: slotId,
+        subjectCourseId: subjectId,
+        teacherId: teacher.id,
+        modality: TutoringModality.PRESENCIAL
+      },
+      petitioner
+    );
+    try {
+      let threw = false;
+      try {
+        ApproveTutoringUseCase.execute({ tutoringId: tut.id, space: 'Aula 99' }, teacher);
+      } catch (e: any) {
+        if (e.code === 'BLOCK_REQUIRED') threw = true;
+      }
+      if (!threw) throw new Error('Debería exigir el bloque en presenciales');
+      const approved = ApproveTutoringUseCase.execute(
+        { tutoringId: tut.id, space: 'Aula 99', block: 'B9' },
+        teacher
+      );
+      if (approved.block !== 'B9') throw new Error('Debería guardar el bloque asignado');
+    } finally {
+      const i = db.tutorings.findIndex((t) => t.id === tut.id);
+      if (i >= 0) db.tutorings.splice(i, 1);
+      const ti = db.users.findIndex((u) => u.id === teacher.id);
+      if (ti >= 0) db.users.splice(ti, 1);
+    }
+  });
+
+  // 14. Cancelación conserva el espacio y guarda el motivo aparte
+  test('Cancelación: conserva el espacio asignado y registra el motivo por separado', () => {
+    const rnd = Date.now() + 3;
+    const petitioner = db.users.find((u) => u.id === 'usr-student-1')!;
+    const subjectId = db.subjects[0].id;
+    const slotId = db.scheduleSlots[4].id;
+    const teacher = RegisterTeacherUseCase.execute({
+      fullName: `Ing. Cancela Prueba ${rnd}`,
+      email: `cancela.${rnd}@gt.edu`,
+      phone: '+504 9999-0006',
+      account: `CNC-${rnd}`,
+      username: `docente_cancela_${rnd}`,
+      subjectIds: [subjectId],
+      scheduleSlotIds: [slotId]
+    });
+    const d = new Date();
+    d.setDate(d.getDate() + 10);
+    const tut = CreateTutoringUseCase.execute(
+      {
+        subject: 'Prueba conserva espacio',
+        details: 'detalle de prueba de cancelación',
+        reservDate: d.toISOString().split('T')[0],
+        scheduleSlotId: slotId,
+        subjectCourseId: subjectId,
+        teacherId: teacher.id,
+        modality: TutoringModality.PRESENCIAL
+      },
+      petitioner
+    );
+    try {
+      const approved = ApproveTutoringUseCase.execute(
+        { tutoringId: tut.id, space: 'Aula 7', block: 'B7' },
+        teacher
+      );
+      const cancelled = CancelTutoringUseCase.execute(
+        { tutoringId: tut.id, reason: 'Motivo de prueba detallado' },
+        petitioner
+      );
+      if (cancelled.space !== 'Aula 7') throw new Error('La cancelación no debe sobrescribir el espacio asignado');
+      if (cancelled.block !== 'B7') throw new Error('La cancelación no debe borrar el bloque asignado');
+      if (cancelled.cancelReason !== 'Motivo de prueba detallado') throw new Error('Debe guardar el motivo por separado');
+      void approved;
+      let threw = false;
+      try {
+        CancelTutoringUseCase.execute({ tutoringId: tut.id, reason: 'Segundo intento de prueba' }, petitioner);
+      } catch (e: any) {
+        threw = true;
+      }
+      if (!threw) throw new Error('No debe permitir cancelar dos veces');
+    } finally {
+      const i = db.tutorings.findIndex((t) => t.id === tut.id);
+      if (i >= 0) db.tutorings.splice(i, 1);
+      const ti = db.users.findIndex((u) => u.id === teacher.id);
+      if (ti >= 0) db.users.splice(ti, 1);
+    }
+  });
+
+  // 15. Calificación por participante con promedio
+  test('Calificación: invitado y solicitante califican, se promedia; ajeno es rechazado', () => {
+    const rnd = Date.now() + 4;
+    const petitioner = db.users.find((u) => u.id === 'usr-student-1')!;
+    const guest = db.users.find((u) => u.id === 'usr-student-2')!;
+    const subject = db.subjects.find(
+      (s) => Number(s.semester) === Number(guest.semester) && s.careerId === guest.careerId
+    ) || db.subjects[0];
+    const slotId = db.scheduleSlots[5].id;
+    const teacher = RegisterTeacherUseCase.execute({
+      fullName: `Ing. Eval Prueba ${rnd}`,
+      email: `eval.${rnd}@gt.edu`,
+      phone: '+504 9999-0007',
+      account: `EVL-${rnd}`,
+      username: `docente_eval_${rnd}`,
+      subjectIds: [subject.id],
+      scheduleSlotIds: [slotId]
+    });
+    const outsider = RegisterStudentUseCase.execute({
+      fullName: 'Estudiante Ajeno de Prueba',
+      email: `ajeno.${rnd}@gt.edu`,
+      phone: '+504 9999-0008',
+      account: `AJN-${rnd}`,
+      careerId: guest.careerId,
+      semester: 9,
+      username: `est_ajeno_${rnd}`,
+      password: 'Clave1234'
+    });
+    const d = new Date();
+    d.setDate(d.getDate() + 11);
+    const tut = CreateTutoringUseCase.execute(
+      {
+        subject: 'Prueba calificación grupal',
+        details: 'detalle de prueba de calificación',
+        reservDate: d.toISOString().split('T')[0],
+        scheduleSlotId: slotId,
+        subjectCourseId: subject.id,
+        teacherId: teacher.id,
+        modality: TutoringModality.PRESENCIAL
+      },
+      petitioner
+    );
+    try {
+      JoinTutoringUseCase.execute(tut.id, guest);
+      ApproveTutoringUseCase.execute({ tutoringId: tut.id, space: 'Aula 77', block: 'B7' }, teacher);
+      StartTutoringUseCase.execute(tut.id, teacher);
+      FinishTutoringUseCase.execute(tut.id, teacher, 'buena sesión');
+
+      const afterGuest = RateTutoringUseCase.execute(
+        { tutoringId: tut.id, score: 4, studentComment: 'Me sirvió bastante la explicación' },
+        guest
+      );
+      if (afterGuest.score !== 4) throw new Error('La primera calificación debería reflejarse');
+      const afterBoth = RateTutoringUseCase.execute(
+        { tutoringId: tut.id, score: 5, studentComment: 'Excelente tutoría grupal de repaso' },
+        petitioner
+      );
+      if (afterBoth.score !== 4.5) throw new Error(`El promedio debería ser 4.5, se obtuvo ${afterBoth.score}`);
+      if ((afterBoth.ratings || []).length !== 2) throw new Error('Debería haber 2 calificaciones registradas');
+
+      let threwOutsider = false;
+      try {
+        RateTutoringUseCase.execute(
+          { tutoringId: tut.id, score: 5, studentComment: 'Intento de un estudiante ajeno' },
+          outsider
+        );
+      } catch (e: any) {
+        if (e.code === 'FORBIDDEN') threwOutsider = true;
+      }
+      if (!threwOutsider) throw new Error('Un no participante no debería poder calificar');
+
+      let threwDup = false;
+      try {
+        RateTutoringUseCase.execute(
+          { tutoringId: tut.id, score: 3, studentComment: 'Segunda calificación del invitado' },
+          guest
+        );
+      } catch (e: any) {
+        if (e.code === 'ALREADY_RATED') threwDup = true;
+      }
+      if (!threwDup) throw new Error('No debe permitir calificar dos veces al mismo participante');
+    } finally {
+      const i = db.tutorings.findIndex((t) => t.id === tut.id);
+      if (i >= 0) db.tutorings.splice(i, 1);
+      const ti = db.users.findIndex((u) => u.id === teacher.id);
+      if (ti >= 0) db.users.splice(ti, 1);
+      const oi = db.users.findIndex((u) => u.id === outsider.id);
+      if (oi >= 0) db.users.splice(oi, 1);
     }
   });
 

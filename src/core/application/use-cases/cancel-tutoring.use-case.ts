@@ -28,11 +28,15 @@ export class CancelTutoringUseCase {
       throw new BusinessRuleException('Debe indicar un motivo de cancelación detallado.', 'REASON_REQUIRED');
     }
 
+    if (tutoring.status === TutoringStatus.CANCELLED) {
+      throw new BusinessRuleException('La tutoría ya se encuentra cancelada.', 'ALREADY_CANCELLED');
+    }
+
     // Validar transición hacia CANCELLED
     TutoringStateMachineService.ensureValidTransition(tutoring.status, TutoringStatus.CANCELLED);
 
     tutoring.status = TutoringStatus.CANCELLED;
-    tutoring.space = `Cancelada. Motivo: ${dto.reason.trim()}`;
+    tutoring.cancelReason = dto.reason.trim();
 
     // Bitácora
     db.logBinnacle(

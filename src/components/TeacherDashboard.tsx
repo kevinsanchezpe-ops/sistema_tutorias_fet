@@ -82,6 +82,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   // Approval state for teachers
   const [approvingTutoring, setApprovingTutoring] = useState<Tutoring | null>(null);
   const [assignedSpace, setAssignedSpace] = useState<string>('');
+  const [assignedBlock, setAssignedBlock] = useState<string>('');
   const [approving, setApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [approvalSuccess, setApprovalSuccess] = useState<string | null>(null);
@@ -90,9 +91,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     setApprovingTutoring(tut);
     setApprovalError(null);
     if (tut.modality === TutoringModality.PRESENCIAL) {
-      setAssignedSpace(sections[0]?.name || 'Laboratorio 1');
+      setAssignedSpace(tut.space && tut.space !== 'Pendiente aula' ? tut.space : '');
+      setAssignedBlock(tut.block || '');
     } else {
       setAssignedSpace('https://meet.google.com/docente-tutoria');
+      setAssignedBlock('');
     }
   };
 
@@ -102,7 +105,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     setApproving(true);
     setApprovalError(null);
 
-    const res = await ApiClient.approveTutoring(approvingTutoring.id, assignedSpace, currentUser);
+    const res = await ApiClient.approveTutoring(approvingTutoring.id, assignedSpace, currentUser, assignedBlock);
     setApproving(false);
 
     if (res.success) {
@@ -1873,14 +1876,27 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           </div>
                           <span className="self-start sm:self-auto flex items-center gap-1.5 font-bold text-amber-900 bg-[#fffaed] px-3 py-1 rounded-lg border border-amber-200">
                             <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
-                            <span>{tut.score} de 5 estrellas</span>
+                            <span>
+                              {tut.score} de 5 estrellas
+                              {(tut.ratings || []).length > 1 ? ` (${(tut.ratings || []).length} participantes)` : ''}
+                            </span>
                           </span>
                         </div>
-                      {tut.studentComment && (
-                        <p className="text-slate-700 italic bg-white p-3.5 rounded-xl border border-stone-200/70 leading-relaxed shadow-2xs">
-                          "{tut.studentComment}"
-                        </p>
-                      )}
+                      {((tut.ratings && tut.ratings.length > 0
+                        ? tut.ratings
+                        : tut.studentComment
+                          ? [{ studentName: tut.petitionerStudentName, score: tut.score, studentComment: tut.studentComment }]
+                          : []
+                      ) as any[]).map((r: any, i: number) => (
+                        <div key={i} className="bg-white p-3.5 rounded-xl border border-stone-200/70 shadow-2xs">
+                          <span className="font-bold text-slate-900 text-xs block">{r.studentName} — {r.score}★</span>
+                          {r.studentComment && (
+                            <p className="text-slate-700 italic leading-relaxed mt-1">
+                              "{r.studentComment}"
+                            </p>
+                          )}
+                        </div>
+                      ))}
                       <div className="text-[11px] text-stone-400 font-mono flex items-center gap-2 pt-1">
                         <span>Código: {tut.code}</span>
                         <span>•</span>
@@ -1947,21 +1963,40 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <div>
                 <label className="block font-bold text-slate-800 uppercase tracking-wider text-[10px] mb-1.5">
                   {approvingTutoring.modality === TutoringModality.PRESENCIAL
-                    ? 'Aula / Laboratorio Asignado'
+                    ? 'Salón y Bloque Asignados'
                     : 'Enlace de Reunión Virtual (Google Meet / Teams)'}
                 </label>
-                <input
-                  type="text"
-                  value={assignedSpace}
-                  onChange={(e) => setAssignedSpace(e.target.value)}
-                  required
-                  placeholder={
-                    approvingTutoring.modality === TutoringModality.PRESENCIAL
-                      ? 'Aula o laboratorio'
-                      : 'Enlace de videollamada'
-                  }
-                  className="w-full rounded-xl border border-stone-200 p-3 text-xs text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/30 focus:border-[#11770e] transition-all"
-                />
+                {approvingTutoring.modality === TutoringModality.PRESENCIAL ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={assignedSpace}
+                      onChange={(e) => setAssignedSpace(e.target.value)}
+                      required
+                      maxLength={200}
+                      placeholder="Salón o aula"
+                      className="w-full rounded-xl border border-stone-200 p-3 text-xs text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/30 focus:border-[#11770e] transition-all"
+                    />
+                    <input
+                      type="text"
+                      value={assignedBlock}
+                      onChange={(e) => setAssignedBlock(e.target.value)}
+                      required
+                      maxLength={50}
+                      placeholder="Bloque o edificio"
+                      className="w-full rounded-xl border border-stone-200 p-3 text-xs text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/30 focus:border-[#11770e] transition-all"
+                    />
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={assignedSpace}
+                    onChange={(e) => setAssignedSpace(e.target.value)}
+                    required
+                    placeholder="Enlace de videollamada"
+                    className="w-full rounded-xl border border-stone-200 p-3 text-xs text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/30 focus:border-[#11770e] transition-all"
+                  />
+                )}
               </div>
 
               {approvalError && (
