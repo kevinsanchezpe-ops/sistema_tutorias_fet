@@ -509,6 +509,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
       {deletingSubject && (
         <div
           id="modal-delete-subject-backdrop"
+          onClick={(event) => { if (event.target === event.currentTarget) setDeletingSubject(null); }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in"
         >
           <div

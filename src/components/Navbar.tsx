@@ -36,7 +36,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const closeNotif = () => {
     setNotifOpen(false);
-    bellRef.current?.focus();
   };
 
   return (
@@ -92,6 +91,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   onMarkAllRead={onMarkAllRead}
                   onSelectTutoring={onSelectTutoring}
                   onClose={closeNotif}
+                  triggerRef={bellRef}
                 />
               )}
             </div>

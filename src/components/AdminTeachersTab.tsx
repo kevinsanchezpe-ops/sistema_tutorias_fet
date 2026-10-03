@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ApiClient } from '../core/presentation/api-client';
 import { Career, ScheduleSlot, SubjectCourse, TeacherAvailability, User, UserRole } from '../core/types';
+import { UserAvatar } from './UserAvatar';
 import {
   Plus,
   Search,
@@ -689,9 +690,13 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                 <article key={teacher.id} className="p-4 transition-colors hover:bg-stone-50/50 sm:p-5">
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(200px,1.1fr)_minmax(180px,0.9fr)_minmax(180px,1fr)_auto] md:items-center">
                     <div className="flex min-w-0 items-start gap-3">
-                      <div aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700">
-                        {teacher.fullName.charAt(0) || 'D'}
-                      </div>
+                      <UserAvatar
+                        user={teacher}
+                        role={UserRole.TEACHER}
+                        size="lg"
+                        shape="circle"
+                        className="border border-stone-200 bg-white"
+                      />
                       <div className="min-w-0">
                         <h4 className="break-words text-sm font-semibold text-slate-900">{teacher.fullName}</h4>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -770,6 +775,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
       {deletingTeacher && (
         <div
           id="modal-delete-teacher-backdrop"
+          onClick={(event) => { if (event.target === event.currentTarget) setDeletingTeacher(null); }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in"
         >
           <div
@@ -855,6 +861,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
       {editingTeacher && (
         <div
           id="modal-edit-teacher-backdrop"
+          onClick={(event) => { if (event.target === event.currentTarget) setEditingTeacher(null); }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in"
         >
           <div

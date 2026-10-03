@@ -58,6 +58,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSuccess
   return (
     <div
       id="modal-register-backdrop"
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-[2px] animate-in fade-in sm:p-5"
     >
       <div

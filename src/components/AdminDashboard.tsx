@@ -34,7 +34,6 @@ import {
   YafaPageHeader,
   YafaCard,
   YafaStatus,
-  YafaEmptyState,
   YafaChartSkeleton,
   YAFA_ACCENTS
 } from './admin/yafaDashboard';
@@ -75,8 +74,6 @@ import {
   ChevronRight,
   ArrowRight,
   Plus,
-  BarChart3,
-  ListOrdered,
   CalendarDays,
   ExternalLink
 } from 'lucide-react';
@@ -149,7 +146,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [viewingAttachment, setViewingAttachment] = useState<{ fileName: string; fileUrl: string } | null>(null);
   const [scheduleTab, setScheduleTab] = useState<'schedule' | 'events'>('schedule');
   const [weekOffset, setWeekOffset] = useState<number>(0);
-  const [demandViewMode, setDemandViewMode] = useState<'chart' | 'ranking'>('chart');
   const [selectedScheduleDay, setSelectedScheduleDay] = useState<string>('all');
 
   // Dashboard filters (por carrera y semestre)
@@ -195,14 +191,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ).length
     }))
   );
-  const dashCareerRows = careers.map((c) => ({
-    careerId: c.id,
-    careerName: c.name,
-    subjectCount: subjects.filter((s) => s.careerId === c.id).length,
-    studentCount: users.filter((u) => u.role === UserRole.STUDENT && u.careerId === c.id).length,
-    tutoringCount: tutorings.filter((t) => subjectCareerMap.get(t.subjectCourseId) === c.id).length
-  }));
-
   // Approval Modal State
   const [approvingTutoring, setApprovingTutoring] = useState<Tutoring | null>(null);
   const [assignedSpace, setAssignedSpace] = useState<string>('');
@@ -658,254 +646,110 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {/* Left 70% Column */}
                 <div className="xl:col-span-8 space-y-4 sm:space-y-6 min-w-0">
 
-                  {/* Rendimiento y Demanda por Asignatura — análisis primario Yafa */}
-                  <YafaCard
-                    title="Rendimiento y demanda por asignatura"
-                    subtitle={`Monitoreo de materias con mayor interés · ${totalDemandRequests} ${totalDemandRequests === 1 ? 'solicitud' : 'solicitudes'}`}
-                    accent="cyan"
-                    summary={topSubject ? `Mayor demanda: ${topSubject.fullName} con ${topSubject.count} tutorías.` : 'Sin demanda registrada.'}
-                    action={
-                      <div className="flex items-center bg-[#f8fafd] p-0.5 rounded-md border border-[#dadce0]" role="tablist" aria-label="Vista de demanda">
-                        <button type="button" role="tab" aria-selected={demandViewMode === 'chart'} onClick={() => setDemandViewMode('chart')} className={`inline-flex items-center gap-1.5 px-3 h-8 text-xs rounded-[6px] font-semibold transition-colors cursor-pointer ${demandViewMode === 'chart' ? 'bg-[#202124] text-white' : 'text-[#5f6368] hover:text-[#202124]'}`}><BarChart3 className="w-3.5 h-3.5" aria-hidden="true" /><span>Gráfico</span></button>
-                        <button type="button" role="tab" aria-selected={demandViewMode === 'ranking'} onClick={() => setDemandViewMode('ranking')} className={`inline-flex items-center gap-1.5 px-3 h-8 text-xs rounded-[6px] font-semibold transition-colors cursor-pointer ${demandViewMode === 'ranking' ? 'bg-[#202124] text-white' : 'text-[#5f6368] hover:text-[#202124]'}`}><ListOrdered className="w-3.5 h-3.5" aria-hidden="true" /><span>Ranking</span></button>
-                      </div>
-                    }
-                  >
-                    <dl className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-4">
-                      <div className="bg-[#f8fafd] border border-[#e8eaed] rounded-md p-3"><dt className="text-[10px] font-bold text-[#5f6368] uppercase tracking-wider">Mayor demanda</dt><dd className="text-xs font-bold text-[#202124] truncate mt-1">{topSubject ? topSubject.fullName : 'Sin solicitudes'}</dd>{topSubject && <dd className="text-[11px] font-semibold text-[#11770e]">{topSubject.count} {topSubject.count === 1 ? 'tutoría' : 'tutorías'}</dd>}</div>
-                      <div className="bg-[#f8fafd] border border-[#e8eaed] rounded-md p-3"><dt className="text-[10px] font-bold text-[#5f6368] uppercase tracking-wider">Materias con solicitudes</dt><dd className="text-xs font-bold text-[#202124] mt-1">{subjectsWithDemandCount} de {activeSubjects.length} activas</dd><dd className="text-[11px] text-[#5f6368]">{activeSubjects.length > 0 ? Math.round((subjectsWithDemandCount / activeSubjects.length) * 100) : 0}% con demanda</dd></div>
-                      <div className="bg-[#f8fafd] border border-[#e8eaed] rounded-md p-3"><dt className="text-[10px] font-bold text-[#5f6368] uppercase tracking-wider">Promedio por materia</dt><dd className="text-xs font-bold text-[#202124] mt-1">{avgDemandPerSubject} tutorías</dd><dd className="text-[11px] text-[#5f6368]">por asignatura registrada</dd></div>
-                    </dl>
-
-                    {demandViewMode === 'chart' && (
+                  <section aria-labelledby="demand-by-subject-title" className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+                    <header className="flex flex-col gap-1 border-b border-stone-200 px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-5">
                       <div>
-                        {totalDemandRequests === 0 ? (
-                          <YafaEmptyState icon={<BookOpen className="w-4 h-4" aria-hidden="true" />} title="No hay tutorías para los filtros seleccionados" hint="Cambia el filtro de carrera o semestre para explorar otros periodos." />
-                        ) : (
-                          <>
-                            <div className="h-72 w-full">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={courseData.slice(0, 10)} margin={{ top: 15, right: 15, left: -10, bottom: 35 }}>
-                                  <CartesianGrid stroke="#e8eef6" vertical={false} />
-                                  <XAxis dataKey="subject" tick={{ fontSize: 12, fill: '#5f6368' }} angle={-20} textAnchor="end" interval={0} />
-                                  <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#5f6368' }} width={36} />
-                                  <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #dadce0', borderRadius: '8px', color: '#202124', fontSize: '12px' }} formatter={(val: any) => [`${val} tutorías`, 'Demanda']} labelFormatter={(label: any) => { const match = courseData.find((c) => c.subject === label || c.fullName === label); return match ? match.fullName : label; }} />
-                                  <Bar dataKey="count" radius={[6, 6, 0, 0]} name="Tutorías Solicitadas">
-                                    {courseData.slice(0, 10).map((c) => { const palette = ['#67e8f9', '#86efac', '#f9a8d4', '#c4b5fd', '#5dadec']; let h = 0; for (let i = 0; i < c.id.length; i++) h = (h * 31 + c.id.charCodeAt(i)) % 997; return <Cell key={c.id} fill={palette[h % palette.length]} stroke="#202124" strokeOpacity={0.08} />; })}
-                                  </Bar>
-                                </BarChart>
-                              </ResponsiveContainer>
-                            </div>
-                            <p className="text-xs text-[#5f6368] mt-2">{topSubject ? `Mayor demanda: ${topSubject.fullName} (${topSubject.count}).` : ''} Colores estables por asignatura.</p>
-                            <details className="mt-2 text-xs text-[#3c4043]"><summary className="cursor-pointer font-semibold text-[#11770e]">Ver valores de la gráfica</summary><ul className="mt-2 space-y-1 max-h-40 overflow-y-auto">{courseData.slice(0, 10).map((c) => (<li key={c.id} className="flex justify-between gap-2 tabular-nums"><span className="truncate">{c.fullName}</span><span className="font-bold">{c.count}</span></li>))}</ul></details>
-                          </>
-                        )}
+                        <h3 id="demand-by-subject-title" className="text-sm font-semibold text-slate-900">Demanda por asignatura</h3>
+                        <p className="mt-0.5 text-xs text-stone-500">Solicitudes recibidas según las asignaturas activas.</p>
                       </div>
-                    )}
-
-                    {/* Ranking View */}
-                    {demandViewMode === 'ranking' && (
-                      <div className="pt-2">
-                        {courseData.length === 0 ? (
-                          <div className="py-12 px-4 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                            <BookOpen aria-hidden="true" className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                            <p className="text-xs font-semibold text-slate-600">
-                              No hay asignaturas activas en este filtro
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="overflow-hidden rounded-md border border-[#dadce0]">
-                            <div className="max-h-72 overflow-y-auto divide-y divide-[#e8eaed]">
-                              {courseData.map((item, idx) => {
-                                const percentOfMax = Math.round((item.count / maxSubjectCount) * 100);
-                                return (
-                                  <div
-                                    key={item.id}
-                                    className="p-3 bg-white hover:bg-[#f8fafd] transition-colors flex items-center justify-between gap-3 text-xs"
-                                  >
-                                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                                      {/* Rank Badge */}
-                                      <span
-                                        className={`w-6 h-6 rounded-lg text-[11px] font-extrabold flex items-center justify-center shrink-0 ${
-                                          idx === 0 && item.count > 0
-                                            ? 'bg-brand-600 text-white'
-                                            : idx < 3 && item.count > 0
-                                            ? 'bg-brand-50 text-brand-700 border border-brand-200'
-                                            : 'bg-slate-100 text-slate-500'
-                                        }`}
-                                      >
-                                        #{idx + 1}
-                                      </span>
-
-                                      <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-bold text-slate-800 truncate">
-                                            {item.fullName}
-                                          </span>
-                                          {item.semester && (
-                                            <span className="text-[10px] font-semibold text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded">
-                                              Sem. {item.semester}
-                                            </span>
-                                          )}
-                                          {item.careerCode && (
-                                            <span className="text-[10px] font-mono text-slate-400">
-                                              ({item.careerCode})
-                                            </span>
-                                          )}
-                                        </div>
-
-                                        {/* Progress Bar */}
-                                        <div className="w-full bg-slate-100 rounded-full h-1.5 mt-1.5 overflow-hidden max-w-md">
-                                          <div
-                                            className="bg-brand-600 h-1.5 rounded-full transition-[width] duration-300"
-                                            style={{ width: `${item.count > 0 ? Math.max(percentOfMax, 5) : 0}%` }}
-                                          />
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {/* Count Badge */}
-                                    <div className="text-right shrink-0">
-                                      <span
-                                        className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${
-                                          item.count > 0
-                                            ? 'bg-brand-50 text-brand-700 border border-brand-200/60'
-                                            : 'bg-slate-100 text-slate-400'
-                                        }`}
-                                      >
-                                        {item.count} {item.count === 1 ? 'solicitud' : 'solicitudes'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </YafaCard>
-
-                  {/* Flujo / Pipeline de Estados — Yafa */}
-                  <YafaCard title="Flujo de estados de las tutorías" subtitle="Distribución de las solicitudes a lo largo del ciclo" accent="blue" action={<span className="text-xs font-semibold text-[#3c4043] tabular-nums">{totalTuts} totales</span>}>
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
-                      {/* Pendientes */}
-                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1">
-                        <div className="flex items-center justify-between text-slate-700 font-semibold">
-                          <span>Pendientes</span>
-                          <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      <span className="text-xs font-medium text-stone-500">{totalDemandRequests} solicitudes</span>
+                    </header>
+                    <div className="p-4 sm:p-5">
+                      <dl className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                        <div className="rounded-lg bg-stone-50 px-3 py-2.5"><dt className="text-[11px] text-stone-500">Mayor demanda</dt><dd className="mt-1 truncate text-xs font-semibold text-slate-800" title={topSubject?.fullName}>{topSubject?.fullName || 'Sin solicitudes'}</dd>{topSubject && <dd className="mt-0.5 text-[11px] text-brand-700">{topSubject.count} {topSubject.count === 1 ? 'solicitud' : 'solicitudes'}</dd>}</div>
+                        <div className="rounded-lg bg-stone-50 px-3 py-2.5"><dt className="text-[11px] text-stone-500">Asignaturas con demanda</dt><dd className="mt-1 text-xs font-semibold text-slate-800">{subjectsWithDemandCount} de {activeSubjects.length}</dd><dd className="mt-0.5 text-[11px] text-stone-500">{activeSubjects.length > 0 ? Math.round((subjectsWithDemandCount / activeSubjects.length) * 100) : 0}% de las activas</dd></div>
+                        <div className="rounded-lg bg-stone-50 px-3 py-2.5"><dt className="text-[11px] text-stone-500">Promedio por asignatura</dt><dd className="mt-1 text-xs font-semibold text-slate-800">{avgDemandPerSubject} tutorías</dd><dd className="mt-0.5 text-[11px] text-stone-500">En el periodo filtrado</dd></div>
+                      </dl>
+                      {courseData.length === 0 ? (
+                        <div className="mt-4 rounded-lg border border-dashed border-stone-200 px-4 py-8 text-center">
+                          <BookOpen aria-hidden="true" className="mx-auto h-5 w-5 text-stone-300" />
+                          <p className="mt-2 text-xs font-medium text-slate-700">No hay asignaturas activas para este filtro</p>
                         </div>
-                        <div className="text-2xl font-bold text-slate-900">{pendingTuts}</div>
-                        <div className="text-[11px] text-slate-500">
-                          {totalTuts > 0 ? Math.round((pendingTuts / totalTuts) * 100) : 0}% del total
-                        </div>
-                      </div>
-
-                      {/* Programadas */}
-                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1">
-                        <div className="flex items-center justify-between text-slate-700 font-semibold">
-                          <span>Programadas</span>
-                          <span className="w-2 h-2 rounded-full bg-brand-500" />
-                        </div>
-                        <div className="text-2xl font-bold text-slate-900">{approvedTuts}</div>
-                        <div className="text-[11px] text-slate-500">
-                          {totalTuts > 0 ? Math.round((approvedTuts / totalTuts) * 100) : 0}% del total
-                        </div>
-                      </div>
-
-                      {/* En Proceso */}
-                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1">
-                        <div className="flex items-center justify-between text-slate-700 font-semibold">
-                          <span>En Proceso</span>
-                          <span className="w-2 h-2 rounded-full bg-blue-500" />
-                        </div>
-                        <div className="text-2xl font-bold text-slate-900">{inProgTuts}</div>
-                        <div className="text-[11px] text-slate-500">
-                          {totalTuts > 0 ? Math.round((inProgTuts / totalTuts) * 100) : 0}% del total
-                        </div>
-                      </div>
-
-                      {/* Finalizadas */}
-                      <div className="bg-brand-50 border border-brand-200 rounded-xl p-3.5 space-y-1">
-                        <div className="flex items-center justify-between text-brand-700 font-semibold">
-                          <span>Finalizadas</span>
-                          <span className="w-2 h-2 rounded-full bg-brand-600" />
-                        </div>
-                        <div className="text-2xl font-bold text-brand-800">{completedTuts}</div>
-                        <div className="text-[11px] text-brand-700">
-                          {totalTuts > 0 ? Math.round((completedTuts / totalTuts) * 100) : 0}% del total
-                        </div>
-                      </div>
-
-                      {/* Canceladas */}
-                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1 col-span-2 sm:col-span-1">
-                        <div className="flex items-center justify-between text-slate-700 font-semibold">
-                          <span>Canceladas</span>
-                          <span className="w-2 h-2 rounded-full bg-danger" />
-                        </div>
-                        <div className="text-2xl font-bold text-slate-900">{cancelledTuts}</div>
-                        <div className="text-[11px] text-slate-500">
-                          {totalTuts > 0 ? Math.round((cancelledTuts / totalTuts) * 100) : 0}% del total
-                        </div>
-                      </div>
-                    </div>
-                  </YafaCard>
-
-                  {/* Resumen por Carrera y Semestre — evidencia densa Yafa */}
-                  <YafaCard title="Resumen por carrera y semestre" subtitle="Asignaturas activas, estudiantes y tutorías registradas" accent="violet" action={<span className="text-[11px] font-semibold text-[#5f6368]">{dashCareerFilter !== 'all' ? (selectedDashCareer?.name || 'Carrera específica') : 'Todas las carreras'}</span>}>
-                    <div className="overflow-x-auto max-h-80 overflow-y-auto rounded-md border border-[#dadce0]" role="region" aria-label="Resumen por carrera y semestre" tabIndex={0}>
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-[#f8fafd] text-[#5f6368] font-semibold uppercase tracking-wider border-b border-[#dadce0] sticky top-0 z-10">
-                          <tr>
-                            <th className="px-4 py-3">Carrera</th>
-                            <th className="px-4 py-3">Semestre</th>
-                            <th className="px-4 py-3 text-right tabular-nums">Asignaturas</th>
-                            <th className="px-4 py-3 text-right tabular-nums">Estudiantes</th>
-                            <th className="px-4 py-3 text-right tabular-nums">Tutorías</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {careers.map((c) => {
-                            if (dashCareerFilter !== 'all' && c.id !== dashCareerFilter) return null;
-                            const rows = dashPerSemesterRows.filter(
-                              (r) =>
-                                r.careerId === c.id &&
-                                (dashSemesterFilter === 'all' || r.sem === Number(dashSemesterFilter))
-                            );
-                            const totals = dashCareerRows.find((r) => r.careerId === c.id);
-                            if (rows.length === 0 || !totals) return null;
+                      ) : (
+                        <ol className="mt-4 max-h-80 divide-y divide-stone-100 overflow-y-auto" aria-label="Asignaturas ordenadas por demanda">
+                          {courseData.map((item, index) => {
+                            const demandPercent = Math.round((item.count / maxSubjectCount) * 100);
                             return (
-                              <Fragment key={c.id}>
-                                <tr className="bg-stone-50">
-                                  <td colSpan={5} className="px-4 py-2 font-extrabold text-slate-800">
-                                    {c.name}{' '}
-                                    <span className="text-[10px] font-semibold text-slate-400">({c.codePrefix})</span>
-                                  </td>
-                                </tr>
-                                {rows.map((r) => (
-                                  <tr key={`${c.id}-${r.sem}`} className="hover:bg-slate-50/70">
-                                    <td className="px-4 py-2 text-slate-500">—</td>
-                                    <td className="px-4 py-2 font-semibold text-slate-700">Semestre {r.sem}</td>
-                                    <td className="px-4 py-2 text-center">{r.subjectCount}</td>
-                                    <td className="px-4 py-2 text-center">{r.studentCount}</td>
-                                    <td className="px-4 py-2 text-center">{r.tutoringCount}</td>
-                                  </tr>
-                                ))}
-                                <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold">
-                                  <td className="px-4 py-2 text-slate-800">Totales</td>
-                                  <td className="px-4 py-2 text-slate-500 font-normal">{c.numberOfSemesters} semestres</td>
-                                  <td className="px-4 py-2 text-center text-brand-700">{totals.subjectCount}</td>
-                                  <td className="px-4 py-2 text-center text-blue-700">{totals.studentCount}</td>
-                                  <td className="px-4 py-2 text-center text-info">{totals.tutoringCount}</td>
-                                </tr>
-                              </Fragment>
+                              <li key={item.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-stone-100 text-[10px] font-semibold tabular-nums text-stone-600">{index + 1}</span>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="truncate text-xs font-medium text-slate-800" title={item.fullName}>{item.fullName}</p>
+                                      <p className="mt-0.5 truncate text-[10px] text-stone-500">{[item.careerName, item.semester ? `Semestre ${item.semester}` : ''].filter(Boolean).join(' · ') || 'Sin programa asociado'}</p>
+                                    </div>
+                                    <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-700">{item.count}</span>
+                                  </div>
+                                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-100" aria-hidden="true"><span className="block h-full rounded-full bg-brand-600" style={{ width: `${item.count > 0 ? Math.max(demandPercent, 4) : 0}%` }} /></div>
+                                </div>
+                              </li>
                             );
                           })}
-                        </tbody>
-                      </table>
+                        </ol>
+                      )}
                     </div>
-                  </YafaCard>
-                </div>
+                  </section>
+
+                  <section aria-labelledby="tutoring-status-title" className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+                    <header className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-4 sm:px-5">
+                      <div>
+                        <h3 id="tutoring-status-title" className="text-sm font-semibold text-slate-900">Solicitudes por estado</h3>
+                        <p className="mt-0.5 text-xs text-stone-500">Distribución del ciclo de tutoría.</p>
+                      </div>
+                      <span className="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-medium tabular-nums text-stone-600">{totalTuts} total</span>
+                    </header>
+                    <dl className="space-y-4 p-4 sm:p-5">
+                      {statusData.map((status) => {
+                        const percent = totalTuts > 0 ? Math.round((status.count / totalTuts) * 100) : 0;
+                        return (
+                          <div key={status.name}>
+                            <div className="flex items-center justify-between gap-3 text-xs">
+                              <dt className="flex min-w-0 items-center gap-2 font-medium text-slate-700"><span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: status.color }} />{status.name}</dt>
+                              <dd className="shrink-0 tabular-nums text-stone-500"><span className="font-semibold text-slate-800">{status.count}</span><span className="ml-2">{percent}%</span></dd>
+                            </div>
+                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-100" aria-hidden="true"><span className="block h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: status.color }} /></div>
+                          </div>
+                        );
+                      })}
+                      {statusData.length === 0 && <p className="text-xs text-stone-500">No hay estados para mostrar.</p>}
+                    </dl>
+                  </section>
+
+                  <section aria-labelledby="career-semester-summary-title" className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+                    <header className="flex flex-col gap-1 border-b border-stone-200 px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-5">
+                      <div>
+                        <h3 id="career-semester-summary-title" className="text-sm font-semibold text-slate-900">Resumen por carrera y semestre</h3>
+                        <p className="mt-0.5 text-xs text-stone-500">Asignaturas, estudiantes y tutorías del filtro actual.</p>
+                      </div>
+                      <span className="text-xs text-stone-500">{dashCareerFilter !== 'all' ? selectedDashCareer?.name || 'Carrera seleccionada' : 'Todas las carreras'}</span>
+                    </header>
+                    <div className="max-h-[26rem] space-y-3 overflow-y-auto p-3 sm:p-4">
+                      {careers.map((career) => {
+                        if (dashCareerFilter !== 'all' && career.id !== dashCareerFilter) return null;
+                        const semesterRows = dashPerSemesterRows.filter((row) => row.careerId === career.id && (dashSemesterFilter === 'all' || row.sem === Number(dashSemesterFilter)));
+                        if (semesterRows.length === 0) return null;
+                        const totals = semesterRows.reduce((sum, row) => ({ subjectCount: sum.subjectCount + row.subjectCount, studentCount: sum.studentCount + row.studentCount, tutoringCount: sum.tutoringCount + row.tutoringCount }), { subjectCount: 0, studentCount: 0, tutoringCount: 0 });
+                        return (
+                          <section key={career.id} aria-label={`Resumen de ${career.name}`} className="overflow-hidden rounded-lg border border-stone-200">
+                            <header className="flex flex-col gap-2 bg-stone-50/70 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="min-w-0"><h4 className="truncate text-xs font-semibold text-slate-800" title={career.name}>{career.name}</h4><p className="mt-0.5 text-[10px] text-stone-500">{career.codePrefix} · {semesterRows.length} {semesterRows.length === 1 ? 'semestre' : 'semestres'}</p></div>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-stone-500"><span><strong className="font-semibold text-slate-800">{totals.subjectCount}</strong> asignaturas</span><span><strong className="font-semibold text-slate-800">{totals.studentCount}</strong> estudiantes</span><span><strong className="font-semibold text-brand-700">{totals.tutoringCount}</strong> tutorías</span></div>
+                            </header>
+                            <ul className="divide-y divide-stone-100">
+                              {semesterRows.map((row) => (
+                                <li key={`${career.id}-${row.sem}`} className="grid grid-cols-[minmax(0,1fr)_repeat(3,auto)] items-center gap-3 px-3.5 py-2.5 text-xs">
+                                  <span className="font-medium text-slate-700">Semestre {row.sem}</span>
+                                  <span className="text-right tabular-nums text-stone-500"><strong className="font-medium text-slate-800">{row.subjectCount}</strong><span className="hidden sm:inline"> asignaturas</span></span>
+                                  <span className="text-right tabular-nums text-stone-500"><strong className="font-medium text-slate-800">{row.studentCount}</strong><span className="hidden sm:inline"> estudiantes</span></span>
+                                  <span className="text-right tabular-nums text-stone-500"><strong className="font-medium text-brand-700">{row.tutoringCount}</strong><span className="hidden sm:inline"> tutorías</span></span>
+                                </li>
+                              ))}
+                            </ul>
+                          </section>
+                        );
+                      })}
+                    </div>
+                  </section>                </div>
 
                 {/* Right 30% Column */}
                 <div className="xl:col-span-4 space-y-6">
@@ -1759,6 +1603,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {approvingTutoring && (
         <div
           id="modal-approve-backdrop"
+          onClick={(event) => { if (event.target === event.currentTarget) setApprovingTutoring(null); }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in"
         >
           <div
@@ -1880,6 +1725,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {cancellingTutoring && (
         <div
           id="modal-cancel-backdrop"
+          onClick={(event) => { if (event.target === event.currentTarget) setCancellingTutoring(null); }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in"
         >
           <div
@@ -1963,6 +1809,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {deletingUser && (
         <div
           id="modal-delete-user-backdrop"
+          onClick={(event) => { if (event.target === event.currentTarget && !deleteUserLoading) setDeletingUser(null); }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in"
         >
           <div
@@ -2070,6 +1917,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           tutoring={selectedDetailTutoring}
           currentUser={currentUser}
           onClose={() => setSelectedDetailTutoring(null)}
+          variant="admin-requests"
         />
       )}
     </div>

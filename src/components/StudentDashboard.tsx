@@ -1234,7 +1234,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
       {/* MODAL: CANCEL TUTORING */}
       {cancellingTutoring && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
+        <div onClick={(event) => { if (event.target === event.currentTarget) setCancellingTutoring(null); }} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 bg-danger-soft border-b border-danger-border flex items-center justify-between">
               <div className="flex items-center gap-2.5">

@@ -560,11 +560,17 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     0
   );
 
-  // Tutorías completadas (historial)
+  // El historial conserva los resultados y cancelaciones para consulta y auditoría.
   const completedTutorings = myTutorings.filter((t) => t.status === TutoringStatus.COMPLETED);
+  const cancelledTutorings = myTutorings.filter((t) => t.status === TutoringStatus.CANCELLED);
+  const historyTutorings = myTutorings.filter(
+    (t) => t.status === TutoringStatus.COMPLETED || t.status === TutoringStatus.CANCELLED
+  );
 
-  // Tutorías activas (excluyendo COMPLETED)
-  const activeTutorings = myTutorings.filter((t) => t.status !== TutoringStatus.COMPLETED);
+  // Las canceladas también salen de asignadas: no son sesiones pendientes de atender.
+  const activeTutorings = myTutorings.filter(
+    (t) => t.status !== TutoringStatus.COMPLETED && t.status !== TutoringStatus.CANCELLED
+  );
 
   // Filtered tutorings list in Tab Tutorings (Tutorías Asignadas - sin COMPLETED)
   const filteredMyTutorings = activeTutorings.filter((t) => {
@@ -647,7 +653,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     : 'bg-stone-100 text-stone-600'
                 }`}
               >
-                {completedTutorings.length}
+                {historyTutorings.length}
               </span>
             </button>
 
@@ -834,7 +840,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <option value={TutoringStatus.PENDING}>Pendientes</option>
                   <option value={TutoringStatus.APPROVED}>Programadas</option>
                   <option value={TutoringStatus.IN_PROGRESS}>En curso</option>
-                  <option value={TutoringStatus.CANCELLED}>Rechazadas</option>
                 </select>
                 <span className="px-1 text-xs text-stone-500 sm:ml-auto">{filteredMyTutorings.length} resultados</span>
               </div>
@@ -916,7 +921,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
             {/* MODAL: TUTORING DETAIL & EXECUTION CONSOLE */}
             {activeTutoring && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-[2px] animate-in fade-in sm:p-6">
+              <div onClick={(event) => { if (event.target === event.currentTarget) setSelectedTutoringId(null); }} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-[2px] animate-in fade-in sm:p-6">
                 <div role="dialog" aria-modal="true" aria-labelledby="manage-tutoring-title" className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl animate-in zoom-in-95">
                   {/* Header */}
                   <div className="flex shrink-0 items-start justify-between gap-4 border-b border-stone-200 px-5 py-4 sm:px-6">
@@ -1185,31 +1190,35 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <div>
                 <p className="text-xs font-medium text-brand-700">Registro de sesiones</p>
                 <h2 id="teacher-history-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Historial de tutorías</h2>
-                <p className="mt-1 text-sm text-stone-500">Consulta fechas, participantes y comentarios de sesiones finalizadas.</p>
+                <p className="mt-1 text-sm text-stone-500">Consulta las sesiones finalizadas y las cancelaciones con su motivo.</p>
               </div>
-              <span className="text-sm text-stone-500"><strong className="font-semibold text-slate-800">{completedTutorings.length}</strong> sesiones finalizadas</span>
+              <span className="text-sm text-stone-500"><strong className="font-semibold text-slate-800">{historyTutorings.length}</strong> registros archivados</span>
             </header>
 
-            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-stone-200 bg-stone-200 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-stone-200 bg-stone-200 sm:grid-cols-4">
               <div className="bg-white p-3.5 sm:p-4">
-                <p className="text-xs text-stone-500">Tutorías realizadas</p>
+                <p className="text-xs text-stone-500">Finalizadas</p>
                 <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{completedTutorings.length}</p>
+              </div>
+              <div className="bg-white p-3.5 sm:p-4">
+                <p className="text-xs text-stone-500">Canceladas</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-rose-700">{cancelledTutorings.length}</p>
               </div>
               <div className="bg-white p-3.5 sm:p-4">
                 <p className="text-xs text-stone-500">Con calificación</p>
                 <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{ratedTutorings.filter((t) => t.status === TutoringStatus.COMPLETED).length}</p>
               </div>
-              <div className="col-span-2 bg-white p-3.5 sm:col-span-1 sm:p-4">
-                <p className="text-xs text-stone-500">Estudiantes participantes</p>
+              <div className="bg-white p-3.5 sm:p-4">
+                <p className="text-xs text-stone-500">Participantes en sesiones realizadas</p>
                 <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{completedTutorings.reduce((total, tut) => total + (tut.assistants || []).length, 0)}</p>
               </div>
             </div>
 
-            {completedTutorings.length === 0 ? (
+            {historyTutorings.length === 0 ? (
               <div className="rounded-xl border border-dashed border-stone-300 bg-white px-4 py-14 text-center">
                 <History aria-hidden="true" className="mx-auto mb-3 h-8 w-8 text-stone-300" />
-                <p className="text-sm font-semibold text-slate-800">Aún no hay sesiones finalizadas</p>
-                <p className="mt-1 text-xs text-stone-500">Las tutorías completadas aparecerán aquí.</p>
+                <p className="text-sm font-semibold text-slate-800">Aún no hay registros en el historial</p>
+                <p className="mt-1 text-xs text-stone-500">Las sesiones finalizadas y las tutorías canceladas aparecerán aquí.</p>
               </div>
             ) : (
               <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
@@ -1221,7 +1230,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <span className="sr-only">Acción</span>
                 </div>
                 <div className="divide-y divide-stone-100">
-                  {completedTutorings
+                  {historyTutorings
                     .slice()
                     .sort((a, b) => new Date(b.reservDate).getTime() - new Date(a.reservDate).getTime())
                     .map((tut) => {
@@ -1235,7 +1244,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                               <p className="text-xs font-medium text-slate-800">{dt.formattedDate}</p>
                               <p className="mt-1 flex items-center gap-1.5 text-[11px] text-stone-500"><Clock aria-hidden="true" className="h-3.5 w-3.5" />{dt.timeDisplay}</p>
                             </div>
-                            <span className="font-mono text-[10px] text-stone-400 lg:mt-1 lg:block">{tut.code}</span>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 lg:block">
+                              <span className="font-mono text-[10px] text-stone-400">{tut.code}</span>
+                              <span className="lg:mt-1 lg:block"><StatusBadge status={tut.status} size="sm" /></span>
+                            </div>
                           </div>
 
                           <div className="min-w-0">
@@ -1252,9 +1264,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           </div>
 
                           <div className="min-w-0 space-y-1">
-                            {tut.score > 0 ? (
+                            {tut.status === TutoringStatus.CANCELLED ? (
+                              <p className="text-xs font-medium text-rose-700">Tutoría cancelada</p>
+                            ) : tut.score > 0 ? (
                               <p className="flex items-center gap-1.5 text-xs font-medium text-slate-700"><Star aria-hidden="true" className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />{tut.score} / 5{tut.studentComment ? <span className="truncate font-normal text-stone-500">· {tut.studentComment}</span> : null}</p>
                             ) : <p className="text-xs text-stone-400">Sin calificación</p>}
+                            {tut.status === TutoringStatus.CANCELLED && tut.cancelReason && <p className="line-clamp-2 text-[11px] text-rose-700" title={tut.cancelReason}>Motivo: {tut.cancelReason}</p>}
                             {tut.teacherComment && <p className="truncate text-[11px] text-stone-500" title={tut.teacherComment}>Observación: {tut.teacherComment}</p>}
                           </div>
 
@@ -1988,7 +2003,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
       {/* MODAL: APPROVE TUTORING */}
       {approvingTutoring && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
+        <div onClick={(event) => { if (event.target === event.currentTarget) setApprovingTutoring(null); }} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 bg-gradient-to-r from-[#fffaed] to-[#fbf7ee] border-b border-stone-200 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
@@ -2089,7 +2104,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
       {/* MODAL: CANCEL / REJECT TUTORING */}
       {cancellingTutoring && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
+        <div onClick={(event) => { if (event.target === event.currentTarget) setCancellingTutoring(null); }} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 bg-danger-soft border-b border-danger-border flex items-center justify-between">
               <div className="flex items-center gap-2.5">

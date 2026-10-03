@@ -57,7 +57,7 @@ export const StudentTutoringDetailModal: React.FC<StudentTutoringDetailModalProp
     (tutoring.space?.startsWith('http://') || tutoring.space?.startsWith('https://'));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-[2px] animate-in fade-in sm:p-6">
+    <div onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-[2px] animate-in fade-in sm:p-6">
       <section role="dialog" aria-modal="true" aria-labelledby="student-tutoring-detail-title" className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl animate-in zoom-in-95">
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-stone-200 px-5 py-4 sm:px-6">
           <div className="flex min-w-0 items-start gap-3">

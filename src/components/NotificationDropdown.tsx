@@ -9,6 +9,7 @@ interface NotificationDropdownProps {
   onMarkAllRead: () => void;
   onSelectTutoring?: (tutoring: Tutoring) => void;
   onClose: () => void;
+  triggerRef: React.RefObject<HTMLButtonElement>;
 }
 
 /** Resuelve la tutoría asociada: tutoringId directo primero, coincidencia por código como legado. */
@@ -34,7 +35,8 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   onMarkRead,
   onMarkAllRead,
   onSelectTutoring,
-  onClose
+  onClose,
+  triggerRef
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const unreadCount = notifications.filter((n) => !n.isRead).length;
@@ -44,11 +46,24 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   useEffect(() => {
     panelRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        triggerRef.current?.focus();
+      }
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target;
+      if (!(target instanceof Node)) return;
+      if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
+      onClose();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [onClose, triggerRef]);
 
   const handleItemClick = (notif: Notification) => {
     if (!notif.isRead) onMarkRead(notif.id);
@@ -61,12 +76,6 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
 
   return (
     <>
-      {/* Backdrop transparente: cierra al hacer clic fuera sin bloquear el scroll */}
-      <div
-        aria-hidden="true"
-        onClick={onClose}
-        className="fixed inset-0 z-40 cursor-default"
-      />
       <div
         id="notification-panel"
         ref={panelRef}

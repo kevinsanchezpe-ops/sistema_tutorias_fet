@@ -27,7 +27,7 @@ interface TutoringDetailModalProps {
   onClose: () => void;
   onOpenEvaluation?: (tutoring: Tutoring) => void;
   onGoToSection?: (section: 'requests' | 'history' | 'tutorings') => void;
-  variant?: 'default' | 'teacher-history' | 'notification';
+  variant?: 'default' | 'teacher-history' | 'notification' | 'admin-requests';
 }
 
 export const TutoringDetailModal: React.FC<TutoringDetailModalProps> = ({
@@ -39,7 +39,7 @@ export const TutoringDetailModal: React.FC<TutoringDetailModalProps> = ({
 }) => {
   const [viewingAttachment, setViewingAttachment] = React.useState<{ fileName: string; fileUrl: string } | null>(null);
   const isTeacherHistory = variant === 'teacher-history';
-  const isRedesigned = isTeacherHistory || variant === 'notification';
+  const isRedesigned = isTeacherHistory || variant === 'notification' || variant === 'admin-requests';
   const sessionDate = (() => {
     if (!tutoring.reservDate) return 'Sin fecha definida';
     const parsedDate = new Date(`${tutoring.reservDate.slice(0, 10)}T12:00:00`);
@@ -49,7 +49,7 @@ export const TutoringDetailModal: React.FC<TutoringDetailModalProps> = ({
   })();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+    <div onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
       <div className={`w-full overflow-hidden border border-stone-200 bg-white shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 ${isRedesigned ? 'max-w-xl rounded-xl' : 'max-w-lg rounded-2xl'}`}>
         {/* Header */}
         <div className={`flex items-center justify-between border-b border-stone-200 px-5 py-4 sm:px-6 ${isRedesigned ? 'bg-white' : 'bg-brand-50'}`}>

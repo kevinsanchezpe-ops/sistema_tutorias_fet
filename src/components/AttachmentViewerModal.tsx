@@ -20,6 +20,7 @@ export const AttachmentViewerModal: React.FC<AttachmentViewerModalProps> = ({
   return (
     <div
       id="modal-attachment-backdrop"
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
       className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in"
     >
       <div

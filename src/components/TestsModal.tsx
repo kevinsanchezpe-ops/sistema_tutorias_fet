@@ -21,6 +21,7 @@ export const TestsModal: React.FC<TestsModalProps> = ({ onClose }) => {
   return (
     <div
       id="modal-tests-backdrop"
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in"
     >
       <div

@@ -656,7 +656,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
       {/* MODAL: RECUPERACIÓN DE CONTRASEÑA */}
       {showForgotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+        <div onClick={(event) => { if (event.target === event.currentTarget) setShowForgotModal(false); }} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white border border-stone-200 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
               <div className="flex items-center gap-2">

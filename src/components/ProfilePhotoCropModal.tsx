@@ -88,7 +88,7 @@ export const ProfilePhotoCropModal: React.FC<ProfilePhotoCropModalProps> = ({ fi
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-3 backdrop-blur-[2px] animate-in fade-in sm:p-6">
+    <div onClick={(event) => { if (event.target === event.currentTarget) onCancel(); }} className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-3 backdrop-blur-[2px] animate-in fade-in sm:p-6">
       <section role="dialog" aria-modal="true" aria-labelledby="photo-crop-title" className="w-full max-w-md overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl animate-in zoom-in-95">
         <header className="flex items-start justify-between gap-4 border-b border-stone-200 px-5 py-4">
           <div className="flex items-start gap-3">
