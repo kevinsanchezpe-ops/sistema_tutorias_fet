@@ -1,12 +1,8 @@
 import React, { useRef, useState } from 'react';
-import { Notification, Tutoring, User, UserRole } from '../core/types';
+import { Notification, Tutoring, User } from '../core/types';
 import {
-  GraduationCap,
   Bell,
-  LogOut,
-  User as UserIcon,
-  Shield,
-  Briefcase
+  LogOut
 } from 'lucide-react';
 import { NotificationDropdown } from './NotificationDropdown';
 
@@ -43,34 +39,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     bellRef.current?.focus();
   };
 
-  const getRoleBadge = (role: UserRole) => {
-    switch (role) {
-      case UserRole.STUDENT:
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-brand-50 text-brand-700 border border-brand-200 shadow-2xs">
-            <GraduationCap aria-hidden="true" className="w-3.5 h-3.5 text-brand-700" />
-            <span>Estudiante</span>
-          </span>
-        );
-      case UserRole.TEACHER:
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-brand-50 text-brand-700 border border-brand-200 shadow-2xs">
-            <Briefcase aria-hidden="true" className="w-3.5 h-3.5 text-brand-700" />
-            <span>Docente</span>
-          </span>
-        );
-      case UserRole.ADMIN:
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-warning-soft text-amber-800 border border-warning-border shadow-2xs">
-            <Shield aria-hidden="true" className="w-3.5 h-3.5 text-warning" />
-            <span>Administrador</span>
-          </span>
-        );
-      default:
-        return null;
-    }
-  };
-
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-stone-200 shadow-2xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -83,11 +51,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="h-9 w-12 shrink-0 object-contain"
             />
             <div>
-              <div className="flex items-center gap-2">
+              <div>
                 <span className="font-bold text-stone-900 tracking-tight text-base sm:text-lg">
                   Agendamientos Tutorias FET
                 </span>
-                {getRoleBadge(currentUser.role)}
               </div>
               <p className="text-[11px] text-stone-500 hidden sm:block">
                 Fundación Escuela Tecnológica (FET)
