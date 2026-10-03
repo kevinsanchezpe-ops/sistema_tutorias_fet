@@ -68,12 +68,12 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   // Role theme background for initials
   const getRoleBg = () => {
     if (effectiveRole === UserRole.TEACHER) {
-      return 'bg-[#11770e] text-white';
+      return 'bg-brand-600 text-white';
     }
     if (effectiveRole === UserRole.ADMIN) {
       return 'bg-amber-600 text-white';
     }
-    return 'bg-[#11770e] text-white';
+    return 'bg-brand-600 text-white';
   };
 
   const hasValidPhoto = effectivePhoto && effectivePhoto.trim() !== '' && !imageError;
@@ -93,7 +93,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
         <div
           className={`w-full h-full flex items-center justify-center font-extrabold ${getRoleBg()} ${roundedClass} shadow-2xs`}
         >
-          {initials || <UserIcon className="w-1/2 h-1/2" />}
+          {initials || <UserIcon aria-hidden="true" className="w-1/2 h-1/2" />}
         </div>
       )}
 
@@ -107,10 +107,10 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
               : 'w-2 h-2'
           } ${
             effectiveRole === UserRole.TEACHER
-              ? 'bg-[#11770e]'
+              ? 'bg-brand-600'
               : effectiveRole === UserRole.ADMIN
               ? 'bg-amber-500'
-              : 'bg-emerald-500'
+              : 'bg-brand-500'
           }`}
         />
       )}

@@ -27,10 +27,10 @@ export const AttachmentViewerModal: React.FC<AttachmentViewerModalProps> = ({
         className="bg-white border border-stone-300 rounded-2xl max-w-4xl w-full overflow-hidden shadow-2xl flex flex-col max-h-[92vh] animate-in zoom-in-95"
       >
         {/* Header de la ventana */}
-        <div className="px-5 py-3.5 bg-[#fffaed] border-b border-stone-200 flex items-center justify-between">
+        <div className="px-5 py-3.5 bg-brand-50 border-b border-stone-200 flex items-center justify-between">
           <div className="flex items-center gap-2.5 overflow-hidden pr-2">
-            <div className="w-8 h-8 rounded-lg bg-[#11770e]/15 text-[#11770e] flex items-center justify-center shrink-0">
-              {isImage ? <ImageIcon className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+            <div className="w-8 h-8 rounded-lg bg-brand-600/15 text-brand-700 flex items-center justify-center shrink-0">
+              {isImage ? <ImageIcon aria-hidden="true" className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
             </div>
             <div className="truncate">
               <h3 className="text-xs font-bold text-slate-900 truncate">
@@ -48,8 +48,9 @@ export const AttachmentViewerModal: React.FC<AttachmentViewerModalProps> = ({
               download={fileName}
               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white border border-stone-300 hover:bg-stone-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors"
               title="Descargar archivo original"
+              aria-label={`Descargar ${fileName}`}
             >
-              <Download className="w-3.5 h-3.5" />
+              <Download aria-hidden="true" className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Descargar</span>
             </a>
 
@@ -57,8 +58,9 @@ export const AttachmentViewerModal: React.FC<AttachmentViewerModalProps> = ({
               onClick={onClose}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
               title="Cerrar visor"
+              aria-label="Cerrar visor"
             >
-              <X className="w-4 h-4" />
+              <X aria-hidden="true" className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -82,7 +84,7 @@ export const AttachmentViewerModal: React.FC<AttachmentViewerModalProps> = ({
             />
           ) : (
             <div className="text-center p-8 bg-white rounded-xl border border-stone-200 shadow-xs max-w-md space-y-3">
-              <FileText className="w-12 h-12 text-[#11770e] mx-auto opacity-80" />
+              <FileText aria-hidden="true" className="w-12 h-12 text-brand-700 mx-auto opacity-80" />
               <h4 className="text-sm font-bold text-slate-800">{fileName}</h4>
               <p className="text-xs text-slate-500 leading-relaxed">
                 Este tipo de documento (Word/Docx/Texto) no puede renderizarse directamente dentro del navegador web, pero puedes descargarlo o abrirlo en tu computadora.
@@ -90,9 +92,9 @@ export const AttachmentViewerModal: React.FC<AttachmentViewerModalProps> = ({
               <a
                 href={fileUrl}
                 download={fileName}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-[#11770e] hover:bg-[#0d5c0b] text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-b from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
               >
-                <Download className="w-4 h-4" />
+                <Download aria-hidden="true" className="w-4 h-4" />
                 <span>Descargar Archivo</span>
               </a>
             </div>

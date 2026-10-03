@@ -83,15 +83,15 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
   const getStatusBadgeStyle = (status: TutoringStatus) => {
     switch (status) {
       case TutoringStatus.PENDING:
-        return 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200';
+        return 'bg-warning-soft text-amber-900 border-warning-border hover:bg-warning-border/40';
       case TutoringStatus.APPROVED:
-        return 'bg-[#eaf8ea] text-[#11770e] border-[#bce6bc] hover:bg-[#dcfce4]';
+        return 'bg-brand-50 text-brand-700 border-brand-200 hover:bg-[#dcfce4]';
       case TutoringStatus.IN_PROGRESS:
-        return 'bg-indigo-100 text-indigo-900 border-indigo-300 animate-pulse hover:bg-indigo-200';
+        return 'bg-info-soft text-indigo-900 border-indigo-300 animate-pulse hover:bg-info-border/40';
       case TutoringStatus.COMPLETED:
         return 'bg-slate-100 text-slate-800 border-slate-300 hover:bg-slate-200';
       case TutoringStatus.CANCELLED:
-        return 'bg-rose-50 text-rose-700 border-rose-200 line-through opacity-60 hover:opacity-100';
+        return 'bg-danger-soft text-danger border-danger-border line-through opacity-60 hover:opacity-100';
       default:
         return 'bg-slate-100 text-slate-700 border-slate-200';
     }
@@ -168,8 +168,9 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
               onClick={handlePrev}
               className="p-1.5 hover:bg-slate-100 text-slate-600 transition-colors cursor-pointer"
               title="Período anterior"
+              aria-label="Período anterior"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft aria-hidden="true" className="w-4 h-4" />
             </button>
             <button
               type="button"
@@ -183,8 +184,9 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
               onClick={handleNext}
               className="p-1.5 hover:bg-slate-100 text-slate-600 transition-colors cursor-pointer"
               title="Período siguiente"
+              aria-label="Período siguiente"
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight aria-hidden="true" className="w-4 h-4" />
             </button>
           </div>
 
@@ -192,9 +194,9 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
             <button
               type="button"
               onClick={() => setViewMode('month')}
-              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+              className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
                 viewMode === 'month'
-                  ? 'bg-white text-[#11770e] shadow-2xs font-bold'
+                  ? 'bg-white text-brand-700 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -203,9 +205,9 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
             <button
               type="button"
               onClick={() => setViewMode('week')}
-              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+              className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
                 viewMode === 'week'
-                  ? 'bg-white text-[#11770e] shadow-2xs font-bold'
+                  ? 'bg-white text-brand-700 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -222,16 +224,16 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
           <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Pendiente
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#11770e]" /> Programada
+          <span className="w-2.5 h-2.5 rounded-full bg-brand-600" /> Programada
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-2.5 h-2.5 rounded-full bg-indigo-600" /> En Proceso
+          <span className="w-2.5 h-2.5 rounded-full bg-info" /> En Proceso
         </span>
         <span className="flex items-center gap-1">
           <span className="w-2.5 h-2.5 rounded-full bg-slate-500" /> Finalizada
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-2.5 h-2.5 rounded-full bg-rose-500" /> Cancelada
+          <span className="w-2.5 h-2.5 rounded-full bg-danger" /> Cancelada
         </span>
       </div>
 
@@ -253,16 +255,25 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
               return (
                 <div
                   key={idx}
+                  role={onSelectDate ? 'button' : undefined}
+                  tabIndex={onSelectDate ? 0 : undefined}
+                  aria-label={onSelectDate ? `Agendar el ${date.getDate()} de ${monthNames[month]}` : undefined}
                   onClick={() => onSelectDate && onSelectDate(dateStr)}
+                  onKeyDown={(e) => {
+                    if (onSelectDate && (e.key === 'Enter' || e.key === ' ')) {
+                      e.preventDefault();
+                      onSelectDate(dateStr);
+                    }
+                  }}
                   className={`min-h-[110px] p-1.5 border-r border-b border-slate-200 transition-colors ${
                     isCurrentMonth ? 'bg-white' : 'bg-slate-50/50 text-slate-400'
-                  } ${isToday ? 'bg-[#eaf8ea]/30' : ''} ${onSelectDate ? 'cursor-pointer hover:bg-slate-50' : ''}`}
+                  } ${isToday ? 'bg-brand-50/30' : ''} ${onSelectDate ? 'cursor-pointer hover:bg-slate-50' : ''}`}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span
                       className={`text-xs font-bold inline-flex items-center justify-center w-5 h-5 rounded-full ${
                         isToday
-                          ? 'bg-[#11770e] text-white'
+                          ? 'bg-brand-600 text-white'
                           : isCurrentMonth
                           ? 'text-slate-700'
                           : 'text-slate-400'
@@ -286,7 +297,7 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
                           e.stopPropagation();
                           onSelectTutoring(tut);
                         }}
-                        className={`w-full text-left p-1 rounded-md border text-[10px] transition-all cursor-pointer truncate flex items-center justify-between gap-1 shadow-2xs ${getStatusBadgeStyle(
+                        className={`w-full text-left p-1 rounded-md border text-[10px] transition-colors cursor-pointer truncate flex items-center justify-between gap-1 shadow-2xs ${getStatusBadgeStyle(
                           tut.status
                         )}`}
                         title={`${tut.code} - ${tut.subject} (${tut.scheduleLabel})`}
@@ -296,7 +307,7 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
                           <span className="truncate">{tut.subject}</span>
                         </div>
                         {tut.attachmentName && (
-                          <Paperclip className="w-2.5 h-2.5 shrink-0 opacity-75" />
+                          <Paperclip aria-hidden="true" className="w-2.5 h-2.5 shrink-0 opacity-75" />
                         )}
                       </button>
                     ))}
@@ -320,9 +331,18 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
               return (
                 <div
                   key={idx}
+                  role={onSelectDate ? 'button' : undefined}
+                  tabIndex={onSelectDate ? 0 : undefined}
+                  aria-label={onSelectDate ? `Agendar el ${date.getDate()} de ${monthNames[date.getMonth()]}` : undefined}
                   onClick={() => onSelectDate && onSelectDate(dateStr)}
+                  onKeyDown={(e) => {
+                    if (onSelectDate && (e.key === 'Enter' || e.key === ' ')) {
+                      e.preventDefault();
+                      onSelectDate(dateStr);
+                    }
+                  }}
                   className={`min-h-[350px] p-2 bg-white flex flex-col ${
-                    isToday ? 'bg-[#eaf8ea]/30' : ''
+                    isToday ? 'bg-brand-50/30' : ''
                   } ${onSelectDate ? 'cursor-pointer hover:bg-slate-50/80' : ''}`}
                 >
                   <div className="text-center pb-2 border-b border-slate-100 mb-2">
@@ -331,7 +351,7 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
                     </span>
                     <span
                       className={`text-sm font-black inline-flex items-center justify-center w-7 h-7 rounded-full mt-0.5 ${
-                        isToday ? 'bg-[#11770e] text-white shadow-2xs' : 'text-slate-800'
+                        isToday ? 'bg-brand-600 text-white shadow-2xs' : 'text-slate-800'
                       }`}
                     >
                       {date.getDate()}
@@ -347,9 +367,19 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
                       dayTutorings.map((tut) => (
                         <div
                           key={tut.id}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Ver detalle de ${tut.code}, ${tut.subject}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             onSelectTutoring(tut);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onSelectTutoring(tut);
+                            }
                           }}
                           className={`p-2 rounded-xl border text-xs shadow-2xs cursor-pointer space-y-1 transition-transform hover:-translate-y-0.5 ${getStatusBadgeStyle(
                             tut.status
@@ -358,7 +388,7 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
                           <div className="flex items-center justify-between gap-1 font-bold text-[11px]">
                             <span>{tut.code}</span>
                             <span className="flex items-center gap-0.5 text-[10px] opacity-80">
-                              <Clock className="w-2.5 h-2.5" />
+                              <Clock aria-hidden="true" className="w-2.5 h-2.5" />
                               {tut.scheduleLabel}
                             </span>
                           </div>
@@ -374,14 +404,14 @@ export const TutoringCalendarView: React.FC<TutoringCalendarViewProps> = ({
                           <div className="pt-1 border-t border-black/10 flex items-center justify-between text-[10px] opacity-90">
                             <span className="truncate flex items-center gap-1">
                               {tut.modality === TutoringModality.PRESENCIAL ? (
-                                <MapPin className="w-2.5 h-2.5 shrink-0" />
+                                <MapPin aria-hidden="true" className="w-2.5 h-2.5 shrink-0" />
                               ) : (
-                                <Video className="w-2.5 h-2.5 shrink-0" />
+                                <Video aria-hidden="true" className="w-2.5 h-2.5 shrink-0" />
                               )}
                               <span className="truncate max-w-[80px]">{tut.space || 'Pendiente'}</span>
                             </span>
                             {tut.attachmentName && (
-                              <Paperclip className="w-3 h-3 shrink-0 text-[#11770e]" />
+                              <Paperclip aria-hidden="true" className="w-3 h-3 shrink-0 text-brand-700" />
                             )}
                           </div>
                         </div>

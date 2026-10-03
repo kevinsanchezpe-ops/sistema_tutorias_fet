@@ -42,6 +42,10 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
     await pool.query(schemaSql);
     console.log('[PostgreSQL] Esquema de tablas verificado y actualizado con éxito.');
 
+    // Retirar teléfonos personales existentes de usuarios y de los asistentes de tutoría.
+    await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS phone;`);
+    await pool.query(`ALTER TABLE tutoring_assistants DROP COLUMN IF EXISTS student_phone;`);
+
     // Asegurar cupos por defecto de las aulas conocidas sin sobrescribir valores ya configurados
     for (const sec of INITIAL_SECTIONS) {
       await pool.query(`UPDATE sections SET capacity = $2 WHERE id = $1 AND capacity = 0;`, [sec.id, sec.capacity]);
@@ -59,6 +63,7 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
     // Soporte para bases creadas antes de los campos block / cancel_reason en tutorings
     await pool.query(`ALTER TABLE tutorings ADD COLUMN IF NOT EXISTS block TEXT DEFAULT '';`);
     await pool.query(`ALTER TABLE tutorings ADD COLUMN IF NOT EXISTS cancel_reason TEXT DEFAULT '';`);
+    await pool.query(`ALTER TABLE tutorings ALTER COLUMN score TYPE NUMERIC(3,1) USING score::numeric;`);
     // Migración: calificaciones históricas (score único) a ratings por participante
     await pool.query(
       `INSERT INTO tutoring_ratings (id, tutoring_id, student_id, student_name, score, student_comment, created_at)
@@ -83,6 +88,16 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
        WHERE career_id = 'car-1' OR career_id = '' OR career_id IS NULL;`
     );
 
+    // Sincronizar datos oficiales de la institución FET
+    await pool.query(
+      `UPDATE institution
+       SET name = 'Fundación Escuela Tecnológica de Neiva - FET',
+           address = 'Kilometro 12, via Neiva – Rivera',
+           email = 'gestiontutorias@fet.edu.co',
+           phone = '6088674935 – (+57) 3223041567'
+       WHERE id = 'inst-1' OR address LIKE '%Kennedy%' OR email LIKE '%@gt.edu%' OR name LIKE '%Centro de Tutor%';`
+    );
+
     // 3. Check if users table is populated
     const countRes = await pool.query('SELECT COUNT(*) as count FROM users;');
     const userCount = parseInt(countRes.rows[0].count, 10);
@@ -93,8 +108,8 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
       // Seed Users
       for (const u of INITIAL_USERS) {
         await pool.query(
-          `INSERT INTO users (id, username, password_hash, full_name, alias, email, phone, role, account, campus_id, campus_name, career_id, career_name, birth_date, admission_date, semester, photo_url, observations, is_active, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+          `INSERT INTO users (id, username, password_hash, full_name, alias, email, role, account, campus_id, campus_name, career_id, career_name, birth_date, admission_date, semester, photo_url, observations, is_active, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
            ON CONFLICT (id) DO NOTHING;`,
           [
             u.id,
@@ -103,7 +118,6 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
             u.fullName,
             u.alias,
             u.email,
-            u.phone,
             u.role,
             u.account,
             u.campusId,
@@ -211,8 +225,8 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
         if (t.assistants && t.assistants.length > 0) {
           for (const asst of t.assistants) {
             await pool.query(
-              `INSERT INTO tutoring_assistants (id, tutoring_id, student_id, student_name, student_account, student_phone, student_email, is_petitioner, has_attended, joined_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+              `INSERT INTO tutoring_assistants (id, tutoring_id, student_id, student_name, student_account, student_email, is_petitioner, has_attended, joined_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                ON CONFLICT (id) DO NOTHING;`,
               [
                 asst.id,
@@ -220,7 +234,6 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
                 asst.studentId,
                 asst.studentName,
                 asst.studentAccount,
-                asst.studentPhone,
                 asst.studentEmail,
                 asst.isPetitioner,
                 asst.hasAttended,

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 24 24" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Yafa-UI: Dashboard</title>
+  <desc id="desc">A four-panel Lucide dashboard mark in light cyan, green, pink, and violet on white.</desc>
+  <rect x="0.5" y="0.5" width="23" height="23" rx="4" fill="#ffffff" stroke="#dadce0" stroke-width="0.25"/>
+  <rect width="7" height="9" x="3" y="3" rx="1" stroke="#67e8f9" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="7" height="5" x="14" y="3" rx="1" stroke="#86efac" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="7" height="5" x="3" y="16" rx="1" stroke="#f9a8d4" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="7" height="9" x="14" y="12" rx="1" stroke="#c4b5fd" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -40,7 +40,8 @@ export class FinishTutoringUseCase {
     db.addNotification(
       tutoring.petitionerStudentId,
       'Tutoría Finalizada - Evalúe a su Tutor',
-      `La tutoría ${tutoring.code} sobre '${tutoring.subject}' ha concluido con éxito. Por favor, califique la sesión en su historial.`
+      `La tutoría ${tutoring.code} sobre '${tutoring.subject}' ha concluido con éxito. Por favor, califique la sesión en su historial.`,
+      tutoring.id
     );
 
     db.notify();

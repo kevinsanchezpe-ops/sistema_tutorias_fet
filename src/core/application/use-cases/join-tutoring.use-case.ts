@@ -62,7 +62,6 @@ export class JoinTutoringUseCase {
       studentId: student.id,
       studentName: student.fullName,
       studentAccount: student.account,
-      studentPhone: student.phone,
       studentEmail: student.email,
       isPetitioner: false,
       hasAttended: false,
@@ -82,7 +81,8 @@ export class JoinTutoringUseCase {
     db.addNotification(
       tutoring.teacherId,
       'Nuevo Participante en Tutoría',
-      `El estudiante ${student.fullName} (${student.account}) se ha unido a su tutoría ${tutoring.code} programada para el ${tutoring.reservDate}.`
+      `El estudiante ${student.fullName} (${student.account}) se ha unido a su tutoría ${tutoring.code} programada para el ${tutoring.reservDate}.`,
+      tutoring.id
     );
 
     db.notify();

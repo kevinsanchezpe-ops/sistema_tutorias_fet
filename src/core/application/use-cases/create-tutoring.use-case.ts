@@ -111,7 +111,6 @@ export class CreateTutoringUseCase {
           studentId: petitioner.id,
           studentName: petitioner.fullName,
           studentAccount: petitioner.account,
-          studentPhone: petitioner.phone,
           studentEmail: petitioner.email,
           isPetitioner: true,
           hasAttended: false,
@@ -137,7 +136,8 @@ export class CreateTutoringUseCase {
         db.addNotification(
           admin.id,
           'Nueva Solicitud de Tutoría',
-          `Se ha recibido la solicitud ${newTutoring.code} para '${course.name}' el ${dto.reservDate}.`
+          `Se ha recibido la solicitud ${newTutoring.code} para '${course.name}' el ${dto.reservDate}.`,
+          newTutoring.id
         );
       });
 

@@ -6,7 +6,6 @@ import { User, UserRole } from '../../types';
 export interface RegisterStudentDto {
   fullName: string;
   email: string;
-  phone?: string;
   birthDate?: string;
   admissionDate?: string;
   account: string;
@@ -62,7 +61,6 @@ export class RegisterStudentUseCase {
       fullName: dto.fullName.trim(),
       alias,
       email: dto.email.trim(),
-      phone: dto.phone.trim(),
       role: UserRole.STUDENT,
       account: dto.account.trim(),
       campusId: dto.campusId || 'cmp-1',

@@ -99,8 +99,8 @@ async function insertTempTeacher(p: Pool): Promise<User> {
   const teacherId = `pgteacher-${suffix}`;
   const username = `pgtest_teacher_${suffix}`;
   await p.query(
-    `INSERT INTO users (id, username, password_hash, full_name, alias, email, phone, role, account, campus_id, campus_name, career_id, career_name, birth_date, admission_date, semester, photo_url, observations, is_active, created_at)
-     VALUES ($1, $2, '', $3, '', $4, '', 'TEACHER', '', '', '', '', '', '', '', 0, '', '', TRUE, '');`,
+    `INSERT INTO users (id, username, password_hash, full_name, alias, email, role, account, campus_id, campus_name, career_id, career_name, birth_date, admission_date, semester, photo_url, observations, is_active, created_at)
+     VALUES ($1, $2, '', $3, '', $4, 'TEACHER', '', '', '', '', '', '', '', 0, '', '', TRUE, '');`,
     [teacherId, username, `Docente de Prueba ${RUN_ID}`, `${username}@mail.test`]
   );
   const teacher = await pgRepo.getUserById(teacherId);
@@ -481,7 +481,6 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
         const created = await pgRepo.registerTeacher({
           fullName: `Docente Temporal PG ${RUN_ID}`,
           email: `${username}@mail.test`,
-          phone: '+504 9999-9999',
           account: `DOC-TMP-${suffix}`,
           username,
           password: temporaryPassword

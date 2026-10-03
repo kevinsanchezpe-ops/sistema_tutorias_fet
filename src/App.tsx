@@ -1,15 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { Navbar } from './components/Navbar';
-import { StudentDashboard } from './components/StudentDashboard';
-import { TeacherDashboard } from './components/TeacherDashboard';
-import { AdminDashboard } from './components/AdminDashboard';
-import { EvaluationModal } from './components/EvaluationModal';
-import { RegisterModal } from './components/RegisterModal';
-import { NotificationModal } from './components/NotificationModal';
-import { TestsModal } from './components/TestsModal';
+const StudentDashboard = lazy(() => import('./components/StudentDashboard').then((module) => ({ default: module.StudentDashboard })));
+const TeacherDashboard = lazy(() => import('./components/TeacherDashboard').then((module) => ({ default: module.TeacherDashboard })));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard').then((module) => ({ default: module.AdminDashboard })));
+const EvaluationModal = lazy(() => import('./components/EvaluationModal').then((module) => ({ default: module.EvaluationModal })));
+const RegisterModal = lazy(() => import('./components/RegisterModal').then((module) => ({ default: module.RegisterModal })));
+const TestsModal = lazy(() => import('./components/TestsModal').then((module) => ({ default: module.TestsModal })));
 import { AuthView } from './components/AuthView';
 import { ChangePasswordView } from './components/ChangePasswordView';
-import { TutoringDetailModal } from './components/TutoringDetailModal';
+const TutoringDetailModal = lazy(() => import('./components/TutoringDetailModal').then((module) => ({ default: module.TutoringDetailModal })));
 import { ApiClient } from './core/presentation/api-client';
 import { db } from './core/infrastructure/database/database';
 import {
@@ -25,7 +24,7 @@ import {
   User,
   UserRole
 } from './core/types';
-import { GraduationCap, ShieldCheck, UserCheck, BookOpen, Clock, LogOut, LogIn, UserPlus, MapPin, Phone, Mail } from 'lucide-react';
+import { ShieldCheck, UserCheck, BookOpen, Clock, LogOut, LogIn, UserPlus, MapPin, Phone, Mail } from 'lucide-react';
 
 export default function App() {
   // Session authentication state - starts at null so user sees Login / Register screen
@@ -55,7 +54,6 @@ export default function App() {
   const [analytics, setAnalytics] = useState<any>(null);
 
   // Modals state
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showTests, setShowTests] = useState(false);
   const [evaluatingTutoring, setEvaluatingTutoring] = useState<Tutoring | null>(null);
@@ -176,6 +174,23 @@ export default function App() {
     setAuthMode('login');
   };
 
+  // Optimistic read: actualiza el badge al instante y reconcilia en segundo plano.
+  // (ApiClient notifica a los listeners y refreshData reconcilia sin vaciar la vista.)
+  const handleMarkNotificationRead = async (id: string) => {
+    const prev = notifications;
+    setNotifications((ns) => ns.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
+    const res = await ApiClient.markNotificationRead(id);
+    if (!res.success) setNotifications(prev);
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    if (!currentUser) return;
+    const prev = notifications;
+    setNotifications((ns) => ns.map((n) => ({ ...n, isRead: true })));
+    const res = await ApiClient.markAllNotificationsRead(currentUser.id);
+    if (!res.success) setNotifications(prev);
+  };
+
   // Role Switcher helper
   const handleSwitchRole = (role: UserRole) => {
     const targetUser = allUsers.find((u) => u.role === role);
@@ -211,7 +226,7 @@ export default function App() {
           onLoginSuccess={handleLoginSuccess}
           onOpenTests={() => setShowTests(true)}
         />
-        {showTests && <TestsModal onClose={() => setShowTests(false)} />}
+        {showTests && <Suspense fallback={null}><TestsModal onClose={() => setShowTests(false)} /></Suspense>}
       </>
     );
   }
@@ -231,15 +246,24 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fffaed]/40 text-[#2b2b2b] flex flex-col font-sans antialiased selection:bg-[#11770e] selection:text-white">
+    <div className="min-h-screen bg-brand-50/40 text-stone-900 flex flex-col font-sans antialiased selection:bg-brand-600 selection:text-white">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[70] focus:bg-white focus:text-brand-800 focus:px-4 focus:py-2 focus:rounded-lg focus:font-bold focus:text-xs"
+      >
+        Saltar al contenido principal
+      </a>
       {renderDbBanner()}
       {/* Top Navbar */}
       <Navbar
         currentUser={currentUser}
         allUsers={allUsers}
         notifications={notifications}
+        tutorings={tutorings}
         onSelectUser={handleLoginSuccess}
-        onOpenNotifications={() => setShowNotifications(true)}
+        onMarkRead={handleMarkNotificationRead}
+        onMarkAllRead={handleMarkAllNotificationsRead}
+        onSelectTutoring={(tut) => setSelectedTutoringDetail(tut)}
         onOpenRegister={() => setShowRegisterModal(true)}
         onOpenTests={() => setShowTests(true)}
         onLogout={handleLogout}
@@ -250,9 +274,10 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main id="main-content" className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {currentUser.role === UserRole.STUDENT && (
-          <StudentDashboard
+          <Suspense fallback={<div className="rounded-xl border border-stone-200 bg-white px-4 py-6 text-sm text-stone-500">Cargando panel estudiantil…</div>}>
+            <StudentDashboard
             currentUser={currentUser}
             tutorings={tutorings}
             subjects={subjects}
@@ -260,11 +285,13 @@ export default function App() {
             availabilities={availabilities}
             onRefresh={refreshData}
             onOpenEvaluation={(tut) => setEvaluatingTutoring(tut)}
-          />
+            />
+          </Suspense>
         )}
 
         {currentUser.role === UserRole.TEACHER && (
-          <TeacherDashboard
+          <Suspense fallback={<div className="rounded-xl border border-stone-200 bg-white px-4 py-6 text-sm text-stone-500">Cargando panel docente…</div>}>
+            <TeacherDashboard
             currentUser={currentUser}
             tutorings={tutorings}
             availabilities={availabilities}
@@ -272,175 +299,119 @@ export default function App() {
             subjects={subjects}
             sections={sections}
             onRefresh={refreshData}
-          />
+            />
+          </Suspense>
         )}
 
         {currentUser.role === UserRole.ADMIN && (
-          <AdminDashboard
+          <Suspense fallback={<div className="rounded-xl border border-stone-200 bg-white px-4 py-6 text-sm text-stone-500">Cargando panel administrativo…</div>}>
+            <AdminDashboard
             currentUser={currentUser}
             tutorings={tutorings}
             subjects={subjects}
             careers={careers}
             users={allUsers}
             binnacle={binnacle}
-            institution={institution}
             schedules={schedules}
             sections={sections}
             onRefresh={refreshData}
             analytics={analytics}
-          />
+            onOpenRegister={() => setShowRegisterModal(true)}
+            onOpenTests={() => setShowTests(true)}
+            />
+          </Suspense>
         )}
       </main>
 
-      {/* Footer Institucional y Profesional */}
-      <footer className="bg-[#2b2b2b] text-slate-300 border-t border-[#3b3b3b] mt-auto">
-        {/* Main Footer Container */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {/* Columna 1: Identidad Institucional */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#11770e] flex items-center justify-center text-white font-bold shadow-md shadow-[#11770e]/30 border border-[#7ce200]/30">
-                  <GraduationCap className="w-6 h-6 text-[#fffaed]" />
-                </div>
-                <div>
-                  <span className="text-base font-bold tracking-tight text-white block">
-                    Agendamientos Tutorias FET
-                  </span>
-                  <span className="text-xs text-[#7ce200] font-medium">
-                    {institution.name}
-                  </span>
+      {/* Footer institucional */}
+      <footer className="mt-auto border-t-2 border-brand-600 bg-slate-950 text-slate-300">
+        <div className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
+          <div className="grid gap-7 sm:grid-cols-2 xl:grid-cols-[1.4fr_1fr_1fr] xl:gap-12">
+            <div className="sm:col-span-2 xl:col-span-1">
+              <div className="flex items-center gap-4">
+                <img src="/logo-fet-blanco.png" alt="FET" className="h-14 w-20 shrink-0 object-contain" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold tracking-tight text-white">Tutorías FET</p>
+                  <p className="mt-0.5 text-xs text-slate-400">Fundación Escuela Tecnológica de Neiva</p>
                 </div>
               </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                {institution.mission || 'Plataforma oficial para la gestión, reserva y seguimiento pedagógico integral de tutorías universitarias presenciales y virtuales.'}
+              <p className="mt-4 max-w-md text-xs leading-5 text-slate-400">
+                Plataforma para solicitar y gestionar tutorías académicas presenciales y virtuales entre docentes y estudiantes.
               </p>
-              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#11770e]/20 border border-[#11770e]/40 text-[11px] text-[#fffaed]">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#7ce200]" />
-                <span>Acompañamiento Académico Certificado</span>
-              </div>
             </div>
 
-            {/* Columna 2: Sedes y Contacto */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold uppercase tracking-wider text-[#fffaed] border-b border-[#3b3b3b] pb-2">
-                Sedes y Contacto
-              </h4>
-              <ul className="space-y-2.5 text-xs text-slate-400">
+            <section aria-labelledby="footer-campus-title">
+              <h2 id="footer-campus-title" className="text-xs font-semibold text-white">Sede principal</h2>
+              <ul className="mt-3 space-y-2.5 text-xs text-slate-400">
                 <li className="flex items-start gap-2.5">
-                  <MapPin className="w-4 h-4 text-[#7ce200] shrink-0 mt-0.5" />
-                  <span>{institution.address || 'Kilómetro 12 Vía al Sur, Rivera - Huila'}, Neiva, Huila</span>
+                  <MapPin aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-brand-400" />
+                  <span>Kilómetro 12, vía Neiva – Rivera</span>
                 </li>
-                <li className="flex items-center gap-2.5">
-                  <Phone className="w-4 h-4 text-[#7ce200] shrink-0" />
-                  <span>{institution.phone || '(+57) 8 838 8000'}</span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <Mail className="w-4 h-4 text-[#7ce200] shrink-0" />
-                  <a href={`mailto:${institution.email}`} className="hover:text-[#7ce200] transition-colors">
-                    {institution.email || 'tutorias@fet.edu.co'}
+                <li className="flex items-start gap-2.5">
+                  <Mail aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-brand-400" />
+                  <a href="mailto:gestiontutorias@fet.edu.co" className="break-all transition-colors hover:text-white focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-brand-400">
+                    gestiontutorias@fet.edu.co
                   </a>
                 </li>
               </ul>
-            </div>
+            </section>
 
-            {/* Columna 3: Canales de Tutoría */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold uppercase tracking-wider text-[#fffaed] border-b border-[#3b3b3b] pb-2">
-                Modalidades & Servicios
-              </h4>
-              <ul className="space-y-2 text-xs text-slate-400">
-                <li className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#7ce200]" />
-                  <span>Tutorías Presenciales en Aulas y Laboratorios</span>
+            <section aria-labelledby="footer-service-title">
+              <h2 id="footer-service-title" className="text-xs font-semibold text-white">Atención al ciudadano</h2>
+              <ul className="mt-3 space-y-2.5 text-xs text-slate-400">
+                <li className="flex items-start gap-2.5">
+                  <MapPin aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-brand-400" />
+                  <span>Calle 12 #5-59, Neiva, Huila</span>
                 </li>
-                <li className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#7ce200]" />
-                  <span>Tutorías Virtuales vía Google Meet / Teams</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#7ce200]" />
-                  <span>Acompañamiento Individual y Grupal</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#7ce200]" />
-                  <span>Evaluación de Aprendizaje y Feedback Continuo</span>
+                <li className="flex items-start gap-2.5">
+                  <Phone aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-brand-400" />
+                  <span>6088674935 · (+57) 3223041567</span>
                 </li>
               </ul>
-            </div>
-
-            {/* Columna 4: Horarios y Enlaces */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold uppercase tracking-wider text-[#fffaed] border-b border-[#3b3b3b] pb-2">
-                Atención Institucional
-              </h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Horario de atención pedagógica de Lunes a Viernes de 7:00 a.m. a 9:00 p.m. y Sábados de 7:00 a.m. a 1:00 p.m.
-              </p>
-              <div className="pt-1 text-xs">
-                <span className="text-slate-400">Vigilada por el </span>
-                <span className="text-[#fffaed] font-medium">Ministerio de Educación Nacional</span>
-              </div>
-            </div>
+            </section>
           </div>
-        </div>
 
-        {/* Sub-bar Copyright */}
-        <div className="border-t border-[#3b3b3b] bg-[#1e1e1e] py-4">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
-            <div>
-              © {new Date().getFullYear()} {institution.name}. Todos los derechos reservados.
-            </div>
-            <div className="flex items-center gap-4 text-slate-400">
-              <span className="text-[#7ce200]">Portal de Agendamiento Académico FET</span>
-              <span>•</span>
-              <span>Neiva, Huila - Colombia</span>
-            </div>
+          <div className="mt-7 flex flex-col gap-2 border-t border-white/10 pt-4 text-[11px] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+            <span>© {new Date().getFullYear()} Fundación Escuela Tecnológica de Neiva - FET. Todos los derechos reservados.</span>
+            <span>Sistema Institucional de Gestión de Tutorías Académicas</span>
           </div>
         </div>
       </footer>
 
       {/* MODALS */}
-      {showNotifications && (
-        <NotificationModal
-          notifications={notifications}
-          userId={currentUser.id}
-          tutorings={tutorings}
-          onClose={() => setShowNotifications(false)}
-          onRefresh={refreshData}
-          onSelectTutoring={(tut) => setSelectedTutoringDetail(tut)}
-        />
-      )}
-
       {selectedTutoringDetail && (
-        <TutoringDetailModal
-          tutoring={selectedTutoringDetail}
-          currentUser={currentUser}
-          onClose={() => setSelectedTutoringDetail(null)}
-          onOpenEvaluation={(tut) => setEvaluatingTutoring(tut)}
-        />
+        <Suspense fallback={null}>
+          <TutoringDetailModal
+            tutoring={selectedTutoringDetail}
+            currentUser={currentUser}
+            onClose={() => setSelectedTutoringDetail(null)}
+            onOpenEvaluation={(tut) => setEvaluatingTutoring(tut)}
+            variant="notification"
+          />
+        </Suspense>
       )}
 
       {showRegisterModal && (
-        <RegisterModal
-          careers={careers}
-          onClose={() => setShowRegisterModal(false)}
-          onSuccess={(newUser) => {
-            handleLoginSuccess(newUser);
-            refreshData();
-          }}
-        />
+        <Suspense fallback={null}>
+          <RegisterModal
+            careers={careers}
+            onClose={() => setShowRegisterModal(false)}
+            onSuccess={() => refreshData()}
+          />
+        </Suspense>
       )}
 
-      {showTests && <TestsModal onClose={() => setShowTests(false)} />}
+      {showTests && <Suspense fallback={null}><TestsModal onClose={() => setShowTests(false)} /></Suspense>}
 
       {evaluatingTutoring && (
-        <EvaluationModal
-          tutoring={evaluatingTutoring}
-          currentUser={currentUser}
-          onClose={() => setEvaluatingTutoring(null)}
-          onSuccess={() => refreshData()}
-        />
+        <Suspense fallback={null}>
+          <EvaluationModal
+            tutoring={evaluatingTutoring}
+            currentUser={currentUser}
+            onClose={() => setEvaluatingTutoring(null)}
+            onSuccess={() => refreshData()}
+          />
+        </Suspense>
       )}
     </div>
   );

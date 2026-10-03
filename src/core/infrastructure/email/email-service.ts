@@ -95,7 +95,7 @@ export class EmailService {
         
         <div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 16px; text-align: center; margin: 24px 0;">
           <p style="margin: 0 0 10px 0; font-size: 13px; color: #475569;">Tu código de seguridad temporal es:</p>
-          <span style="font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #059669; font-family: monospace;">${resetToken}</span>
+          <span style="font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #059669; font-family: Arial, sans-serif;">${resetToken}</span>
         </div>
 
         <p style="font-size: 13px; color: #475569;">O haz clic en el siguiente botón para definir una nueva contraseña:</p>

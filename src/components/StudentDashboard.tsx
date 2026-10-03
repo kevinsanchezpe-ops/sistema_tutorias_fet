@@ -38,54 +38,17 @@ import {
   Sparkles,
   Camera,
   UploadCloud,
-  CheckCircle2
+  CheckCircle2,
 } from 'lucide-react';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
 import { TutoringCalendarView } from './TutoringCalendarView';
-import { TutoringDetailModal } from './TutoringDetailModal';
+import { StudentTutoringDetailModal } from './StudentTutoringDetailModal';
+import { ProfilePhotoCropModal } from './ProfilePhotoCropModal';
 import { UserAvatar } from './UserAvatar';
+import { InstitutionalProfileCard } from './InstitutionalProfileCard';
+import { compressProfileImage } from '../core/utils/image-utils';
 
-// Client-side image compression utility
-function compressProfileImage(file: File, maxWidth = 360, maxHeight = 360, quality = 0.85): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target?.result as string;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
 
-        if (width > height) {
-          if (width > maxWidth) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(event.target?.result as string);
-          return;
-        }
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
-        resolve(dataUrl);
-      };
-      img.onerror = (e) => reject(e);
-    };
-    reader.onerror = (e) => reject(e);
-  });
-}
 
 interface StudentDashboardProps {
   currentUser: User;
@@ -128,8 +91,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
   // Form State for New Tutoring
   const [subjectTitle, setSubjectTitle] = useState('');
-  const [selectedCourseId, setSelectedCourseId] = useState<string>(() => coursePool[0]?.id || '');
-  const [modality, setModality] = useState<TutoringModality>(TutoringModality.VIRTUAL);
+  const [selectedCourseId, setSelectedCourseId] = useState('');
+  const [modality, setModality] = useState<TutoringModality | ''>('');
 
   // Calculate default +2 days minimum date
   const getMinDate = () => {
@@ -166,40 +129,40 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
   // Photo Management State
   const [photoUploading, setPhotoUploading] = useState(false);
-  const [photoSuccessMsg, setPhotoSuccessMsg] = useState<string | null>(null);
-  const [photoErrorMsg, setPhotoErrorMsg] = useState<string | null>(null);
+  const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
+  const [profileErrorMsg, setProfileErrorMsg] = useState<string | null>(null);
+  const [photoToCrop, setPhotoToCrop] = useState<File | null>(null);
   const photoInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handlePhotoUploadFile = async (file: File) => {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      setPhotoErrorMsg('Por favor seleccione un archivo de imagen válido (.jpg, .png, .webp).');
+      setProfileErrorMsg('Por favor seleccione un archivo de imagen válido (.jpg, .png, .webp).');
       return;
     }
 
     if (file.size > 8 * 1024 * 1024) {
-      setPhotoErrorMsg('La imagen no debe superar los 8MB.');
+      setProfileErrorMsg('La imagen no debe superar los 8MB.');
       return;
     }
 
     setPhotoUploading(true);
-    setPhotoErrorMsg(null);
-    setPhotoSuccessMsg(null);
+    setProfileErrorMsg(null);
+    setProfileSuccessMsg(null);
 
     try {
       const compressedBase64 = await compressProfileImage(file, 400, 400, 0.88);
       const res = await ApiClient.updateUserProfile(currentUser.id, { photoUrl: compressedBase64 }, currentUser);
       if (res.success) {
-        setPhotoSuccessMsg('¡Foto de perfil actualizada exitosamente! Ahora es visible para tus docentes.');
+        setProfileSuccessMsg('¡Foto de perfil actualizada exitosamente! Ahora es visible para tus docentes.');
         onRefresh();
-        setTimeout(() => setPhotoSuccessMsg(null), 4500);
+        setTimeout(() => setProfileSuccessMsg(null), 4500);
       } else {
-        setPhotoErrorMsg(res.error?.message || 'Error al actualizar la foto de perfil.');
+        setProfileErrorMsg(res.error?.message || 'Error al actualizar la foto de perfil.');
       }
     } catch (err: any) {
-      setPhotoErrorMsg(err.message || 'Error al procesar la imagen seleccionada.');
+      setProfileErrorMsg(err.message || 'Error al procesar la imagen seleccionada.');
     } finally {
       setPhotoUploading(false);
       if (photoInputRef.current) {
@@ -211,19 +174,19 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const handleRemovePhoto = async () => {
     if (!window.confirm('¿Está seguro de que desea eliminar su foto de perfil actual?')) return;
     setPhotoUploading(true);
-    setPhotoErrorMsg(null);
-    setPhotoSuccessMsg(null);
+    setProfileErrorMsg(null);
+    setProfileSuccessMsg(null);
     try {
       const res = await ApiClient.updateUserProfile(currentUser.id, { photoUrl: '' }, currentUser);
       if (res.success) {
-        setPhotoSuccessMsg('Foto de perfil eliminada correctamente.');
+        setProfileSuccessMsg('Foto de perfil eliminada correctamente.');
         onRefresh();
-        setTimeout(() => setPhotoSuccessMsg(null), 4000);
+        setTimeout(() => setProfileSuccessMsg(null), 4000);
       } else {
-        setPhotoErrorMsg(res.error?.message || 'Error al eliminar la foto.');
+        setProfileErrorMsg(res.error?.message || 'Error al eliminar la foto.');
       }
     } catch (err: any) {
-      setPhotoErrorMsg(err.message || 'Error al eliminar la foto.');
+      setProfileErrorMsg(err.message || 'Error al eliminar la foto.');
     } finally {
       setPhotoUploading(false);
     }
@@ -234,14 +197,9 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
     (a) => a.subjectCourseId === selectedCourseId && a.isAvailable
   );
 
-  // Auto-select course if coursePool updates
+  // Keep the course empty until the student chooses one.
   React.useEffect(() => {
-    if (coursePool.length > 0) {
-      const isValid = coursePool.some((s) => s.id === selectedCourseId);
-      if (!isValid) {
-        handleCourseChange(coursePool[0].id);
-      }
-    } else {
+    if (!coursePool.some((s) => s.id === selectedCourseId)) {
       setSelectedCourseId('');
       setSelectedTeacherId('');
       setSelectedSlotId('');
@@ -286,6 +244,12 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
     if (!selectedTeacherId || !selectedSlotId) {
       setSubmitError('Debe seleccionar un docente y un horario disponible para la asignatura.');
+      setSubmitting(false);
+      return;
+    }
+
+    if (modality === '') {
+      setSubmitError('Debe seleccionar una modalidad para la tutoría.');
       setSubmitting(false);
       return;
     }
@@ -437,39 +401,17 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   return (
     <div className="flex flex-col lg:flex-row gap-6 items-start pb-12">
       {/* LEFT SIDEBAR NAVIGATION */}
-      <aside className="w-full lg:w-72 xl:w-80 shrink-0 bg-white rounded-2xl border border-stone-200/90 shadow-xs p-5 space-y-6">
-        {/* Student Profile Card */}
-        <div className="p-4 bg-gradient-to-b from-[#fffaed] to-[#fbf7ee] border border-stone-200/90 rounded-2xl shadow-2xs space-y-3">
-          <div className="flex items-center gap-3">
-            <UserAvatar
-              user={currentUser}
-              size="lg"
-              className="border border-[#bce6bc]/60 shadow-xs"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="font-bold text-slate-900 text-sm leading-snug truncate">
-                {currentUser.fullName}
-              </div>
-              <div className="text-[11px] text-stone-500 font-medium truncate mt-0.5">
-                {currentUser.email}
-              </div>
-            </div>
-          </div>
+      <aside className="w-full shrink-0 space-y-4 rounded-xl border border-stone-200 bg-white p-4 shadow-xs lg:w-72 xl:w-80">
+        <InstitutionalProfileCard
+          user={currentUser}
+          variant="sidebar"
+          canEditPhoto={false}
+          showEmail={false}
+          className="w-full mb-2"
+        />
 
-          <div className="pt-2 border-t border-stone-200/80 flex flex-wrap gap-2 text-[11px]">
-            <span className="font-bold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-stone-200 font-mono shadow-2xs">
-              ID: {currentUser.account || currentUser.username}
-            </span>
-            <span className="font-bold text-[#11770e] bg-[#eaf8ea] px-2.5 py-1 rounded-lg border border-[#bce6bc]/60 shadow-2xs truncate max-w-full">
-              {currentUser.careerName}
-              {currentUser.semester ? ` • Sem. ${currentUser.semester}` : ''}
-            </span>
-          </div>
-        </div>
-
-        {/* Sidebar Nav Buttons */}
-        <div className="space-y-1">
-          <div className="text-[10px] uppercase font-bold text-stone-400 px-3 mb-2 tracking-wider">
+        <div className="space-y-2">
+          <div className="px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400">
             Portal Estudiantil
           </div>
 
@@ -478,14 +420,14 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               id="tab-student-requests"
               type="button"
               onClick={() => setActiveTab('requests')}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
                 activeTab === 'requests'
-                  ? 'bg-[#11770e] text-white shadow-xs'
-                  : 'text-stone-700 hover:bg-[#eaf8ea] hover:text-[#11770e]'
+                  ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200'
+                  : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'
               }`}
             >
               <div className="flex items-center gap-3">
-                <PlusCircle className="w-4 h-4 shrink-0" />
+                <PlusCircle aria-hidden="true" className="w-4 h-4 shrink-0" />
                 <span>Solicitar Tutoría</span>
               </div>
             </button>
@@ -494,21 +436,21 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               id="tab-student-peers"
               type="button"
               onClick={() => setActiveTab('peers')}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
                 activeTab === 'peers'
-                  ? 'bg-[#11770e] text-white shadow-xs'
-                  : 'text-stone-700 hover:bg-[#eaf8ea] hover:text-[#11770e]'
+                  ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200'
+                  : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'
               }`}
             >
               <div className="flex items-center gap-3">
-                <Users className="w-4 h-4 shrink-0" />
+                <Users aria-hidden="true" className="w-4 h-4 shrink-0" />
                 <span>Tutorías Disponibles</span>
               </div>
               <span
                 className={`text-[11px] px-2.5 py-0.5 rounded-full font-extrabold ${
                   activeTab === 'peers'
-                    ? 'bg-white text-[#11770e]'
-                    : 'bg-indigo-100 text-indigo-800'
+                  ? 'bg-white text-brand-700'
+                    : 'bg-info-soft text-info'
                 }`}
               >
                 {peerUpcomingTutorings.length}
@@ -519,20 +461,20 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               id="tab-student-history"
               type="button"
               onClick={() => setActiveTab('history')}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
                 activeTab === 'history'
-                  ? 'bg-[#11770e] text-white shadow-xs'
-                  : 'text-stone-700 hover:bg-[#eaf8ea] hover:text-[#11770e]'
+                  ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200'
+                  : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'
               }`}
             >
               <div className="flex items-center gap-3">
-                <History className="w-4 h-4 shrink-0" />
+                <History aria-hidden="true" className="w-4 h-4 shrink-0" />
                 <span>Mis Tutorías e Historial</span>
               </div>
               <span
                 className={`text-[11px] px-2.5 py-0.5 rounded-full font-extrabold ${
                   activeTab === 'history'
-                    ? 'bg-white text-[#11770e]'
+                    ? 'bg-white text-brand-700'
                     : 'bg-stone-100 text-stone-600'
                 }`}
               >
@@ -544,14 +486,14 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               id="tab-student-profile"
               type="button"
               onClick={() => setActiveTab('profile')}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
                 activeTab === 'profile'
-                  ? 'bg-[#11770e] text-white shadow-xs'
-                  : 'text-stone-700 hover:bg-[#eaf8ea] hover:text-[#11770e]'
+                  ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200'
+                  : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'
               }`}
             >
               <div className="flex items-center gap-3">
-                <UserCheck className="w-4 h-4 shrink-0" />
+                <UserCheck aria-hidden="true" className="w-4 h-4 shrink-0" />
                 <span>Ficha Estudiantil</span>
               </div>
             </button>
@@ -563,8 +505,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       <div className="flex-1 w-full min-w-0 space-y-6">
         {/* Notifications */}
         {cancelSuccess && (
-          <div className="p-4 bg-[#eaf8ea] border border-[#bce6bc] text-[#11770e] rounded-2xl text-xs flex items-center gap-2 font-bold animate-in fade-in">
-            <Check className="w-4 h-4 text-[#11770e] shrink-0" />
+          <div className="p-4 bg-brand-50 border border-brand-200 text-brand-700 rounded-2xl text-xs flex items-center gap-2 font-bold animate-in fade-in">
+            <Check aria-hidden="true" className="w-4 h-4 text-brand-700 shrink-0" />
             <span>{cancelSuccess}</span>
           </div>
         )}
@@ -572,38 +514,47 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         {/* TAB 1: SOLICITAR TUTORÍA */}
         {activeTab === 'requests' && (
           <div className="space-y-6 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl border border-stone-200/90 shadow-xs p-6 space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-100">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-                    Solicitar Nueva Tutoría Académica
-                  </h2>
-                  <p className="text-xs text-stone-500 mt-0.5">
-                    Seleccione la asignatura, el docente y la franja horaria para recibir asesoría personalizada.
-                  </p>
+            <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+              <div className="flex flex-col gap-4 border-b border-stone-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7 sm:py-6">
+                <div className="flex items-center gap-3.5">
+                  <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+                    <Send aria-hidden="true" className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-700">Nueva solicitud</p>
+                    <h2 className="mt-0.5 text-lg font-semibold tracking-tight text-slate-900">Solicitar una tutoría</h2>
+                    <p className="mt-1 text-sm text-stone-500">Cuéntanos qué necesitas y elige cuándo recibir apoyo.</p>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-[11px] bg-[#eaf8ea] text-[#11770e] font-bold px-3 py-1 rounded-xl border border-[#bce6bc]/60">
-                    Regla: +2 días de anticipación
+                <div className="flex items-center gap-2 self-start rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600 sm:self-auto">
+                  <Clock aria-hidden="true" className="h-4 w-4 text-brand-700" />
+                  <span>
+                    Reserva con <strong className="font-semibold text-slate-800">2 días</strong> de anticipación
                   </span>
                 </div>
               </div>
 
-              <form onSubmit={handleSubmitRequest} className="space-y-5 text-xs">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <form onSubmit={handleSubmitRequest} className="space-y-7 p-5 text-sm sm:p-7">
+                <section aria-labelledby="tutoring-session-heading" className="space-y-4">
+                  <div>
+                    <h3 id="tutoring-session-heading" className="text-sm font-semibold text-slate-900">Detalles de la sesión</h3>
+                    <p className="mt-0.5 text-xs text-stone-500">Selecciona una asignatura para ver sus docentes disponibles.</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2">
                   {/* Asignatura */}
                   <div className="space-y-1.5">
-                    <label className="block font-bold text-slate-800">
-                      1. Asignatura a Consultar <span className="text-rose-600">*</span>
+                    <label htmlFor="select-tutoring-course" className="block text-xs font-medium text-slate-700">
+                      Asignatura <span className="text-danger">*</span>
                     </label>
                     <select
                       id="select-tutoring-course"
                       value={selectedCourseId}
                       onChange={(e) => handleCourseChange(e.target.value)}
                       required
-                      className="w-full h-10 rounded-xl border border-stone-200 px-3 text-xs text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/30 focus:border-[#11770e] transition-all cursor-pointer shadow-2xs"
+                      className="h-12 w-full cursor-pointer rounded-lg border border-stone-200 bg-white px-3.5 text-sm font-normal text-slate-800 transition-colors focus:border-brand-600 focus:outline-hidden focus:ring-2 focus:ring-brand-600/20"
                     >
+                      <option value="" disabled>Elige una asignatura</option>
                       {coursePool.length === 0 && (
                         <option value="">No hay asignaturas registradas para este semestre</option>
                       )}
@@ -613,13 +564,12 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                         </option>
                       ))}
                     </select>
-                    
                   </div>
 
                   {/* Docente y Horario */}
                   <div className="space-y-1.5">
-                    <label className="block font-bold text-slate-800">
-                      2. Docente y Franja Horaria <span className="text-rose-600">*</span>
+                    <label htmlFor="select-teacher-availability" className="block text-xs font-medium text-slate-700">
+                      Docente y horario <span className="text-danger">*</span>
                     </label>
                     <select
                       id="select-teacher-availability"
@@ -631,7 +581,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                       }}
                       required
                       disabled={matchingAvailabilities.length === 0}
-                      className="w-full h-10 rounded-xl border border-stone-200 px-3 text-xs text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/30 focus:border-[#11770e] transition-all cursor-pointer shadow-2xs disabled:bg-stone-100 disabled:text-stone-400"
+                      className="h-12 w-full cursor-pointer rounded-lg border border-stone-200 bg-white px-3.5 text-sm font-normal text-slate-800 transition-colors focus:border-brand-600 focus:outline-hidden focus:ring-2 focus:ring-brand-600/20 disabled:cursor-not-allowed disabled:bg-stone-50 disabled:text-stone-400"
                     >
                       {matchingAvailabilities.length === 0 ? (
                         <option value="">No hay docentes con disponibilidad activa para esta materia</option>
@@ -647,15 +597,17 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
                   {/* Modalidad */}
                   <div className="space-y-1.5">
-                    <label className="block font-bold text-slate-800">
-                      3. Modalidad de la Sesión <span className="text-rose-600">*</span>
+                    <label htmlFor="select-tutoring-modality" className="block text-xs font-medium text-slate-700">
+                      Modalidad <span className="text-danger">*</span>
                     </label>
                     <select
                       id="select-tutoring-modality"
                       value={modality}
-                      onChange={(e) => setModality(Number(e.target.value) as TutoringModality)}
-                      className="w-full h-10 rounded-xl border border-stone-200 px-3 text-xs text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/30 focus:border-[#11770e] transition-all cursor-pointer shadow-2xs"
+                      onChange={(e) => setModality(e.target.value === '' ? '' : Number(e.target.value) as TutoringModality)}
+                      required
+                      className="h-12 w-full cursor-pointer rounded-lg border border-stone-200 bg-white px-3.5 text-sm font-normal text-slate-800 transition-colors focus:border-brand-600 focus:outline-hidden focus:ring-2 focus:ring-brand-600/20"
                     >
+                      <option value="" disabled>Elige una modalidad</option>
                       <option value={TutoringModality.VIRTUAL}>Virtual (Google Meet / Enlace en vivo)</option>
                       <option value={TutoringModality.PRESENCIAL}>Presencial (Aula / Laboratorio institucional)</option>
                     </select>
@@ -663,8 +615,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
                   {/* Fecha de Reserva */}
                   <div className="space-y-1.5">
-                    <label className="block font-bold text-slate-800">
-                      4. Fecha de Reserva <span className="text-rose-600">*</span>
+                    <label htmlFor="input-tutoring-date" className="block text-xs font-medium text-slate-700">
+                      Fecha de la sesión <span className="text-danger">*</span>
                     </label>
                     <input
                       id="input-tutoring-date"
@@ -673,50 +625,60 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                       value={reservDate}
                       onChange={(e) => setReservDate(e.target.value)}
                       required
-                      className="w-full h-10 rounded-xl border border-stone-200 px-3 text-xs text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/30 focus:border-[#11770e] transition-all shadow-2xs"
+                      className="h-12 w-full rounded-lg border border-stone-200 bg-white px-3.5 text-sm font-normal text-slate-800 transition-colors focus:border-brand-600 focus:outline-hidden focus:ring-2 focus:ring-brand-600/20"
                     />
                   </div>
-                </div>
+                  </div>
+                </section>
 
                 {/* Tema / Asunto */}
-                <div className="space-y-1.5">
-                  <label className="block font-bold text-slate-800">
-                    5. Tema o Asunto Principal <span className="text-rose-600">*</span>
-                  </label>
-                  <input
-                    id="input-tutoring-subject"
-                    type="text"
-                    value={subjectTitle}
-                    onChange={(e) => setSubjectTitle(e.target.value)}
-                    placeholder="Tema principal de la tutoría"
-                    maxLength={70}
-                    required
-                    className="w-full h-10 rounded-xl border border-stone-200 px-3.5 text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/30 focus:border-[#11770e] transition-all shadow-2xs"
-                  />
-                </div>
+                <section aria-labelledby="tutoring-topic-heading" className="space-y-4 border-t border-stone-100 pt-6">
+                  <div>
+                    <h3 id="tutoring-topic-heading" className="text-sm font-semibold text-slate-900">¿En qué necesitas ayuda?</h3>
+                    <p className="mt-0.5 text-xs text-stone-500">Describe el tema para que el docente pueda prepararse.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="input-tutoring-subject" className="block text-xs font-medium text-slate-700">
+                      Tema o asunto <span className="text-danger">*</span>
+                    </label>
+                    <input
+                      id="input-tutoring-subject"
+                      type="text"
+                      value={subjectTitle}
+                      onChange={(e) => setSubjectTitle(e.target.value)}
+                      placeholder="Ej.: límites, derivadas, estructuras de datos…"
+                      maxLength={70}
+                      required
+                      className="h-12 w-full rounded-lg border border-stone-200 bg-white px-3.5 text-sm text-slate-800 transition-colors placeholder:text-stone-400 focus:border-brand-600 focus:outline-hidden focus:ring-2 focus:ring-brand-600/20"
+                    />
+                  </div>
 
                 {/* Descripción y Dudas */}
                 <div className="space-y-1.5">
-                  <label className="block font-bold text-slate-800">
-                    6. Descripción Específica de las Dudas o Ejercicios <span className="text-rose-600">*</span>
+                  <label htmlFor="input-tutoring-details" className="block text-xs font-medium text-slate-700">
+                    Descripción de tus dudas <span className="text-danger">*</span>
                   </label>
                   <textarea
                     id="input-tutoring-details"
                     rows={3}
                     value={details}
                     onChange={(e) => setDetails(e.target.value)}
-                    placeholder="Descripción de dudas o ejercicios a repasar"
+                    placeholder="Escribe qué temas, ejercicios o preguntas quieres revisar…"
                     required
-                    className="w-full rounded-xl border border-stone-200 p-3 text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/30 focus:border-[#11770e] transition-all shadow-2xs"
+                    className="w-full resize-y rounded-lg border border-stone-200 bg-white p-3.5 text-sm text-slate-800 transition-colors placeholder:text-stone-400 focus:border-brand-600 focus:outline-hidden focus:ring-2 focus:ring-brand-600/20"
                   />
                 </div>
+                </section>
 
                 {/* Material de Apoyo (Adjunto) */}
-                <div className="space-y-2">
-                  <label className="block font-bold text-slate-800">
-                    7. Material de Apoyo (Opcional: PDF, DOCX, Imágenes hasta 8 MB)
-                  </label>
-                  <div className="flex items-center gap-3">
+                <div className="space-y-3 border-t border-stone-100 pt-6">
+                  <div>
+                    <label htmlFor="file-attachment" className="block text-xs font-medium text-slate-700">
+                      Material de apoyo <span className="font-normal text-stone-400">(opcional)</span>
+                    </label>
+                    <p className="mt-0.5 text-xs text-stone-500">PDF, DOCX o imagen · Máximo 8 MB</p>
+                  </div>
+                  <div className="rounded-xl border border-dashed border-stone-300 bg-stone-50/70 p-4 transition-colors hover:border-brand-400 hover:bg-brand-50/30">
                     <input
                       id="file-attachment"
                       type="file"
@@ -751,16 +713,16 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                           setIsReadingFile(false);
                         }
                       }}
-                      className="text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#eaf8ea] file:text-[#11770e] hover:file:bg-[#dcfce4] cursor-pointer"
+                      className="w-full cursor-pointer text-xs text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3.5 file:py-2 file:text-xs file:font-semibold file:text-slate-700 file:shadow-sm hover:file:bg-stone-100"
                     />
                   </div>
 
                   {attachmentName && (
-                    <div className="flex items-center gap-2.5 text-xs text-[#11770e] font-bold bg-[#eaf8ea] border border-[#bce6bc] px-3.5 py-2 rounded-xl w-fit shadow-2xs">
-                      <Paperclip className="w-4 h-4 shrink-0" />
+                    <div className="flex w-fit items-center gap-2.5 rounded-lg border border-brand-200 bg-brand-50 px-3.5 py-2 text-xs font-semibold text-brand-700">
+                      <Paperclip aria-hidden="true" className="w-4 h-4 shrink-0" />
                       <span className="truncate max-w-sm">{attachmentName}</span>
                       {isReadingFile && (
-                        <span className="text-[10px] text-amber-700 animate-pulse">(Cargando...)</span>
+                        <span className="text-[10px] text-warning animate-pulse">(Cargando…)</span>
                       )}
                       <button
                         type="button"
@@ -771,42 +733,43 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                           const fileInput = document.getElementById('file-attachment') as HTMLInputElement | null;
                           if (fileInput) fileInput.value = '';
                         }}
-                        className="text-rose-600 hover:text-rose-800 ml-1 p-0.5 rounded cursor-pointer"
+                        className="text-danger hover:text-danger ml-1 p-0.5 rounded cursor-pointer"
                         title="Quitar archivo adjunto"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 aria-hidden="true" className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   )}
                 </div>
 
                 {submitError && (
-                  <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center gap-2 font-bold">
-                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <div role="alert" className="p-3.5 bg-danger-soft border border-danger-border text-danger rounded-xl text-xs flex items-center gap-2 font-bold">
+                    <AlertCircle aria-hidden="true" className="w-4 h-4 shrink-0 text-danger" />
                     <span>{submitError}</span>
                   </div>
                 )}
 
                 {submitSuccess && (
-                  <div className="p-3.5 bg-[#eaf8ea] border border-[#bce6bc] text-[#11770e] rounded-xl text-xs flex items-center gap-2 font-bold">
-                    <Check className="w-4 h-4 shrink-0 text-[#11770e]" />
+                  <div className="p-3.5 bg-brand-50 border border-brand-200 text-brand-700 rounded-xl text-xs flex items-center gap-2 font-bold">
+                    <Check aria-hidden="true" className="w-4 h-4 shrink-0 text-brand-700" />
                     <span>{submitSuccess}</span>
                   </div>
                 )}
 
-                <div className="pt-2">
+                <div className="flex flex-col-reverse gap-3 border-t border-stone-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-stone-500"><span className="text-danger">*</span> Campos obligatorios</p>
                   <button
                     id="btn-submit-tutoring-request"
                     type="submit"
                     disabled={submitting || isReadingFile || matchingAvailabilities.length === 0}
-                    className="h-11 px-6 rounded-xl bg-[#11770e] hover:bg-[#0d5c0b] text-white font-bold shadow-xs transition-colors disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer text-xs"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-brand-700 px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <Send className="w-4 h-4" />
+                    <Send aria-hidden="true" className="w-4 h-4" />
                     <span>
                       {submitting
-                        ? 'Enviando solicitud...'
+                        ? 'Enviando solicitud…'
                         : isReadingFile
-                        ? 'Procesando archivo adjunto...'
+                        ? 'Procesando archivo adjunto…'
                         : 'Enviar Solicitud de Tutoría'}
                     </span>
                   </button>
@@ -818,123 +781,123 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
         {/* TAB 2: TUTORÍAS DISPONIBLES DE COMPAÑEROS */}
         {activeTab === 'peers' && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl border border-stone-200/90 shadow-xs p-6 space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-100">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-                    Tutorías Grupales Disponibles
-                  </h2>
-                  <p className="text-xs text-stone-500 mt-0.5">
-                    Únase a tutorías solicitadas por compañeros de su carrera para estudiar en grupo.
-                  </p>
-                </div>
-                <span className="text-xs font-bold bg-indigo-50 text-indigo-700 px-3 py-1 rounded-xl border border-indigo-200/60 w-fit">
-                  {peerUpcomingTutorings.length} disponibles
+          <section aria-labelledby="peer-tutorings-title" className="space-y-4 animate-in fade-in duration-200">
+            <header className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+              <div className="flex min-w-0 items-start gap-3">
+                <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
+                  <Users className="h-4 w-4" />
                 </span>
-              </div>
-
-              {peerUpcomingTutorings.length === 0 ? (
-                <div className="text-center py-16 text-stone-400">
-                  <Users className="w-10 h-10 text-stone-300 mx-auto mb-2.5" />
-                  <p className="font-bold text-slate-700 text-sm">No hay tutorías de compañeros pendientes</p>
-                  <p className="text-xs text-stone-500 mt-1">Cuando sus compañeros agenden sesiones públicas, aparecerán aquí para unirse.</p>
+                <div className="min-w-0">
+                  <h2 id="peer-tutorings-title" className="text-lg font-semibold tracking-tight text-slate-900">Tutorías disponibles</h2>
+                  <p className="mt-0.5 text-sm text-stone-500">Únete a una sesión grupal solicitada por otro estudiante.</p>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {peerUpcomingTutorings.map((tut) => {
-                    const dt = formatTutoringDateTime(tut.reservDate, tut.scheduleLabel, tut.reservTime);
-                    return (
-                      <div
-                        key={tut.id}
-                        className="p-5 rounded-2xl border border-stone-200 bg-white hover:border-[#11770e]/50 hover:shadow-xs transition-all space-y-3"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <span className="font-mono font-bold text-[10px] text-[#11770e] bg-[#eaf8ea] px-2 py-0.5 rounded-md border border-[#bce6bc]/60 mr-2">
-                              {tut.code}
-                            </span>
-                            <span className="font-bold text-slate-900 text-sm">{tut.subject}</span>
-                            <div className="text-xs text-stone-600 font-semibold mt-0.5">
-                              {tut.subjectCourseName}
+              </div>
+              <span className="inline-flex h-8 w-fit items-center rounded-full bg-stone-100 px-3 text-xs font-medium text-stone-600">
+                {peerUpcomingTutorings.length} {peerUpcomingTutorings.length === 1 ? 'sesión disponible' : 'sesiones disponibles'}
+              </span>
+            </header>
+
+            {peerUpcomingTutorings.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-stone-300 bg-white px-5 py-14 text-center">
+                <Users aria-hidden="true" className="mx-auto mb-3 h-8 w-8 text-stone-300" />
+                <p className="text-sm font-semibold text-slate-800">No hay tutorías grupales disponibles</p>
+                <p className="mt-1 text-sm text-stone-500">Cuando un compañero publique una sesión, aparecerá aquí.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {peerUpcomingTutorings.map((tut) => {
+                  const dt = formatTutoringDateTime(tut.reservDate, tut.scheduleLabel, tut.reservTime);
+                  const participantCount = (tut.assistants || []).length;
+                  return (
+                    <article key={tut.id} className="rounded-xl border border-stone-200 bg-white p-4 transition-colors hover:border-stone-300 sm:p-5">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-[11px] text-stone-400">{tut.code}</span>
+                            <StatusBadge status={tut.status} size="sm" />
+                          </div>
+                          <h3 className="mt-1.5 text-base font-semibold text-slate-900">{tut.subjectCourseName || tut.subject}</h3>
+                          {tut.subjectCourseName && tut.subject && tut.subject !== tut.subjectCourseName && (
+                            <p className="mt-0.5 text-sm text-stone-500">Tema: {tut.subject}</p>
+                          )}
+
+                          <dl className="mt-4 grid grid-cols-1 gap-x-5 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                            <div className="flex items-start gap-2.5">
+                              <Calendar aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-brand-700" />
+                              <div><dt className="text-xs text-stone-500">Fecha</dt><dd className="mt-0.5 font-medium text-slate-800">{dt.formattedDate}</dd></div>
                             </div>
-                          </div>
-                          <StatusBadge status={tut.status} size="sm" />
+                            <div className="flex items-start gap-2.5">
+                              <Clock aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-brand-700" />
+                              <div><dt className="text-xs text-stone-500">Horario</dt><dd className="mt-0.5 font-medium text-slate-800">{dt.timeDisplay}</dd></div>
+                            </div>
+                            <div className="flex min-w-0 items-start gap-2.5">
+                              <GraduationCap aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" />
+                              <div className="min-w-0"><dt className="text-xs text-stone-500">Docente</dt><dd className="mt-0.5 truncate font-medium text-slate-800">Prof. {tut.teacherName}</dd></div>
+                            </div>
+                            <div className="flex items-start gap-2.5">
+                              <Users aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" />
+                              <div><dt className="text-xs text-stone-500">Participantes</dt><dd className="mt-0.5 font-medium text-slate-800">{participantCount}</dd></div>
+                            </div>
+                          </dl>
                         </div>
 
-                        <div className="pt-2 border-t border-stone-100 text-xs text-stone-600 space-y-1.5">
-                          <div className="flex items-center gap-2">
-                            <Calendar className="w-3.5 h-3.5 text-[#11770e] shrink-0" />
-                            <span><strong>Fecha:</strong> {dt.formattedDate}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-3.5 h-3.5 text-[#11770e] shrink-0" />
-                            <span><strong>Horario:</strong> {dt.timeDisplay}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <GraduationCap className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                            <span><strong>Docente:</strong> Prof. {tut.teacherName}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Users className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                            <span><strong>Solicitante:</strong> {tut.petitionerStudentName} ({(tut.assistants || []).length} participantes)</span>
-                          </div>
-                        </div>
-
-                        <div className="pt-2 flex justify-end gap-2">
+                        <div className="flex flex-col gap-2 border-t border-stone-100 pt-3 sm:flex-row lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
                           <button
                             type="button"
                             id={`btn-view-peer-tutoring-${tut.id}`}
                             onClick={() => setSelectedDetailTutoring(tut)}
-                            className="h-9 px-4 rounded-xl bg-white text-slate-700 hover:bg-stone-100 border border-stone-200 text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-stone-200 px-3.5 text-xs font-medium text-slate-700 transition-colors hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
                             title="Ver detalle antes de unirme"
                           >
-                            <FileText className="w-3.5 h-3.5" />
-                            <span>Ver Detalle</span>
+                            <FileText aria-hidden="true" className="h-3.5 w-3.5" />Ver detalle
                           </button>
                           <button
                             type="button"
                             id={`btn-join-tutoring-${tut.id}`}
                             onClick={() => handleJoin(tut.id)}
-                            className="h-9 px-4 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white border border-indigo-200 text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-brand-700 px-3.5 text-xs font-semibold text-white transition-colors hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
                           >
-                            <Users className="w-3.5 h-3.5" />
-                            <span>Unirme a esta Tutoría</span>
+                            <Users aria-hidden="true" className="h-3.5 w-3.5" />Unirme
                           </button>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
         )}
 
         {/* TAB 3: MIS TUTORÍAS E HISTORIAL */}
         {activeTab === 'history' && (
           <div className="space-y-6 animate-in fade-in duration-200">
             {/* Header Toolbar */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-stone-200/90 shadow-xs">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+            <div className="flex flex-col gap-4 rounded-2xl border border-stone-200 bg-white p-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-3">
+                <span aria-hidden="true" className="w-9 h-9 rounded-xl bg-brand-50 border border-brand-200 text-brand-700 flex items-center justify-center shrink-0">
+                  <History aria-hidden="true" className="w-4 h-4" />
+                </span>
+                <div>
+                <h2 className="text-lg font-semibold text-slate-900 tracking-tight">
                   Mis Tutorías e Historial
                 </h2>
                 <p className="text-xs text-stone-500 mt-0.5">
                   Consulte el estado de sus solicitudes, acceda a enlaces de sesión y califique sus tutorías finalizadas.
                 </p>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
                 {/* Search */}
                 <div className="relative flex-1 sm:flex-initial">
-                  <Search className="w-4 h-4 absolute left-3.5 top-3 text-stone-400 pointer-events-none" />
+                  <Search aria-hidden="true" className="w-4 h-4 absolute left-3.5 top-3 text-stone-400 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="Buscar materia, tema, código..."
+                    placeholder="Buscar materia, tema, código…"
                     value={historySearch}
                     onChange={(e) => setHistorySearch(e.target.value)}
-                    className="h-10 pl-9 pr-3 text-xs rounded-xl border border-stone-200 bg-white text-slate-800 placeholder-stone-400 focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/30 focus:border-[#11770e] transition-all w-full sm:w-56"
+                    className="h-11 w-full rounded-lg border border-stone-200 bg-white pl-9 pr-3 text-sm text-slate-800 placeholder-stone-400 transition-colors focus:border-brand-600 focus:outline-hidden focus:ring-2 focus:ring-brand-600/20 sm:w-56"
                   />
                 </div>
 
@@ -942,7 +905,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 <select
                   value={historyStatusFilter}
                   onChange={(e) => setHistoryStatusFilter(e.target.value)}
-                  className="h-10 text-xs rounded-xl border border-stone-200 bg-white px-3.5 text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/30 focus:border-[#11770e] transition-all cursor-pointer shadow-2xs"
+                  className="h-11 cursor-pointer rounded-lg border border-stone-200 bg-white px-3.5 text-sm font-normal text-slate-800 transition-colors focus:border-brand-600 focus:outline-hidden focus:ring-2 focus:ring-brand-600/20"
                 >
                   <option value="all">Todos los estados ({myRequestedTutorings.length})</option>
                   <option value={TutoringStatus.PENDING}>Pendientes</option>
@@ -953,29 +916,29 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 </select>
 
                 {/* View Switcher */}
-                <div className="flex items-center h-10 bg-stone-100 p-1 rounded-xl text-xs font-semibold">
+                <div className="flex h-11 items-center rounded-lg bg-stone-100 p-1 text-xs font-medium">
                   <button
                     type="button"
                     onClick={() => setDisplayMode('list')}
-                    className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg transition-all cursor-pointer ${
+                    className={`inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 transition-colors cursor-pointer ${
                       displayMode === 'list'
-                        ? 'bg-white text-[#11770e] shadow-2xs font-bold'
+                        ? 'bg-white text-brand-700 shadow-2xs font-bold'
                         : 'text-stone-600 hover:text-stone-900'
                     }`}
                   >
-                    <List className="w-3.5 h-3.5" />
+                    <List aria-hidden="true" className="w-3.5 h-3.5" />
                     <span>Lista</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setDisplayMode('calendar')}
-                    className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg transition-all cursor-pointer ${
+                    className={`inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 transition-colors cursor-pointer ${
                       displayMode === 'calendar'
-                        ? 'bg-white text-[#11770e] shadow-2xs font-bold'
+                        ? 'bg-white text-brand-700 shadow-2xs font-bold'
                         : 'text-stone-600 hover:text-stone-900'
                     }`}
                   >
-                    <Calendar className="w-3.5 h-3.5" />
+                    <Calendar aria-hidden="true" className="w-3.5 h-3.5" />
                     <span>Calendario</span>
                   </button>
                 </div>
@@ -983,7 +946,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             </div>
 
             {displayMode === 'calendar' ? (
-              <div className="bg-white p-6 rounded-2xl border border-stone-200/90 shadow-xs">
+              <div className="rounded-2xl border border-stone-200 bg-white p-4 sm:p-6">
                 <TutoringCalendarView
                   tutorings={myRequestedTutorings}
                   currentUser={currentUser}
@@ -997,176 +960,97 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             ) : (
               <div className="space-y-6">
                 {/* Tutorías Solicitadas por Mí */}
-                <div className="bg-white rounded-2xl border border-stone-200/90 shadow-xs overflow-hidden">
-                  <div className="px-5 py-4 bg-[#fafaf7] border-b border-stone-200 flex items-center justify-between">
-                    <h3 className="font-bold text-slate-900 text-sm">
-                      Tutorías Solicitadas por Mí ({myRequestedTutorings.length})
-                    </h3>
+                <section aria-labelledby="my-requested-tutorings-title" className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+                  <div className="flex flex-col gap-1 border-b border-stone-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                    <div>
+                      <h3 id="my-requested-tutorings-title" className="text-sm font-semibold text-slate-900">Solicitadas por mí</h3>
+                      <p className="mt-0.5 text-xs text-stone-500">Estado, horario y acciones de cada sesión.</p>
+                    </div>
+                    <span className="text-xs font-medium text-stone-500">{filteredRequestedTutorings.length} de {myRequestedTutorings.length} tutorías</span>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead className="bg-[#fafaf7] text-stone-600 font-bold uppercase tracking-wider border-b border-stone-200 text-[11px]">
-                        <tr>
-                          <th className="px-4 py-3.5 w-16 text-center">Código</th>
-                          <th className="px-4 py-3.5 min-w-[170px]">Asignatura / Tema</th>
-                          <th className="px-4 py-3.5 min-w-[150px]">Fecha y Horario</th>
-                          <th className="px-4 py-3.5 min-w-[140px]">Docente</th>
-                          <th className="px-4 py-3.5 min-w-[140px]">Espacio / Enlace</th>
-                          <th className="px-4 py-3.5 w-28 text-center">Estado</th>
-                          <th className="px-4 py-3.5 w-36 text-right">Acción</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-stone-100">
-                        {filteredRequestedTutorings.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className="text-center py-16 text-stone-400">
-                              <BookOpen className="w-10 h-10 text-stone-300 mx-auto mb-2.5" />
-                              <p className="font-bold text-slate-700 text-sm">No hay tutorías solicitadas</p>
-                              <p className="text-xs text-stone-500 mt-1">Cree una solicitud desde la pestaña "Solicitar Tutoría".</p>
-                            </td>
-                          </tr>
-                        ) : (
-                          filteredRequestedTutorings.map((tut) => {
-                            const dt = formatTutoringDateTime(tut.reservDate, tut.scheduleLabel, tut.reservTime);
-                            return (
-                              <tr key={tut.id} className="transition-colors hover:bg-[#fafaf7] group">
-                                {/* Código */}
-                                <td className="px-4 py-3.5 text-center align-middle">
-                                  <span className="inline-block font-mono font-black text-xs text-[#11770e] bg-[#eaf8ea] px-2 py-1 rounded-lg border border-[#bce6bc]/70 shadow-2xs">
-                                    {tut.code}
+                  {filteredRequestedTutorings.length === 0 ? (
+                    <div className="px-5 py-14 text-center">
+                      <BookOpen aria-hidden="true" className="mx-auto mb-3 h-8 w-8 text-stone-300" />
+                      <p className="text-sm font-semibold text-slate-800">No hay tutorías para mostrar</p>
+                      <p className="mt-1 text-sm text-stone-500">Ajusta la búsqueda o crea una solicitud desde «Solicitar Tutoría».</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-stone-100">
+                      {filteredRequestedTutorings.map((tut) => {
+                        const dt = formatTutoringDateTime(tut.reservDate, tut.scheduleLabel, tut.reservTime);
+                        const myRating = (tut.ratings || []).find((rating) => rating.studentId === currentUser.id);
+                        return (
+                          <article key={tut.id} className="p-4 transition-colors hover:bg-stone-50/40 sm:p-5">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-mono text-[11px] text-stone-400">{tut.code}</span>
+                                  <StatusBadge status={tut.status} size="sm" />
+                                </div>
+                                <h4 className="mt-1.5 text-base font-semibold text-slate-900">{tut.subjectCourseName || tut.subject}</h4>
+                                {tut.subjectCourseName && tut.subject && tut.subject !== tut.subjectCourseName && (
+                                  <p className="mt-0.5 text-sm text-stone-500">Tema: {tut.subject}</p>
+                                )}
+
+                                <dl className="mt-4 grid grid-cols-1 gap-x-5 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                                  <div className="flex items-start gap-2.5">
+                                    <Calendar aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-brand-700" />
+                                    <div><dt className="text-xs text-stone-500">Fecha y hora</dt><dd className="mt-0.5 font-medium text-slate-800">{dt.formattedDate} · {dt.timeDisplay}</dd></div>
+                                  </div>
+                                  <div className="flex min-w-0 items-start gap-2.5">
+                                    <GraduationCap aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" />
+                                    <div className="min-w-0"><dt className="text-xs text-stone-500">Docente</dt><dd className="mt-0.5 truncate font-medium text-slate-800">Prof. {tut.teacherName}</dd></div>
+                                  </div>
+                                  <div className="flex min-w-0 items-start gap-2.5 sm:col-span-2">
+                                    <MapPin aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" />
+                                    <div className="min-w-0"><dt className="text-xs text-stone-500">Espacio o enlace</dt><dd className="mt-0.5 truncate font-medium text-slate-800">
+                                      {tut.space && tut.space.startsWith('http') ? (
+                                        <a href={tut.space} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-700 underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700">
+                                          Abrir enlace <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                                        </a>
+                                      ) : tut.space || 'Por asignar'}
+                                    </dd></div>
+                                  </div>
+                                </dl>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2 border-t border-stone-100 pt-3 lg:max-w-[280px] lg:justify-end lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
+                                {tut.status === TutoringStatus.COMPLETED && !myRating && (
+                                  <button type="button" onClick={() => onOpenEvaluation(tut)} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-amber-500 px-3 text-xs font-semibold text-white transition-colors hover:bg-amber-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600">
+                                    <Star aria-hidden="true" className="h-3.5 w-3.5 fill-white" />Calificar
+                                  </button>
+                                )}
+                                {tut.status === TutoringStatus.COMPLETED && myRating && (
+                                  <span className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-amber-50 px-3 text-xs font-semibold text-amber-800" title={myRating.studentComment || ''}>
+                                    <Star aria-hidden="true" className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />Mi calificación: {myRating.score}/5
                                   </span>
-                                </td>
-
-                                {/* Asignatura y Tema */}
-                                <td className="px-4 py-3.5 align-middle">
-                                  <div className="font-bold text-slate-900 text-xs sm:text-sm" title={tut.subject}>
-                                    {tut.subject}
-                                  </div>
-                                  <div className="text-[11px] text-stone-500 font-medium mt-0.5">
-                                    {tut.subjectCourseName}
-                                  </div>
-                                </td>
-
-                                {/* Fecha y Horario */}
-                                <td className="px-4 py-3.5 align-middle">
-                                  <div className="font-bold text-slate-800 text-xs sm:text-sm">
-                                    {dt.formattedDate}
-                                  </div>
-                                  <div className="mt-1">
-                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc]/60">
-                                      <Clock className="w-3 h-3 text-[#11770e] shrink-0" />
-                                      <span>{dt.timeDisplay}</span>
-                                    </span>
-                                  </div>
-                                </td>
-
-                                {/* Docente */}
-                                <td className="px-4 py-3.5 align-middle">
-                                  <div className="font-bold text-slate-900 text-xs">
-                                    Prof. {tut.teacherName}
-                                  </div>
-                                </td>
-
-                                {/* Espacio / Enlace */}
-                                <td className="px-4 py-3.5 align-middle">
-                                  {tut.space && tut.space.startsWith('http') ? (
-                                    <a
-                                      href={tut.space}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="inline-flex items-center gap-1 text-[#11770e] font-bold underline text-xs"
-                                    >
-                                      <span>Abrir Meet</span>
-                                      <ExternalLink className="w-3 h-3" />
-                                    </a>
-                                  ) : (
-                                    <span className="text-slate-700 text-xs font-medium">
-                                      {tut.space || 'Por asignar'}
-                                    </span>
-                                  )}
-                                </td>
-
-                                {/* Estado */}
-                                <td className="px-4 py-3.5 text-center align-middle">
-                                  <div className="inline-flex justify-center">
-                                    <StatusBadge status={tut.status} size="sm" />
-                                  </div>
-                                </td>
-
-                                {/* Acciones */}
-                                <td className="px-4 py-3.5 text-right align-middle">
-                                  <div className="flex items-center justify-end gap-2">
-                                    {(() => {
-                                      const myRating = (tut.ratings || []).find((r) => r.studentId === currentUser.id);
-                                      return (
-                                        <>
-                                          {/* Botón Calificar si completó y aún no califiqué */}
-                                          {tut.status === TutoringStatus.COMPLETED && !myRating && (
-                                            <button
-                                              type="button"
-                                              onClick={() => onOpenEvaluation(tut)}
-                                              className="h-8 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-2xs flex items-center gap-1 transition-colors cursor-pointer"
-                                            >
-                                              <Star className="w-3 h-3 fill-white" />
-                                              <span>Calificar</span>
-                                            </button>
-                                          )}
-
-                                          {/* Mi puntuación si ya evalué */}
-                                          {tut.status === TutoringStatus.COMPLETED && myRating && (
-                                            <span
-                                              className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg text-xs font-bold"
-                                              title={myRating.studentComment || ''}
-                                            >
-                                              <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
-                                              {myRating.score}★
-                                            </span>
-                                          )}
-                                        </>
-                                      );
-                                    })()}
-
-                                    {/* Botón Cancelar si está pendiente */}
-                                    {tut.status === TutoringStatus.PENDING && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setCancellingTutoring(tut);
-                                          setCancelReason('');
-                                          setCancelError(null);
-                                        }}
-                                        className="h-8 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs transition-colors cursor-pointer"
-                                      >
-                                        Cancelar
-                                      </button>
-                                    )}
-
-                                    {/* Botón Detalle */}
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedDetailTutoring(tut)}
-                                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold text-xs bg-[#eaf8ea] text-[#11770e] hover:bg-[#11770e] hover:text-white border border-[#bce6bc]/70 hover:border-[#11770e] transition-all shadow-2xs cursor-pointer whitespace-nowrap"
-                                    >
-                                      <span>Detalle</span>
-                                      <ChevronRight className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
+                                )}
+                                {tut.status === TutoringStatus.PENDING && (
+                                  <button
+                                    type="button"
+                                    onClick={() => { setCancellingTutoring(tut); setCancelReason(''); setCancelError(null); }}
+                                    className="inline-flex min-h-10 items-center rounded-lg border border-danger-border px-3 text-xs font-medium text-danger transition-colors hover:bg-danger-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
+                                  >Cancelar</button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedDetailTutoring(tut)}
+                                  className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-stone-200 px-3 text-xs font-medium text-slate-700 transition-colors hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                                >Detalle <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" /></button>
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
                 {/* Tutorías como Invitado */}
                 {myGuestTutorings.length > 0 && (
-                  <div className="bg-white rounded-2xl border border-stone-200/90 shadow-xs overflow-hidden">
-                    <div className="px-5 py-4 bg-[#fafaf7] border-b border-stone-200">
-                      <h3 className="font-bold text-slate-900 text-sm">
+                  <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
+                    <div className="border-b border-stone-100 px-5 py-4">
+                      <h3 className="text-sm font-semibold text-slate-900">
                         Tutorías a las que Asisto como Invitado ({myGuestTutorings.length})
                       </h3>
                     </div>
@@ -1178,7 +1062,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                         return (
                           <div
                             key={g.id}
-                            className="p-4 rounded-xl border border-stone-200 bg-white hover:border-[#11770e]/40 space-y-2 text-xs"
+                            className="space-y-2 rounded-xl border border-stone-200 bg-white p-4 text-xs transition-colors hover:border-brand-300"
                           >
                             <div className="flex items-center justify-between">
                               <span className="font-bold text-slate-900 text-sm">{g.subject}</span>
@@ -1194,7 +1078,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => onOpenEvaluation(g)}
-                                      className="mt-1 h-8 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-2xs flex items-center gap-1 transition-colors cursor-pointer w-fit"
+                                      className="mt-1 h-9 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-2xs flex items-center gap-1 transition-colors cursor-pointer w-fit"
                                     >
                                       <Star className="w-3 h-3 fill-white" />
                                       <span>Calificar</span>
@@ -1202,11 +1086,11 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                                   )}
                                   {g.status === TutoringStatus.COMPLETED && myRating && (
                                     <span
-                                      className="mt-1 inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg text-xs font-bold w-fit"
+                                      className="mt-1 inline-flex items-center gap-1 text-warning bg-warning-soft border border-warning-border px-2 py-1 rounded-lg text-xs font-bold w-fit"
                                       title={myRating.studentComment || ''}
                                     >
-                                      <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
-                                      Mi calificación: {myRating.score}★
+                                      <Star aria-hidden="true" className="w-3 h-3 fill-amber-400 text-amber-500" />
+                                      Mi calificación: {myRating.score}
                                     </span>
                                   )}
                                 </>
@@ -1215,14 +1099,14 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                             <div className="pt-2 flex items-center justify-between border-t border-stone-100">
                               <span className="text-stone-500">
                                 {g.space && g.space.startsWith('http') ? (
-                                  <a href={g.space} target="_blank" rel="noreferrer" className="text-[#11770e] font-bold underline">
+                                  <a href={g.space} target="_blank" rel="noreferrer" className="text-brand-700 font-bold underline">
                                     Abrir Meet
                                   </a>
                                 ) : (
                                   g.space || 'Presencial'
                                 )}
                               </span>
-                              <span className={`font-bold ${myAssistantRecord?.hasAttended ? 'text-[#11770e]' : 'text-stone-500'}`}>
+                              <span className={`font-bold ${myAssistantRecord?.hasAttended ? 'text-brand-700' : 'text-stone-500'}`}>
                                 {myAssistantRecord?.hasAttended ? '✓ Asistencia confirmada' : '• Asistencia pendiente'}
                               </span>
                             </div>
@@ -1239,136 +1123,112 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
         {/* TAB 4: FICHA ESTUDIANTIL */}
         {activeTab === 'profile' && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            {photoSuccessMsg && (
-              <div className="p-4 bg-[#eaf8ea] border border-[#bce6bc] text-[#11770e] rounded-2xl text-xs flex items-center gap-2.5 font-bold animate-in slide-in-from-top-2 shadow-xs">
-                <CheckCircle2 className="w-5 h-5 text-[#11770e] shrink-0" />
-                <span>{photoSuccessMsg}</span>
+          <section aria-labelledby="student-profile-title" className="max-w-4xl space-y-4 animate-in fade-in duration-200">
+            <header>
+              <p className="text-xs font-medium text-brand-700">Mi cuenta</p>
+              <h2 id="student-profile-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Ficha estudiantil</h2>
+              <p className="mt-1 text-sm text-stone-500">Consulta tus datos académicos y administra tu foto de perfil.</p>
+            </header>
+
+            {profileSuccessMsg && (
+              <div role="status" className="flex items-center gap-2.5 rounded-xl border border-brand-200 bg-brand-50 p-3.5 text-sm font-medium text-brand-800">
+                <CheckCircle2 aria-hidden="true" className="h-4 w-4 shrink-0" /><span>{profileSuccessMsg}</span>
+              </div>
+            )}
+            {profileErrorMsg && (
+              <div role="alert" className="flex items-center gap-2.5 rounded-xl border border-danger-border bg-danger-soft p-3.5 text-sm font-medium text-danger">
+                <AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0" /><span>{profileErrorMsg}</span>
               </div>
             )}
 
-            {photoErrorMsg && (
-              <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs flex items-center gap-2.5 font-bold animate-in slide-in-from-top-2 shadow-xs">
-                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-                <span>{photoErrorMsg}</span>
-              </div>
-            )}
-
-            <div className="bg-white rounded-2xl border border-stone-200/90 shadow-xs p-6 space-y-6 max-w-3xl">
-              {/* Profile Header & Photo Uploader */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 pb-6 border-b border-stone-100">
-                <div className="relative group shrink-0">
-                  <UserAvatar
-                    user={currentUser}
-                    size="2xl"
-                    className="border-2 border-[#bce6bc] shadow-sm bg-white"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => photoInputRef.current?.click()}
-                    disabled={photoUploading}
-                    className="absolute -bottom-1 -right-1 p-2 bg-[#11770e] hover:bg-[#0d5c0b] text-white rounded-xl shadow-md cursor-pointer transition-all border-2 border-white hover:scale-105 disabled:opacity-50"
-                    title="Subir o cambiar foto de perfil"
-                    aria-label="Cambiar foto de perfil"
-                  >
-                    <Camera className="w-4 h-4" />
-                  </button>
+            <div className="grid grid-cols-1 overflow-hidden rounded-xl border border-stone-200 bg-white md:grid-cols-[240px_minmax(0,1fr)]">
+              <section aria-label="Foto de perfil" className="flex flex-col items-center border-b border-stone-200 bg-stone-50/60 p-5 text-center md:border-b-0 md:border-r md:p-6">
+                <div className="relative">
+                  <UserAvatar user={currentUser} size="2xl" className="border border-stone-200 bg-white shadow-sm" />
                   <input
                     ref={photoInputRef}
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/jpg"
-                    onChange={handlePhotoSelect}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (!file) return;
+                      if (!file.type.startsWith('image/')) {
+                        setProfileErrorMsg('Por favor selecciona un archivo de imagen válido (.jpg, .png, .webp).');
+                        return;
+                      }
+                      if (file.size > 8 * 1024 * 1024) {
+                        setProfileErrorMsg('La imagen no debe superar los 8 MB.');
+                        return;
+                      }
+                      setProfileErrorMsg(null);
+                      setPhotoToCrop(file);
+                    }}
                     className="hidden"
                   />
                 </div>
-
-                <div className="space-y-2 flex-1 min-w-0">
-                  <div>
-                    <h2 className="text-xl font-black text-slate-900 leading-snug">{currentUser.fullName}</h2>
-                    <p className="text-xs text-stone-500 mt-0.5">
-                      Estudiante Activo • Usuario: <span className="font-mono text-slate-700 font-bold">@{currentUser.username}</span> • Rol: Estudiante FET
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                <h3 className="mt-4 max-w-full break-words text-base font-semibold text-slate-900">{currentUser.fullName}</h3>
+                <span className="mt-2 inline-flex max-w-full items-center rounded-full border border-stone-200 bg-white px-3 py-1 font-mono text-xs text-stone-600">
+                  Matrícula · {currentUser.account || 'N/A'}
+                </span>
+                <div className="mt-4 flex w-full flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    disabled={photoUploading}
+                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-brand-700 px-3 text-xs font-semibold text-white transition-colors hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {photoUploading ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <UploadCloud aria-hidden="true" className="h-4 w-4" />}
+                    {photoUploading ? 'Guardando foto…' : currentUser.photoUrl ? 'Cambiar foto' : 'Subir foto'}
+                  </button>
+                  {currentUser.photoUrl && (
                     <button
                       type="button"
-                      onClick={() => photoInputRef.current?.click()}
+                      onClick={handleRemovePhoto}
                       disabled={photoUploading}
-                      className="h-9 px-4 bg-[#11770e] hover:bg-[#0d5c0b] text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-3 text-xs font-medium text-stone-600 transition-colors hover:border-danger-border hover:bg-danger-soft hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {photoUploading ? (
-                        <>
-                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          <span>Guardando foto...</span>
-                        </>
-                      ) : (
-                        <>
-                          <UploadCloud className="w-4 h-4" />
-                          <span>{currentUser.photoUrl ? 'Cambiar Foto' : 'Subir Foto de Perfil'}</span>
-                        </>
-                      )}
+                      <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Quitar foto
                     </button>
+                  )}
+                </div>
+                <p className="mt-3 text-[11px] leading-relaxed text-stone-500">Formatos JPG, PNG o WEBP. La foto será visible para docentes y administradores.</p>
+              </section>
 
-                    {currentUser.photoUrl && (
-                      <button
-                        type="button"
-                        onClick={handleRemovePhoto}
-                        disabled={photoUploading}
-                        className="h-9 px-3.5 bg-white hover:bg-rose-50 border border-stone-200 hover:border-rose-200 text-stone-700 hover:text-rose-700 rounded-xl text-xs font-bold shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Quitar Foto</span>
-                      </button>
-                    )}
+              <div className="space-y-5 p-4 sm:p-6">
+                <section aria-labelledby="student-academic-data-title">
+                  <div className="mb-3 flex items-center gap-2 border-b border-stone-100 pb-3">
+                    <GraduationCap aria-hidden="true" className="h-4 w-4 text-brand-700" />
+                    <h3 id="student-academic-data-title" className="text-sm font-semibold text-slate-900">Información académica</h3>
                   </div>
+                  <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border border-stone-200 p-3.5">
+                      <dt className="text-xs text-stone-500">Programa académico</dt>
+                      <dd className="mt-1 text-sm font-medium text-slate-800">{currentUser.careerName || 'No asignado'}</dd>
+                    </div>
+                    <div className="rounded-lg border border-stone-200 p-3.5">
+                      <dt className="text-xs text-stone-500">Semestre vigente</dt>
+                      <dd className="mt-1 text-sm font-medium text-slate-800">{currentUser.semester ? `Semestre ${currentUser.semester}` : 'Por definir'}</dd>
+                    </div>
+                    <div className="rounded-lg border border-stone-200 p-3.5 sm:col-span-2">
+                      <dt className="text-xs text-stone-500">Fecha de ingreso</dt>
+                      <dd className="mt-1 text-sm font-medium text-slate-800">{currentUser.admissionDate || 'No registrada'}</dd>
+                    </div>
+                  </dl>
+                </section>
 
-                  <p className="text-[11px] text-stone-400 leading-tight pt-0.5">
-                    Formatos JPG, PNG, WEBP. Tu foto de perfil se guardará y será visible para los docentes y administradores.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div className="p-4 bg-[#fafaf7] rounded-xl border border-stone-200/80 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-stone-400 block">Número de Cuenta / Matrícula</span>
-                  <span className="font-bold text-slate-900 text-sm font-mono">{currentUser.account || 'N/A'}</span>
-                </div>
-
-                <div className="p-4 bg-[#fafaf7] rounded-xl border border-stone-200/80 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-stone-400 block">Programa Académico / Carrera</span>
-                  <span className="font-bold text-slate-900 text-sm">{currentUser.careerName || 'No asignada'}</span>
-                </div>
-
-                <div className="p-4 bg-[#fafaf7] rounded-xl border border-stone-200/80 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-stone-400 block">Semestre Vigente</span>
-                  <span className="font-bold text-slate-900 text-sm">
-                    {currentUser.semester ? `Semestre ${currentUser.semester}` : 'Por definir'}
-                  </span>
-                </div>
-
-                <div className="p-4 bg-[#fafaf7] rounded-xl border border-stone-200/80 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-stone-400 block">Sede / Campus</span>
-                  <span className="font-bold text-slate-900 text-sm">{currentUser.campusName || 'Campus Principal'}</span>
-                </div>
-
-                <div className="p-4 bg-[#fafaf7] rounded-xl border border-stone-200/80 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-stone-400 block">Correo Institucional</span>
-                  <span className="font-bold text-slate-900 text-sm">{currentUser.email}</span>
-                </div>
-
-                <div className="p-4 bg-[#fafaf7] rounded-xl border border-stone-200/80 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-stone-400 block">Teléfono de Contacto</span>
-                  <span className="font-bold text-slate-900 text-sm">{currentUser.phone || 'No registrado'}</span>
-                </div>
-
-                <div className="p-4 bg-[#fafaf7] rounded-xl border border-stone-200/80 space-y-1 sm:col-span-2">
-                  <span className="text-[10px] uppercase font-bold text-stone-400 block">Fecha de Admisión / Ingreso</span>
-                  <span className="font-bold text-slate-900 text-sm">{currentUser.admissionDate || '2026-01-15'}</span>
-                </div>
+                <section aria-labelledby="student-contact-data-title">
+                  <div className="mb-3 flex items-center gap-2 border-b border-stone-100 pb-3">
+                    <h3 id="student-contact-data-title" className="text-sm font-semibold text-slate-900">Contacto institucional</h3>
+                  </div>
+                  <dl className="rounded-lg border border-stone-200 p-3.5">
+                    <dt className="text-xs text-stone-500">Correo institucional</dt>
+                    <dd className="mt-1 break-all text-sm font-medium text-slate-800">{currentUser.email}</dd>
+                  </dl>
+                </section>
               </div>
             </div>
-          </div>
+          </section>
         )}
       </div>
 
@@ -1376,21 +1236,22 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       {cancellingTutoring && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 bg-rose-50 border-b border-rose-100 flex items-center justify-between">
+            <div className="px-6 py-4 bg-danger-soft border-b border-danger-border flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs">
-                  <Ban className="w-4 h-4" />
+                <div className="w-8 h-8 rounded-lg bg-danger-soft text-danger flex items-center justify-center font-bold text-xs">
+                  <Ban aria-hidden="true" className="w-4 h-4" />
                 </div>
-                <h3 className="font-bold text-rose-950 text-sm">
+                <h3 className="font-bold text-danger text-sm">
                   Cancelar Solicitud {cancellingTutoring.code}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setCancellingTutoring(null)}
+                aria-label="Cerrar diálogo de cancelación"
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X aria-hidden="true" className="w-4 h-4" />
               </button>
             </div>
 
@@ -1411,13 +1272,13 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   required
                   minLength={5}
                   placeholder="Motivo de la cancelación"
-                  className="w-full rounded-xl border border-stone-200 p-3 text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-rose-500/30 focus:border-rose-500 transition-all"
+                  className="w-full rounded-xl border border-stone-200 p-3 text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-danger/30 focus:border-danger transition-colors"
                 />
               </div>
 
               {cancelError && (
-                <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <div role="alert" className="p-3.5 bg-danger-soft border border-danger-border text-danger rounded-xl text-xs flex items-center gap-2">
+                  <AlertCircle aria-hidden="true" className="w-4 h-4 text-danger shrink-0" />
                   <span>{cancelError}</span>
                 </div>
               )}
@@ -1433,9 +1294,9 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 <button
                   type="submit"
                   disabled={cancelling}
-                  className="h-10 px-5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
+                  className="h-10 px-5 bg-gradient-to-b from-danger to-rose-800 hover:from-rose-800 hover:to-rose-900 text-white rounded-xl font-bold shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
                 >
-                  {cancelling ? 'Cancelando...' : 'Confirmar Cancelación'}
+                  {cancelling ? 'Cancelando…' : 'Confirmar Cancelación'}
                 </button>
               </div>
             </form>
@@ -1445,7 +1306,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
       {/* DETAIL MODAL */}
       {selectedDetailTutoring && (
-        <TutoringDetailModal
+        <StudentTutoringDetailModal
           tutoring={selectedDetailTutoring}
           currentUser={currentUser}
           onClose={() => setSelectedDetailTutoring(null)}
@@ -1459,6 +1320,17 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           fileName={viewingAttachment.fileName}
           fileUrl={viewingAttachment.fileUrl}
           onClose={() => setViewingAttachment(null)}
+        />
+      )}
+
+      {photoToCrop && (
+        <ProfilePhotoCropModal
+          file={photoToCrop}
+          onCancel={() => setPhotoToCrop(null)}
+          onCrop={(croppedFile) => {
+            setPhotoToCrop(null);
+            void handlePhotoUploadFile(croppedFile);
+          }}
         />
       )}
     </div>

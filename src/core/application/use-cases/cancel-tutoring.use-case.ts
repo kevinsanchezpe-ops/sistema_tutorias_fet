@@ -50,7 +50,8 @@ export class CancelTutoringUseCase {
       db.addNotification(
         tutoring.petitionerStudentId,
         'Solicitud Cancelada',
-        `La solicitud con asunto: ${tutoring.subject}, fue cancelada a razón de: ${dto.reason.trim()}`
+        `La solicitud con asunto: ${tutoring.subject}, fue cancelada a razón de: ${dto.reason.trim()}`,
+        tutoring.id
       );
     }
 
@@ -58,7 +59,8 @@ export class CancelTutoringUseCase {
     db.addNotification(
       tutoring.teacherId,
       'Tutoría Cancelada',
-      `La tutoría con asunto: ${tutoring.subject} programada para el ${tutoring.reservDate} ha sido cancelada. Motivo: ${dto.reason.trim()}`
+      `La tutoría con asunto: ${tutoring.subject} programada para el ${tutoring.reservDate} ha sido cancelada. Motivo: ${dto.reason.trim()}`,
+      tutoring.id
     );
 
     db.notify();

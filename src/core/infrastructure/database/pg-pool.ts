@@ -12,13 +12,27 @@ export interface PgConfig {
   port?: number;
   database?: string;
   connectionString?: string;
+  ssl?: { rejectUnauthorized: boolean };
 }
 
 export function getPgConfig(): PgConfig {
   const connectionString = process.env.DATABASE_URL;
 
   if (connectionString && !connectionString.includes('TU_PASSWORD_AQUI')) {
-    return { connectionString };
+    const isLocal = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
+    const parsedUrl = new URL(connectionString);
+    const sslMode = parsedUrl.searchParams.get('sslmode')?.toLowerCase();
+    const legacyVerifyFullModes = ['prefer', 'require', 'verify-ca'];
+    // pg currently treats these legacy modes as verify-full. Convert them to
+    // explicit TLS verification so the URL no longer triggers the deprecation warning.
+    if (sslMode && legacyVerifyFullModes.includes(sslMode)) {
+      parsedUrl.searchParams.set('sslmode', 'verify-full');
+    }
+    const verifyTls = Boolean(sslMode && [...legacyVerifyFullModes, 'verify-full'].includes(sslMode));
+    return {
+      connectionString: parsedUrl.toString(),
+      ssl: isLocal ? undefined : { rejectUnauthorized: verifyTls }
+    };
   }
 
   const user = process.env.PGUSER || 'postgres';
@@ -75,15 +89,7 @@ export async function getPgPool(): Promise<pg.Pool> {
   if (pool) return pool;
 
   const config = getPgConfig();
-  const isLocal = (config.host || '').includes('localhost') || (config.host || '').includes('127.0.0.1');
-  const needsSsl =
-    typeof config.connectionString === 'string' &&
-    !config.connectionString.includes('localhost') &&
-    !config.connectionString.includes('127.0.0.1');
-  pool = new Pool({
-    ...config,
-    ssl: needsSsl && !isLocal ? { rejectUnauthorized: false } : undefined
-  } as any);
+  pool = new Pool(config as any);
 
   pool.on('error', (err) => {
     console.error('[PostgreSQL] Error inesperado en el pool de conexiones:', err.message);

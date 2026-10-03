@@ -6,7 +6,6 @@ import { TeacherAvailability, User, UserRole } from '../../types';
 export interface RegisterTeacherDto {
   fullName: string;
   email: string;
-  phone?: string;
   account: string; // e.g., DOC-10452
   username: string;
   careerId?: string;
@@ -77,7 +76,6 @@ export class RegisterTeacherUseCase {
       fullName: dto.fullName.trim(),
       alias,
       email: dto.email.trim(),
-      phone: dto.phone ? dto.phone.trim() : '+504 2200-0000',
       role: UserRole.TEACHER,
       account: dto.account.trim(),
       campusId: dto.campusId || 'cmp-1',

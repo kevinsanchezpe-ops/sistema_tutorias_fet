@@ -55,19 +55,20 @@ export const EvaluationModal: React.FC<EvaluationModalProps> = ({
         id="modal-evaluation-card"
         className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-[#fffaed]/70">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-brand-50/70">
           <div className="flex items-center gap-2">
-            <Award className="w-5 h-5 text-[#11770e]" />
-            <h3 className="text-base font-semibold text-[#2b2b2b]">
+            <Award aria-hidden="true" className="w-5 h-5 text-brand-700" />
+            <h3 className="text-base font-semibold text-stone-900">
               Evaluar Tutoría {tutoring.code}
             </h3>
           </div>
           <button
             id="btn-close-evaluation-modal"
             onClick={onClose}
+            aria-label="Cerrar evaluación"
             className="text-slate-400 hover:text-slate-600 p-1 rounded-md transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X aria-hidden="true" className="w-5 h-5" />
           </button>
         </div>
 
@@ -97,9 +98,12 @@ export const EvaluationModal: React.FC<EvaluationModalProps> = ({
                     onMouseEnter={() => setHoverScore(star)}
                     onMouseLeave={() => setHoverScore(0)}
                     onClick={() => setScore(star)}
+                    aria-label={`Calificar con ${star} ${star === 1 ? 'estrella' : 'estrellas'}`}
+                    aria-pressed={score === star}
                     className="p-1 focus:outline-hidden transition-transform hover:scale-110"
                   >
                     <Star
+                      aria-hidden="true"
                       className={`w-8 h-8 ${
                         active
                           ? 'fill-amber-400 text-amber-500'
@@ -109,7 +113,7 @@ export const EvaluationModal: React.FC<EvaluationModalProps> = ({
                   </button>
                 );
               })}
-              <span className="ml-3 text-sm font-semibold text-amber-700">
+              <span className="ml-3 text-sm font-semibold text-warning">
                 {score === 5 && '5.0 - Excelente'}
                 {score === 4 && '4.0 - Muy buena'}
                 {score === 3 && '3.0 - Aceptable'}
@@ -121,7 +125,7 @@ export const EvaluationModal: React.FC<EvaluationModalProps> = ({
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5 flex items-center gap-1.5">
-              <MessageSquare className="w-4 h-4 text-slate-500" />
+              <MessageSquare aria-hidden="true" className="w-4 h-4 text-slate-500" />
               Comentario u observaciones de la sesión
             </label>
             <textarea
@@ -139,7 +143,7 @@ export const EvaluationModal: React.FC<EvaluationModalProps> = ({
           {errorMsg && (
             <div
               id="alert-evaluation-error"
-              className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs"
+              role="alert" className="p-3 bg-danger-soft border border-danger-border text-danger rounded-lg text-xs"
             >
               {errorMsg}
             </div>
@@ -157,9 +161,9 @@ export const EvaluationModal: React.FC<EvaluationModalProps> = ({
               id="btn-submit-evaluation"
               type="submit"
               disabled={loading}
-              className="px-5 py-2 text-sm font-medium text-white bg-[#11770e] hover:bg-[#0d5c0b] rounded-lg shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+              className="px-5 py-2 text-sm font-medium text-white bg-gradient-to-b from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800 rounded-lg shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
             >
-              {loading ? 'Guardando...' : 'Enviar Evaluación'}
+              {loading ? 'Guardando…' : 'Enviar Evaluación'}
             </button>
           </div>
         </form>

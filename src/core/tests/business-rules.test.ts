@@ -137,7 +137,6 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
       RegisterStudentUseCase.execute({
         fullName: 'Juan Cor',
         email: 'juan@gt.edu',
-        phone: '123456',
         account: '12345678',
         username: 'juan_corto',
         birthDate: '2000-01-01',
@@ -157,7 +156,6 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
     const newTeacher = RegisterTeacherUseCase.execute({
       fullName: `Ing. Docente Prueba ${rnd}`,
       email: `prof.${rnd}@gt.edu`,
-      phone: '+504 9999-0000',
       account: `DOC-${rnd}`,
       username: `docente_test_${rnd}`,
       subjectIds: [db.subjects[0].id],
@@ -187,7 +185,6 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
     const teacher = RegisterTeacherUseCase.execute({
       fullName: `Ing. Disponibilidad Prueba ${rnd}`,
       email: `disp.${rnd}@gt.edu`,
-      phone: '+504 9999-0001',
       account: `DIS-${rnd}`,
       username: `docente_disp_${rnd}`,
       subjectIds: [subjectOk],
@@ -259,7 +256,6 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
     const teacher = RegisterTeacherUseCase.execute({
       fullName: `Ing. Cupo Prueba ${rnd}`,
       email: `cupo.${rnd}@gt.edu`,
-      phone: '+504 9999-0002',
       account: `CUP-${rnd}`,
       username: `docente_cupo_${rnd}`,
       subjectIds: [subjectId],
@@ -318,7 +314,6 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
     const teacher = RegisterTeacherUseCase.execute({
       fullName: `Ing. Semestre Prueba ${rnd}`,
       email: `semestre.${rnd}@gt.edu`,
-      phone: '+504 9999-0003',
       account: `SEM-${rnd}`,
       username: `docente_semestre_${rnd}`,
       subjectIds: [subject.id],
@@ -366,7 +361,6 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
     const teacher = RegisterTeacherUseCase.execute({
       fullName: `Ing. Carrera Prueba ${rnd}`,
       email: `carrera.${rnd}@gt.edu`,
-      phone: '+504 9999-0004',
       account: `CAR-${rnd}`,
       username: `docente_carrera_${rnd}`,
       subjectIds: [subject.id],
@@ -411,7 +405,6 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
     const teacher = RegisterTeacherUseCase.execute({
       fullName: `Ing. Bloque Prueba ${rnd}`,
       email: `bloque.${rnd}@gt.edu`,
-      phone: '+504 9999-0005',
       account: `BLQ-${rnd}`,
       username: `docente_bloque_${rnd}`,
       subjectIds: [subjectId],
@@ -461,7 +454,6 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
     const teacher = RegisterTeacherUseCase.execute({
       fullName: `Ing. Cancela Prueba ${rnd}`,
       email: `cancela.${rnd}@gt.edu`,
-      phone: '+504 9999-0006',
       account: `CNC-${rnd}`,
       username: `docente_cancela_${rnd}`,
       subjectIds: [subjectId],
@@ -521,7 +513,6 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
     const teacher = RegisterTeacherUseCase.execute({
       fullName: `Ing. Eval Prueba ${rnd}`,
       email: `eval.${rnd}@gt.edu`,
-      phone: '+504 9999-0007',
       account: `EVL-${rnd}`,
       username: `docente_eval_${rnd}`,
       subjectIds: [subject.id],
@@ -530,7 +521,6 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
     const outsider = RegisterStudentUseCase.execute({
       fullName: 'Estudiante Ajeno de Prueba',
       email: `ajeno.${rnd}@gt.edu`,
-      phone: '+504 9999-0008',
       account: `AJN-${rnd}`,
       careerId: guest.careerId,
       semester: 9,

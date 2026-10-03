@@ -1,8 +1,18 @@
 @import "tailwindcss";
 
+/* Tipografía corporativa autohospedada: Plus Jakarta Sans (variable 400–800, sin serif) */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-latin.woff2") format("woff2");
+}
+
 @theme {
-  --font-sans: Arial, Helvetica, sans-serif;
-  --font-mono: Arial, Helvetica, sans-serif;
+  --font-sans: "Plus Jakarta Sans", "Segoe UI", Arial, Helvetica, sans-serif;
+  --font-display: "Plus Jakarta Sans", "Segoe UI", Arial, Helvetica, sans-serif;
+  --font-mono: "Plus Jakarta Sans", "Segoe UI", Arial, Helvetica, sans-serif;
   --color-brand-green: #11770e;
   --color-brand-green-hover: #0d5c0b;
   --color-brand-green-light: #eaf8ea;
@@ -12,4 +22,107 @@
   --color-brand-yellow: #fff314;
   --color-brand-liver: #4c4c4c;
   --color-brand-liver-dark: #2b2b2b;
+
+  /* Rampa verde FET */
+  --color-brand-50: #f0f9f0;
+  --color-brand-100: #dcf0dc;
+  --color-brand-200: #bce6bc;
+  --color-brand-300: #86cf86;
+  --color-brand-400: #4caf50;
+  --color-brand-500: #2e9e34;
+  --color-brand-600: #11770e;
+  --color-brand-700: #0d5c0b;
+  --color-brand-800: #0a4709;
+  --color-brand-900: #073307;
+
+  /* Semánticos */
+  --color-success: #11770e;
+  --color-success-strong: #0d5c0b;
+  --color-success-soft: #eaf8ea;
+  --color-success-border: #bce6bc;
+  --color-warning: #b45309;
+  --color-warning-soft: #fef3c7;
+  --color-warning-border: #fcd34d;
+  --color-danger: #be123c;
+  --color-danger-soft: #ffe4e6;
+  --color-danger-border: #fecdd3;
+  --color-info: #0369a1;
+  --color-info-soft: #e0f2fe;
+  --color-info-border: #7dd3fc;
+
+  /* Yafa-UI analytical tokens (conviven con identidad FET, no la sustituyen) */
+  --color-yafa-canvas: #f8fafd;
+  --color-yafa-border: #dadce0;
+  --color-yafa-divider: #e8eaed;
+  --color-yafa-grid: #e8eef6;
+  --color-yafa-interactive: #8792a2;
+  --color-yafa-strong: #202124;
+  --color-yafa-body: #3c4043;
+  --color-yafa-muted: #5f6368;
+
+  /* Radios por jerarquía */
+  --radius-chip: 0.5rem;
+  --radius-control: 0.75rem;
+  --radius-card: 1rem;
+  --radius-panel: 1.25rem;
+}
+
+/* Foco visible global */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid #11770e;
+  outline-offset: 2px;
+}
+
+@layer base {
+  button {
+    touch-action: manipulation;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  th,
+  td {
+    font-variant-numeric: tabular-nums;
+  }
+  .fixed.inset-0 {
+    overscroll-behavior: contain;
+  }
+}
+
+/* Movimiento reducido */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Render diferido para listas largas */
+@utility cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 56px;
+}
+
+/* Yafa-UI: shimmer sutil para skeletons (respeta movimiento reducido) */
+.yafa-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.yafa-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.7) 50%, transparent 80%);
+  background-size: 200% 100%;
+  animation: yafa-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes yafa-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
 }

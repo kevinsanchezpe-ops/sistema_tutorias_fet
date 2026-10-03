@@ -1,0 +1,269 @@
+---
+name: ui-ux-pro-max
+description: >-
+  UI/UX Pro Max design intelligence for web and mobile: searchable local database with
+  styles, color palettes, font pairings, product types, UX guidelines, icons, GSAP motion
+  presets, and chart types across major stacks (React, Next.js, Vue, Nuxt, Svelte, Astro,
+  SwiftUI, React Native, Flutter, Tailwind, shadcn/ui, and more). Use when designing,
+  building, or reviewing UI: pages, components, color schemes, typography, layout,
+  accessibility, animation, or data visualization — including design system and
+  stack-guideline steps.
+slug: ui-ux-pro-max
+version: 1.2.0
+displayName: ui-ux-pro-max
+---
+
+# UI/UX Pro Max - Design Intelligence
+
+## 中文速览（Quick Guide）
+
+- **做什么**：以本地可检索数据库（样式、配色、字体搭配、产品类型、UX 规则、图标、GSAP 动效、图表类型）提供带优先级的设计建议。
+- **何时用**：做页面、组件、配色、排版、布局、无障碍、动效或数据可视化设计与评审时；纯后端、API/数据库、非视觉性能与基础设施任务不适用。
+- **核心步骤**：①定位 `<skill-root>` 并确认 Python 3.x 可用；②按任务用 `search.py "<query>" --domain <domain>` 检索；③按优先级 1→10 从可访问性、触控交互、性能等规则类别定位重点；④按需读 `references/quick-reference.md` 与 `references/pro-rules.md` 取细则并落地。
+- **国内可达性**：全部数据与检索脚本都在技能目录本地（CSV + Python，无外部依赖），无需联网或境外服务。
+
+Searchable database of UI/UX design rules with priority-based recommendations: 84 styles, 192 color palettes, 74 font pairings, 192 product types with reasoning rules, 98 UX guidelines, 104 icon entries, 16 GSAP motion presets, and 25 chart types across 22 technology stacks.
+
+## When to Apply
+
+Use this Skill when the task involves **UI structure, visual design decisions, interaction patterns, or user experience quality control**: designing new pages, creating/refactoring UI components, choosing color/typography/spacing/layout systems, reviewing UI for UX/accessibility/consistency, implementing navigation/animation/responsive behavior, or improving perceived quality and usability.
+
+Skip it for pure backend logic, API/database design, non-visual performance work, infrastructure/DevOps, or non-visual scripts — unless the task changes how something **looks, feels, moves, or is interacted with**.
+
+## Rule Categories by Priority
+
+*Follow priority 1→10 to decide which category to focus on first; use `--domain <Domain>` to query full details. The full rule text for every category lives in `references/quick-reference.md` — read it on demand rather than loading it every time.*
+
+| Priority | Category | Impact | Domain | Key Checks (Must Have) | Anti-Patterns (Avoid) |
+|----------|----------|--------|--------|------------------------|------------------------|
+| 1 | Accessibility | CRITICAL | `ux` | Contrast 4.5:1, Alt text, Keyboard nav, Aria-labels | Removing focus rings, Icon-only buttons without labels |
+| 2 | Touch & Interaction | CRITICAL | `ux` | Min size 44×44px, 8px+ spacing, Loading feedback | Reliance on hover only, Instant state changes (0ms) |
+| 3 | Performance | HIGH | `ux` | WebP/AVIF, Lazy loading, Reserve space (CLS &lt; 0.1) | Layout thrashing, Cumulative Layout Shift |
+| 4 | Style Selection | HIGH | `style`, `product` | Match product type, Consistency, SVG icons (no emoji) | Mixing flat & skeuomorphic randomly, Emoji as icons |
+| 5 | Layout & Responsive | HIGH | `ux` | Mobile-first breakpoints, Viewport meta, No horizontal scroll | Horizontal scroll, Fixed px container widths, Disable zoom |
+| 6 | Typography & Color | MEDIUM | `typography`, `color` | Base 16px, Line-height 1.5, Semantic color tokens | Text &lt; 12px body, Gray-on-gray, Raw hex in components |
+| 7 | Animation | MEDIUM | `ux`, `gsap` | Duration 150–300ms, Motion conveys meaning, Spatial continuity | Decorative-only animation, Animating width/height, No reduced-motion |
+| 8 | Forms & Feedback | MEDIUM | `ux` | Visible labels, Error near field, Helper text, Progressive disclosure | Placeholder-only label, Errors only at top, Overwhelm upfront |
+| 9 | Navigation Patterns | HIGH | `ux` | Predictable back, Bottom nav ≤5, Deep linking | Overloaded nav, Broken back behavior, No deep links |
+| 10 | Charts & Data | LOW | `chart` | Legends, Tooltips, Accessible colors | Relying on color alone to convey meaning |
+
+For the full rule list per category (all ~98 UX guidelines with rationale), read `references/quick-reference.md`. For app-specific polish rules (icons, touch feedback, dark mode contrast, safe areas) and the canonical pre-delivery checklist, read `references/pro-rules.md`.
+
+---
+
+## Running the search tool
+
+The search script lives inside this skill's own directory, not the project directory. Throughout this document, `<skill-root>` means **the directory containing this `SKILL.md`** — locate it once at the start of the workflow (it is wherever this skill was installed: a skills folder, a plugin folder, etc.), then invoke the script and read any data/reference files by path relative to it. Do not assume your current working directory is the skill directory, and do not hardcode any host-specific install path — this skill works across skill hosts (Claude Code / Deep Code / Cursor / others):
+
+```bash
+python "<skill-root>/scripts/search.py" "<query>" --domain <domain>
+```
+
+If your runtime happens to expose a plugin/skill-root variable, you may substitute it for `<skill-root>` (e.g. `CLAUDE_PLUGIN_ROOT` in a Claude Code plugin install) — an optional convenience, never a requirement; the placeholder form above works everywhere.
+
+If `python` is not found, try `python3`, then `py -3`. Requires Python 3.x, no external dependencies (see README for install instructions if Python is missing).
+
+## Minimal Worked Examples
+
+**Example 1 — targeted domain search.** Prerequisite: Python 3.x available. Invocation:
+
+```bash
+python "<skill-root>/scripts/search.py" "saas dashboard dark" --domain color -n 2
+```
+
+Actual output excerpt (abridged):
+
+```
+## UI Pro Max Search Results
+**Domain:** color | **Query:** saas dashboard dark
+**Source:** colors.csv | **Found:** 2 results
+
+### Result 1
+- **Product Type:** Financial Dashboard
+- **Primary:** #0F172A
+- **Background:** #020617
+- **Notes:** Dark bg + green positive indicators
+```
+
+**Example 2 — design system generation.** Invocation:
+
+```bash
+python "<skill-root>/scripts/search.py" "beauty spa wellness service" --design-system -p "Serenity Spa"
+```
+
+Actual output excerpt (abridged):
+
+```
+TARGET: Serenity Spa - RECOMMENDED DESIGN SYSTEM
+--- PATTERN ---
+  Name: Hero-Centric + Social Proof
+--- STYLE ---
+  Name: Soft UI Evolution
+--- COLORS ---
+  Primary:    #EC4899   (--color-primary)
+  Background: #FDF2F8   (--color-background)
+```
+
+## Failure Exits and Environment Errors
+
+The script exits 0 whenever it runs to completion — including a 0-result search (`Found: 0 results` plus an explicit "no database match" note). Diagnose by symptom, not exit code:
+
+| Symptom you observe | Cause | Action |
+|---------------------|-------|--------|
+| `command not found: python` (or `can't open file ... search.py`) | Interpreter missing, or wrong `<skill-root>` path | Retry with `python3`, then `py -3`; if still missing, tell the user Python 3.x is required (no external dependencies otherwise). If the path is wrong, re-locate the directory containing this `SKILL.md` — do not guess install paths. |
+| `FileNotFoundError` / `KeyError` mentioning a `.csv` file | The skill's `data/` directory is missing or incomplete | Report to the user that the skill install is incomplete (the CSV data files under `<skill-root>/data/` must exist); do not fabricate database content to cover the gap. |
+| `Found: 0 results` | Query missed the database (keyword problem, not a system problem) | Retry once with broader/different keywords (see the 0-results section below); if still empty, fall back to the priority table and say so explicitly. |
+| Results look off-topic | Auto-detected domain misrouted overlapping terms | Re-run with an explicit `--domain`. |
+
+There is no network access and no cache: every call reads the local CSVs, so a repeated query after a fix returns the same result — if it failed once due to a path or data problem, it will keep failing until that problem is fixed.
+
+## Workflow
+
+### Step 1: Analyze User Requirements
+
+Extract from the user request:
+- **Product type**: SaaS, e-commerce, portfolio, dashboard, entertainment, tool, productivity, or hybrid
+- **Target audience & context**: age group, usage context (commute, leisure, work)
+- **Style keywords**: playful, vibrant, minimal, dark mode, content-first, immersive, etc.
+- **Stack**: detect from the project — check `package.json` deps (react/next/vue/svelte/nuxt/@angular), `pubspec.yaml` (Flutter), `*.xcodeproj`/`Package.swift` (SwiftUI), `composer.json` (Laravel), or React Native markers (`app.json` + `react-native` dep). If nothing is detectable, ask the user or default to `html-tailwind`. **Never assume a stack** — a hardcoded default silently misroutes every recommendation.
+
+### Step 2: Generate Design System (REQUIRED for new pages/projects)
+
+Always start with `--design-system` to get comprehensive recommendations with reasoning:
+
+```bash
+python "<skill-root>/scripts/search.py" "<product_type> <industry> <keywords>" --design-system [-p "Project Name"]
+```
+
+This searches product/style/color/landing/typography domains in parallel, applies reasoning rules from `ui-reasoning.csv`, and returns pattern, style, colors, typography, effects, and anti-patterns to avoid.
+
+**Example:**
+```bash
+python "<skill-root>/scripts/search.py" "beauty spa wellness service" --design-system -p "Serenity Spa"
+```
+
+### Step 2b: Persist Design System (Master + Overrides Pattern)
+
+To save the design system for retrieval across sessions, add `--persist` **and always pass `--output-dir` pointed at the project root** — without it, files are written relative to whatever directory the tool happens to run from:
+
+```bash
+python "<skill-root>/scripts/search.py" "<query>" --design-system --persist -p "Project Name" --output-dir "<project-root>"
+```
+
+This creates:
+- `design-system/<project-slug>/MASTER.md` — Global Source of Truth
+- `design-system/<project-slug>/pages/` — Folder for page-specific overrides
+
+With a page-specific override, add `--page "dashboard"` to also create `design-system/<project-slug>/pages/dashboard.md`.
+
+If `design-system/<project-slug>/MASTER.md` already exists, `--persist` **skips writing and leaves it untouched** unless you also pass `--force` — check whether it exists first (and read it) before regenerating, so you don't silently discard prior decisions the user or a teammate made.
+
+**Retrieval when building a specific page:**
+1. Read `design-system/<project-slug>/MASTER.md`
+2. Check if `design-system/<project-slug>/pages/<page-name>.md` exists — if so, its rules override Master
+3. Otherwise use Master rules exclusively
+
+### Step 2c: Design Dials (optional)
+
+Three optional 1-10 sliders that tune `--design-system` output without changing your query. Add any combination of them to the same command:
+
+```bash
+python "<skill-root>/scripts/search.py" "<query>" --design-system --variance <1-10> --motion <1-10> --density <1-10>
+```
+
+| Dial | Low (1-3) | Mid (4-7) | High (8-10) |
+|------|-----------|-----------|-------------|
+| `--variance` | Centered / minimal (biases toward Minimalism-style categories) | Balanced / modern | Bold / asymmetric (biases toward Brutalism, Bento Grids) |
+| `--motion` | Subtle micro-interactions | Standard scroll/stagger motion | Complex choreography (pin, Flip, SplitText) |
+| `--density` | Spacious (24-96px spacing scale) | Standard (16-64px, current default) | Dense/dashboard (8-32px spacing scale) |
+
+- `--motion` attaches a ready-to-use GSAP snippet (with framework notes, Do/Don't, and performance notes) pulled from `--domain gsap`, matched to the resolved tier (Subtle/Standard/Complex).
+- `--density` overrides the `--space-*` CSS variable table in the ASCII/markdown/MASTER.md output — use it for dashboards (high) vs. marketing pages (low) without hand-editing tokens.
+- Leaving a dial unset keeps that part of the output exactly as it was before (no behavior change).
+
+**Example:**
+```bash
+python "<skill-root>/scripts/search.py" "internal analytics dashboard" --design-system --variance 8 --motion 7 --density 8 -p "Ops Console"
+```
+
+### Step 3: Supplement with Detailed Searches (as needed)
+
+```bash
+python "<skill-root>/scripts/search.py" "<keyword>" --domain <domain> [-n <max_results>]
+```
+
+| Need | Domain | Example |
+|------|--------|---------|
+| Product type patterns | `product` | `--domain product "entertainment social"` |
+| More style options | `style` | `--domain style "glassmorphism dark"` |
+| Color palettes | `color` | `--domain color "entertainment vibrant"` |
+| Font pairings | `typography` | `--domain typography "playful modern"` |
+| Individual Google Fonts | `google-fonts` | `--domain google-fonts "sans serif popular variable"` |
+| Chart recommendations | `chart` | `--domain chart "real-time dashboard"` |
+| UX best practices | `ux` | `--domain ux "animation accessibility"` |
+| Landing page structure | `landing` | `--domain landing "hero social-proof"` |
+| Icon recommendations | `icons` | `--domain icons "navigation outline"` |
+| GSAP animation presets | `gsap` | `--domain gsap "scroll reveal stagger"` |
+| React/Next.js performance | `react` | `--domain react "rerender memo list"` |
+| App/native interface guidelines | `web` | `--domain web "accessibilityLabel touch safe-areas"` |
+
+Domain is auto-detected from the query if `--domain` is omitted — but auto-detection can misroute overlapping terms (e.g. "font" matches both `typography` and `google-fonts`). If results look off-topic, pass `--domain` explicitly.
+
+### Step 4: Stack Guidelines
+
+```bash
+python "<skill-root>/scripts/search.py" "<keyword>" --stack <stack>
+```
+
+**Available stacks:** `react`, `nextjs`, `vue`, `svelte`, `astro`, `nuxtjs`, `nuxt-ui`, `angular`, `laravel`, `swiftui`, `react-native`, `flutter`, `jetpack-compose`, `html-tailwind`, `shadcn`, `threejs`, `javafx`, `wpf`, `winui`, `avalonia`, `uno`, `uwp`. Use the stack detected in Step 1.
+
+---
+
+## If a search returns 0 results
+
+Do not fabricate output. Instead:
+1. Retry once with broader or differently-worded keywords (try product + style separately rather than combined).
+2. If still empty, fall back to the priority table above and say explicitly to the user that this recommendation came from the built-in defaults, not a database match (e.g. "no palette match for X, using general SaaS defaults").
+3. Never present a 0-result search as if it returned data.
+
+## Example Workflow
+
+**User request:** "Make an AI search homepage." (stack detected as Next.js from `package.json`)
+
+```bash
+## Step 2: design system
+python "<skill-root>/scripts/search.py" "AI search tool modern minimal" --design-system -p "AI Search"
+
+## Step 3: supplement
+python "<skill-root>/scripts/search.py" "search loading animation" --domain ux
+
+## Step 4: stack guidelines
+python "<skill-root>/scripts/search.py" "suspense streaming bundle" --stack nextjs
+```
+
+Then synthesize the design system + detailed searches and implement.
+
+## Output Formats
+
+`--design-system` supports `-f ascii` (default, terminal display), `-f markdown` (documentation), and `--json` (machine-readable, includes the raw design system dict plus persistence status).
+
+## Tips for Better Results
+
+- Use **multi-dimensional keywords** — combine product + industry + tone + density: `"entertainment social vibrant content-dense"`, not just `"app"`
+- Try different phrasings for the same need: `"playful neon"` → `"vibrant dark"` → `"content-first minimal"`
+- Use `--design-system` first for full recommendations, then `--domain` to deep-dive any dimension you're unsure about
+- Pass the detected stack explicitly for implementation-specific guidance
+
+| Problem | What to Do |
+|---------|------------|
+| Can't decide on style/color | Re-run `--design-system` with different keywords |
+| Dark mode contrast issues | `references/quick-reference.md` §6: `color-dark-mode` + `color-accessible-pairs` |
+| Animations feel unnatural | `references/quick-reference.md` §7: `spring-physics` + `easing` + `exit-faster-than-enter` |
+| Form UX is poor | `references/quick-reference.md` §8: `inline-validation` + `error-clarity` + `focus-management` |
+| Navigation feels confusing | `references/quick-reference.md` §9: `nav-hierarchy` + `bottom-nav-limit` + `back-behavior` |
+| Layout breaks on small screens | `references/quick-reference.md` §5: `mobile-first` + `breakpoint-consistency` |
+| Performance / jank | `references/quick-reference.md` §3: `virtualize-lists` + `main-thread-budget` + `debounce-throttle` |
+
+## Before Delivering App UI
+
+Read `references/pro-rules.md` and run through its canonical Pre-Delivery Checklist. It covers icon/visual-element discipline, interaction feedback, light/dark contrast, safe-area layout, and accessibility — scoped to native/mobile app UI (iOS/Android/React Native/Flutter).

@@ -106,12 +106,13 @@ export class AppDatabase {
     });
   }
 
-  public addNotification(destinationUserId: string, subject: string, content: string): void {
+  public addNotification(destinationUserId: string, subject: string, content: string, tutoringId?: string): void {
     const notif: Notification = {
       id: `notif-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       destinationUserId,
       subject,
       content,
+      tutoringId,
       isRead: false,
       createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
     };

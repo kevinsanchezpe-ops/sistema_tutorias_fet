@@ -49,7 +49,6 @@ export interface User {
   fullName: string;
   alias: string;
   email: string;
-  phone: string;
   role: UserRole;
   account: string; // Número de cuenta institucional
   campusId: string;
@@ -112,7 +111,6 @@ export interface TutoringAssistant {
   studentId: string;
   studentName: string;
   studentAccount: string;
-  studentPhone: string;
   studentEmail: string;
   isPetitioner: boolean;
   hasAttended: boolean;

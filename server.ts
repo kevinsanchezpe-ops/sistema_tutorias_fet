@@ -835,12 +835,12 @@ async function startServer() {
 
   app.put('/api/teachers/:id', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
-      const { adminId, fullName, phone, email, careerId, subjectIds } = req.body;
+      const { adminId, fullName, email, careerId, subjectIds } = req.body;
       const admin = await pgRepo.getUserById(req.user!.userId);
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
-      const user = await pgRepo.updateTeacherProfile(req.params.id, { fullName, phone, email, careerId }, admin);
+      const user = await pgRepo.updateTeacherProfile(req.params.id, { fullName, email, careerId }, admin);
       if (Array.isArray(subjectIds)) {
         await pgRepo.setTeacherSubjects(req.params.id, subjectIds, admin);
       }
@@ -857,12 +857,12 @@ async function startServer() {
 
   app.put('/api/users/:id/profile', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { photoUrl, phone, alias } = req.body;
+      const { photoUrl, alias } = req.body;
       const actor = await pgRepo.getUserById(req.user!.userId);
       if (!actor) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario no autenticado.' } });
       }
-      const updatedUser = await pgRepo.updateUserProfile(req.params.id, { photoUrl, phone, alias }, actor);
+      const updatedUser = await pgRepo.updateUserProfile(req.params.id, { photoUrl, alias }, actor);
       res.json({ success: true, data: updatedUser, message: 'Perfil y foto actualizados exitosamente.' });
     } catch (err: any) {
       res.status(400).json({ success: false, error: { code: 'UPDATE_PROFILE_ERROR', message: err.message } });

@@ -8,6 +8,7 @@ import {
   AlertCircle,
   ToggleLeft,
   ToggleRight,
+  BookOpen,
   Trash2,
   X
 } from 'lucide-react';
@@ -152,43 +153,39 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
   const inactiveCount = careerSubjects.filter((s) => !s.isActive).length;
 
   return (
-    <div className="space-y-6">
-      {/* Header and Main Action */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
+    <div className="space-y-5">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">
-            Gestión y Catálogo de Asignaturas
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Administración del plan de asignaturas curriculares ofertadas para tutorías presenciales y virtuales.
-          </p>
+          <p className="text-xs font-medium text-brand-700">Catálogo académico</p>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Asignaturas</h2>
+          <p className="mt-1 text-sm text-stone-500">Organiza las materias por carrera y semestre, y controla su disponibilidad.</p>
         </div>
-
         <button
+          type="button"
           id="btn-admin-add-subject"
           onClick={() => {
             setShowCreateForm(!showCreateForm);
             setErrorMsg(null);
             setSuccessMsg(null);
           }}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#11770e] hover:bg-[#0d5c0b] text-white text-xs font-semibold rounded-xl shadow-xs transition-all cursor-pointer w-fit"
+          className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white transition-colors hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 sm:self-auto"
         >
-          <Plus className="w-4 h-4" />
-          <span>{showCreateForm ? 'Cerrar Formulario' : 'Nueva Asignatura'}</span>
+          <Plus aria-hidden="true" className="h-4 w-4" />
+          <span>{showCreateForm ? 'Cerrar formulario' : 'Nueva asignatura'}</span>
         </button>
-      </div>
+      </header>
 
       {/* Alert Messages */}
       {successMsg && (
-        <div className="p-3.5 bg-[#eaf8ea] border border-[#bce6bc] rounded-xl flex items-center gap-2.5 text-xs text-[#0d5c0b] animate-in fade-in">
-          <CheckCircle2 className="w-4 h-4 text-[#11770e] shrink-0" />
+        <div className="p-3.5 bg-brand-50 border border-brand-200 rounded-xl flex items-center gap-2.5 text-xs text-brand-800 animate-in fade-in">
+          <CheckCircle2 aria-hidden="true" className="w-4 h-4 text-brand-700 shrink-0" />
           <span className="font-semibold">{successMsg}</span>
         </div>
       )}
 
       {/* Creation Form (Collapsible) */}
       {showCreateForm && (
-        <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-xs animate-in fade-in duration-200 space-y-4">
+        <div className="bg-white p-5 rounded-xl border border-[#e2e6e2] animate-in fade-in duration-200 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-stone-100">
             <div>
               <h3 className="text-sm font-bold text-slate-900">
@@ -202,15 +199,15 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
               type="button"
               id="btn-quick-sample-subject"
               onClick={handleFillSample}
-              className="text-xs font-semibold text-[#11770e] hover:text-[#0d5c0b] hover:underline cursor-pointer"
+              className="text-xs font-semibold text-brand-700 hover:text-brand-800 hover:underline cursor-pointer"
             >
               Cargar datos de ejemplo
             </button>
           </div>
 
           {errorMsg && (
-            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2.5 text-xs text-rose-800 animate-in fade-in">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <div role="alert" className="p-3.5 bg-danger-soft border border-danger-border rounded-xl flex items-center gap-2.5 text-xs text-danger animate-in fade-in">
+              <AlertCircle aria-hidden="true" className="w-4 h-4 text-danger shrink-0" />
               <span>{errorMsg}</span>
             </div>
           )}
@@ -232,7 +229,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
                   placeholder="Nombre de la asignatura"
                   required
                   minLength={3}
-                  className="w-full text-xs rounded-xl border border-stone-300 px-3.5 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
+                  className="w-full text-sm rounded-lg border border-stone-200 px-3.5 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
                 />
               </div>
 
@@ -250,7 +247,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
                   onChange={(e) => setCode(e.target.value)}
                   placeholder="Código oficial"
                   required
-                  className="w-full text-xs rounded-xl border border-stone-300 px-3.5 py-2 text-slate-900 uppercase placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e] font-mono font-bold"
+                  className="w-full text-sm rounded-lg border border-stone-200 px-3.5 py-3 text-slate-900 uppercase placeholder:text-slate-400 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 font-mono font-bold"
                 />
               </div>
             </div>
@@ -267,7 +264,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
                   id="input-subject-career"
                   value={selectedCareerId}
                   onChange={(e) => setSelectedCareerId(e.target.value)}
-                  className="w-full text-xs rounded-xl border border-stone-300 px-3 py-2 text-slate-900 focus:ring-2 focus:ring-[#11770e] bg-white font-medium"
+                  className="w-full text-sm rounded-lg border border-stone-200 px-3.5 py-3 text-slate-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 bg-white font-medium"
                 >
                   {careers.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -288,7 +285,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
                   id="input-subject-semester"
                   value={semester}
                   onChange={(e) => setSemester(Number(e.target.value))}
-                  className="w-full text-xs rounded-xl border border-stone-300 px-3 py-2 text-slate-900 focus:ring-2 focus:ring-[#11770e] bg-white font-medium"
+                  className="w-full text-sm rounded-lg border border-stone-200 px-3.5 py-3 text-slate-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 bg-white font-medium"
                 >
                   {Array.from({ length: selectedCareer?.numberOfSemesters || 10 }, (_, i) => i + 1).map((n) => (
                     <option key={n} value={n}>
@@ -312,7 +309,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
                   max={8}
                   value={credits}
                   onChange={(e) => setCredits(Number(e.target.value))}
-                  className="w-full text-xs rounded-xl border border-stone-300 px-3.5 py-2 text-slate-900 focus:ring-2 focus:ring-[#11770e] font-medium"
+                  className="w-full text-sm rounded-lg border border-stone-200 px-3.5 py-3 text-slate-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 font-medium"
                 />
               </div>
             </div>
@@ -329,12 +326,12 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
                 id="btn-submit-create-subject"
                 type="submit"
                 disabled={isSubmitting}
-                className="flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-[#11770e] hover:bg-[#0d5c0b] rounded-xl shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+                className="flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-brand-700 hover:bg-brand-800 rounded-xl shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
               >
                 {isSubmitting ? (
                   <>
                     <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Guardando...</span>
+                    <span>Guardando…</span>
                   </>
                 ) : (
                   <span>Guardar y Habilitar Asignatura</span>
@@ -345,62 +342,26 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
         </div>
       )}
 
-      {/* KPI Cards Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-            Total Asignaturas
-          </span>
-          <div className="text-2xl font-black text-slate-900 mt-1">
-            {careerSubjects.length}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">En catálogo académico</div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-            Asignaturas Activas
-          </span>
-          <div className="text-2xl font-black text-[#11770e] mt-1">
-            {activeCount}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">Disponibles para tutorías</div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-            Inactivas / Pausadas
-          </span>
-          <div className="text-2xl font-black text-slate-600 mt-1">
-            {inactiveCount}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">Inhabilitadas temporalmente</div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-            Carreras Vinculadas
-          </span>
-          <div className="text-2xl font-black text-slate-900 mt-1">
-            {careers.length}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">Programas académicos</div>
-        </div>
-      </div>
+      {/* Resumen del catálogo */}
+      <dl className="grid grid-cols-3 overflow-hidden rounded-xl border border-stone-200 bg-white divide-x divide-stone-200">
+        <div className="p-3.5 sm:p-4"><dt className="text-xs text-stone-500">Asignaturas</dt><dd className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{careerSubjects.length}</dd></div>
+        <div className="p-3.5 sm:p-4"><dt className="text-xs text-stone-500">Activas</dt><dd className="mt-1 text-xl font-semibold tabular-nums text-brand-700">{activeCount}</dd></div>
+        <div className="p-3.5 sm:p-4"><dt className="text-xs text-stone-500">Inactivas</dt><dd className="mt-1 text-xl font-semibold tabular-nums text-stone-500">{inactiveCount}</dd></div>
+      </dl>
 
       {/* Search & Filter Bar */}
-      <div className="flex flex-col lg:flex-row items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-stone-200 shadow-xs">
+      <div className="flex flex-col gap-3 rounded-lg border border-[#dadce0] bg-white p-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative w-full lg:w-72">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-            <Search className="w-4 h-4" />
+            <Search aria-hidden="true" className="w-4 h-4" />
           </div>
           <input
             id="input-search-subjects"
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por nombre o código..."
-            className="w-full text-xs rounded-xl border border-stone-200 pl-9 pr-3 py-2 text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-[#11770e]"
+            placeholder="Buscar por nombre o código…"
+            className="h-10 w-full rounded-md border border-[#8792a2] bg-white pl-9 pr-3 text-sm text-[#202124] placeholder:text-[#5f6368] focus:outline-none focus:ring-2 focus:ring-[#11770e]/25"
           />
         </div>
 
@@ -413,7 +374,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
               setCareerFilter(e.target.value);
               setSemesterFilter('all');
             }}
-            className="text-xs rounded-xl border border-stone-200 bg-white px-3 py-2 text-slate-700 font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#11770e]"
+            className="h-10 rounded-md border border-[#8792a2] bg-white px-3 text-sm font-medium text-[#3c4043] focus:outline-none focus:ring-2 focus:ring-[#11770e]/25"
           >
             <option value="all">Todas las carreras</option>
             {careers.map((c) => (
@@ -429,7 +390,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
             value={semesterFilter}
             onChange={(e) => setSemesterFilter(e.target.value)}
             disabled={careerFilter === 'all'}
-            className="text-xs rounded-xl border border-stone-200 bg-white px-3 py-2 text-slate-700 font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#11770e] disabled:opacity-50"
+            className="h-10 rounded-md border border-[#8792a2] bg-white px-3 text-sm font-medium text-[#3c4043] focus:outline-none focus:ring-2 focus:ring-[#11770e]/25 disabled:opacity-50"
           >
             <option value="all">Todos los semestres</option>
             {Array.from({ length: filterCareerObj?.numberOfSemesters || 10 }, (_, i) => i + 1).map((n) => (
@@ -440,13 +401,13 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
           </select>
 
           {/* Status Buttons */}
-          <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-xl text-xs font-semibold">
+          <div className="flex items-center gap-1 rounded-md border border-[#dadce0] bg-[#f5f7f5] p-1 text-xs font-semibold">
             <button
               type="button"
               onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+            className={`inline-flex min-h-10 items-center rounded-lg px-3 transition-colors cursor-pointer ${
                 statusFilter === 'all'
-                  ? 'bg-white text-[#11770e] font-bold shadow-2xs'
+                  ? 'bg-[#edf6ec] text-[#155b13] font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -455,9 +416,9 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
             <button
               type="button"
               onClick={() => setStatusFilter('active')}
-              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+            className={`inline-flex min-h-10 items-center rounded-lg px-3 transition-colors cursor-pointer ${
                 statusFilter === 'active'
-                  ? 'bg-white text-[#11770e] font-bold shadow-2xs'
+                  ? 'bg-[#edf6ec] text-[#155b13] font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -466,9 +427,9 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
             <button
               type="button"
               onClick={() => setStatusFilter('inactive')}
-              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+            className={`inline-flex min-h-10 items-center rounded-lg px-3 transition-colors cursor-pointer ${
                 statusFilter === 'inactive'
-                  ? 'bg-white text-slate-900 font-bold shadow-2xs'
+                  ? 'bg-[#edf6ec] text-[#155b13] font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -478,108 +439,72 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
         </div>
       </div>
 
-      {/* Subjects Table */}
-      <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-700">
-            <thead className="bg-slate-50 border-b border-stone-200 text-slate-600 uppercase font-semibold text-[11px]">
-              <tr>
-                <th className="py-3.5 px-4">Código</th>
-                <th className="py-3.5 px-4">Nombre de Asignatura</th>
-                <th className="py-3.5 px-4">Carrera / Área</th>
-                <th className="py-3.5 px-4 text-center">Semestre</th>
-                <th className="py-3.5 px-4 text-center">Créditos</th>
-                <th className="py-3.5 px-4 text-center">Estado</th>
-                <th className="py-3.5 px-4 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredSubjects.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400 text-xs">
-                    No se encontraron asignaturas con los filtros seleccionados.
-                  </td>
-                </tr>
-              ) : (
-                filteredSubjects.map((subject) => (
-                  <tr key={subject.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-3.5 px-4 font-mono font-bold">
-                      <span className="bg-stone-100 text-slate-800 border border-stone-200 px-2 py-0.5 rounded-md text-[11px]">
-                        {subject.code || 'S/C'}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 font-bold text-slate-900">
-                      {subject.name}
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-600 font-medium">
-                      {subject.careerName}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc]">
-                        {subject.semester ? `Semestre ${subject.semester}` : 'N/D'}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-center font-bold text-slate-700">
-                      {subject.credits || 4} UV
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          subject.isActive
-                            ? 'bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc]'
-                            : 'bg-stone-100 text-stone-500 border border-stone-200'
-                        }`}
-                      >
+      {/* Lista organizada de asignaturas */}
+      <section aria-labelledby="subjects-list-title" className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+        <div className="flex flex-col gap-1 border-b border-stone-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div>
+            <h3 id="subjects-list-title" className="text-sm font-semibold text-slate-900">Catálogo de asignaturas</h3>
+            <p className="mt-0.5 text-xs text-stone-500">Carrera, semestre y disponibilidad de cada materia.</p>
+          </div>
+          <span className="text-xs font-medium text-stone-500">{filteredSubjects.length} de {careerSubjects.length} asignaturas</span>
+        </div>
+
+        {filteredSubjects.length === 0 ? (
+          <div className="px-4 py-14 text-center">
+            <BookOpen aria-hidden="true" className="mx-auto mb-3 h-8 w-8 text-stone-300" />
+            <p className="text-sm font-semibold text-slate-800">No se encontraron asignaturas</p>
+            <p className="mt-1 text-sm text-stone-500">Prueba con otros filtros o registra una nueva asignatura.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-stone-100">
+            {filteredSubjects.map((subject) => (
+              <article key={subject.id} className="p-4 transition-colors hover:bg-stone-50/50 sm:p-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md border border-stone-200 bg-stone-50 px-2 py-1 font-mono text-[11px] font-medium text-stone-600">{subject.code || 'Sin código'}</span>
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${subject.isActive ? 'bg-brand-50 text-brand-700' : 'bg-stone-100 text-stone-600'}`}>
+                        <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${subject.isActive ? 'bg-brand-600' : 'bg-stone-400'}`} />
                         {subject.isActive ? 'Activa' : 'Inactiva'}
                       </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          id={`btn-toggle-subject-${subject.id}`}
-                          onClick={() => handleToggleActive(subject.id)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
-                            subject.isActive
-                              ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
-                              : 'bg-[#eaf8ea] text-[#11770e] border-[#bce6bc] hover:bg-[#bce6bc]/40'
-                          }`}
-                          title={subject.isActive ? 'Desactivar para tutorías' : 'Activar para tutorías'}
-                        >
-                          {subject.isActive ? (
-                            <>
-                              <ToggleRight className="w-3.5 h-3.5" />
-                              <span>Inhabilitar</span>
-                            </>
-                          ) : (
-                            <>
-                              <ToggleLeft className="w-3.5 h-3.5" />
-                              <span>Habilitar</span>
-                            </>
-                          )}
-                        </button>
+                    </div>
+                    <h4 className="mt-2 text-sm font-semibold text-slate-900 sm:text-base">{subject.name}</h4>
+                    <dl className="mt-3 grid grid-cols-2 gap-x-5 gap-y-2 sm:grid-cols-3">
+                      <div className="min-w-0"><dt className="text-[11px] text-stone-500">Carrera</dt><dd className="mt-0.5 truncate text-xs font-medium text-slate-700">{subject.careerName}</dd></div>
+                      <div><dt className="text-[11px] text-stone-500">Semestre</dt><dd className="mt-0.5 text-xs font-medium text-slate-700">{subject.semester ? `Semestre ${subject.semester}` : 'No definido'}</dd></div>
+                      <div><dt className="text-[11px] text-stone-500">Créditos</dt><dd className="mt-0.5 text-xs font-medium text-slate-700">{subject.credits || 4} UV</dd></div>
+                    </dl>
+                  </div>
 
-                        <button
-                          id={`btn-delete-subject-${subject.id}`}
-                          onClick={() => {
-                            setDeletingSubject(subject);
-                            setDeleteError(null);
-                          }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-stone-200 text-slate-600 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-colors cursor-pointer"
-                          title="Eliminar asignatura permanentemente"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                          <span>Eliminar</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
+                  <div className="flex flex-wrap items-center gap-2 border-t border-stone-100 pt-3 lg:justify-end lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
+                    <button
+                      type="button"
+                      id={`btn-toggle-subject-${subject.id}`}
+                      onClick={() => handleToggleActive(subject.id)}
+                      aria-label={subject.isActive ? `Inhabilitar ${subject.name}` : `Habilitar ${subject.name}`}
+                      className={`inline-flex min-h-10 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 ${subject.isActive ? 'border-stone-200 bg-white text-slate-700 hover:bg-stone-50' : 'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100'}`}
+                      title={subject.isActive ? 'Desactivar para tutorías' : 'Activar para tutorías'}
+                    >
+                      {subject.isActive ? <ToggleRight aria-hidden="true" className="h-4 w-4" /> : <ToggleLeft aria-hidden="true" className="h-4 w-4" />}
+                      {subject.isActive ? 'Inhabilitar' : 'Habilitar'}
+                    </button>
+                    <button
+                      type="button"
+                      id={`btn-delete-subject-${subject.id}`}
+                      onClick={() => { setDeletingSubject(subject); setDeleteError(null); }}
+                      aria-label={`Eliminar ${subject.name}`}
+                      className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-stone-200 px-3 text-xs font-medium text-stone-600 transition-colors hover:border-danger-border hover:bg-danger-soft hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
+                      title="Eliminar asignatura"
+                    >
+                      <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Eliminar
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
       {/* Confirmation Modal for Deleting Subject */}
       {deletingSubject && (
         <div
@@ -590,17 +515,18 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
             id="modal-delete-subject-card"
             className="bg-white rounded-2xl shadow-2xl border border-stone-200 w-full max-w-md overflow-hidden"
           >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-rose-100 bg-rose-50/50">
-              <div className="flex items-center gap-2 text-rose-800 font-bold text-sm">
-                <Trash2 className="w-4 h-4 text-rose-600" />
+            <div className="flex items-center justify-between px-5 py-4 border-b border-danger-border bg-danger-soft/50">
+              <div className="flex items-center gap-2 text-danger font-bold text-sm">
+                <Trash2 aria-hidden="true" className="w-4 h-4 text-danger" />
                 <span>Confirmar Eliminación de Asignatura</span>
               </div>
               <button
                 id="btn-close-delete-subject-modal"
+                aria-label="Cerrar diálogo"
                 onClick={() => setDeletingSubject(null)}
                 className="text-slate-400 hover:text-slate-600 p-1 rounded-md cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X aria-hidden="true" className="w-4 h-4" />
               </button>
             </div>
 
@@ -621,13 +547,13 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
               </div>
 
               {deleteError && (
-                <div id="alert-delete-subject-error" className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-xs text-rose-700">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div id="alert-delete-subject-error" role="alert" className="p-3 bg-danger-soft border border-danger-border rounded-xl flex items-start gap-2 text-xs text-danger">
+                  <AlertCircle aria-hidden="true" className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>{deleteError}</span>
                 </div>
               )}
 
-              <p className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+              <p className="text-[11px] text-amber-800 bg-warning-soft p-2.5 rounded-lg border border-warning-border">
                 Esta acción es irreversible y removerá la asignatura del plan de estudios y de las franjas docentes asociadas.
               </p>
             </div>
@@ -646,16 +572,16 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
                 type="button"
                 onClick={handleDeleteSubject}
                 disabled={deleteLoading}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-b from-danger to-rose-800 hover:from-rose-800 hover:to-rose-900 rounded-lg shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
               >
                 {deleteLoading ? (
                   <>
                     <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Eliminando...</span>
+                    <span>Eliminando…</span>
                   </>
                 ) : (
                   <>
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 aria-hidden="true" className="w-3.5 h-3.5" />
                     <span>Eliminar Asignatura</span>
                   </>
                 )}

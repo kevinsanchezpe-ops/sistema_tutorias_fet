@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "add-notification-center": {
+      "source": "flavien-ia/hypervibe-harness",
+      "sourceType": "github",
+      "skillPath": "skills/add-notification-center/SKILL.md",
+      "computedHash": "60b8385c4866c5db2cab0eabd617efc34f469fb625549f81f98c2a8abda4d3a6"
+    },
+    "ui-ux-pro-max": {
+      "source": "NinjaSln-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "ui-ux-pro-max/SKILL.md",
+      "computedHash": "7a412c5b4f0ad4240ae2fc7df8cc0d41c2329d57e78649fcb93c3b4ef1925ea6"
+    },
+    "yafa-ui-dashboard": {
+      "source": "rejourneyco/yafa-ui-dashboard",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "d13c1e733e5fe9afe497a8724ae47760a3d1c4e3b76dd20e94c50238bfc5a2a9"
+    }
+  }
+}

@@ -91,7 +91,8 @@ export class ApproveTutoringUseCase {
     db.addNotification(
       tutoring.petitionerStudentId,
       'Solicitud Aprobada',
-      `Su solicitud de tutoría con asunto "${tutoring.subject}" fue aprobada por ${approver.alias || approver.fullName} para el día ${tutoring.reservDate} en el horario ${tutoring.scheduleLabel}. Impartida en: ${placeLabel}`
+      `Su solicitud de tutoría con asunto "${tutoring.subject}" fue aprobada por ${approver.alias || approver.fullName} para el día ${tutoring.reservDate} en el horario ${tutoring.scheduleLabel}. Impartida en: ${placeLabel}`,
+      tutoring.id
     );
 
     // Si quien aprueba es administrador, notificar al docente asignado
@@ -99,7 +100,8 @@ export class ApproveTutoringUseCase {
       db.addNotification(
         tutoring.teacherId,
         'Solicitud Asignada',
-        `Se le ha programado la tutoría con asunto "${tutoring.subject}", para el día ${tutoring.reservDate} en el horario ${tutoring.scheduleLabel}. Impartida en: ${placeLabel}`
+        `Se le ha programado la tutoría con asunto "${tutoring.subject}", para el día ${tutoring.reservDate} en el horario ${tutoring.scheduleLabel}. Impartida en: ${placeLabel}`,
+        tutoring.id
       );
     }
 

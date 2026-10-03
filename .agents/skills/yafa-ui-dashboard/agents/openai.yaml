@@ -1,0 +1,10 @@
+interface:
+  display_name: "Yafa-UI: Dashboard"
+  short_description: "Design polished responsive analytics dashboards"
+  icon_small: "./assets/yafa-ui-dashboard-mark.svg"
+  icon_large: "./assets/yafa-ui-dashboard-mark.svg"
+  brand_color: "#0891B2"
+  default_prompt: "Use $yafa-ui-dashboard to design a polished responsive SaaS analytics dashboard with clear hierarchy, deliberate data color, and accessible mobile states."
+
+policy:
+  allow_implicit_invocation: true

@@ -4,8 +4,6 @@ import { db } from '../core/infrastructure/database/database';
 import { Career, User } from '../core/types';
 import {
   GraduationCap,
-  LogIn,
-  UserPlus,
   Lock,
   Mail,
   User as UserIcon,
@@ -17,8 +15,6 @@ import {
   ArrowRight,
   Briefcase,
   Layers,
-  Phone,
-  UserCheck,
   X,
   KeyRound
 } from 'lucide-react';
@@ -45,11 +41,11 @@ export const AuthView: React.FC<AuthViewProps> = ({
   // Registration state
   const [fullName, setFullName] = useState('');
   const [account, setAccount] = useState('');
-  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [phone, setPhone] = useState('');
+  const [confirmRegPassword, setConfirmRegPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
+  const [showConfirmRegPassword, setShowConfirmRegPassword] = useState(false);
   const [regLoading, setRegLoading] = useState(false);
   const [regError, setRegError] = useState<string | null>(null);
   const [regSuccessMsg, setRegSuccessMsg] = useState<string | null>(null);
@@ -81,7 +77,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
     setForgotError(null);
     setForgotSuccess(null);
     if (!forgotIdentity.trim()) {
-      setForgotError('Ingresa tu correo o nombre de usuario.');
+      setForgotError('Ingresa tu correo institucional o carnet.');
       return;
     }
 
@@ -167,12 +163,12 @@ export const AuthView: React.FC<AuthViewProps> = ({
       setRegError('El carnet institucional es obligatorio.');
       return;
     }
-    if (!username.trim()) {
-      setRegError('El nombre de usuario es obligatorio.');
-      return;
-    }
     if (!email.trim() || !email.includes('@')) {
       setRegError('Ingresa un correo institucional válido.');
+      return;
+    }
+    if (password !== confirmRegPassword) {
+      setRegError('Las contraseñas no coinciden.');
       return;
     }
     if (!careerId) {
@@ -185,9 +181,9 @@ export const AuthView: React.FC<AuthViewProps> = ({
     const res = await ApiClient.registerStudent({
       fullName: fullName.trim(),
       account: account.trim(),
-      username: username.trim().toLowerCase(),
+      // Internal login identifier generated from the institutional email.
+      username: email.trim().toLowerCase(),
       email: email.trim().toLowerCase(),
-      phone: phone.trim(),
       password: password,
       birthDate: '',
       admissionDate: new Date().toISOString().split('T')[0],
@@ -210,76 +206,63 @@ export const AuthView: React.FC<AuthViewProps> = ({
   };
 
   return (
-    <div
-      className="min-h-screen flex flex-col justify-center py-8 px-4 sm:px-6 relative overflow-hidden bg-[#2b2b2b] bg-cover bg-center bg-no-repeat"
-      style={{ backgroundImage: "url('/assets/fet-background.png')" }}
-    >
-      {/* Overlay para legibilidad sobre la foto del campus FET */}
-      <div className="absolute inset-0 bg-[#2b2b2b]/70 pointer-events-none" />
-      <div className="absolute inset-0 bg-gradient-to-b from-[#11770e]/30 via-transparent to-[#2b2b2b]/80 pointer-events-none" />
+    <div className="min-h-screen flex items-center justify-center bg-[#edf2ee] px-4 py-6 sm:px-6 sm:py-10">
+      <div className="w-full max-w-5xl overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-2xl flex flex-col md:flex-row">
+        <aside
+          className="relative hidden md:flex md:w-[40%] min-h-[560px] flex-col justify-between overflow-hidden bg-[#0d5c0b] bg-cover bg-center p-9 lg:p-12 text-white"
+          style={{ backgroundImage: "url('/assets/fet-background.png')" }}
+          aria-label="Fundación Escuela Tecnológica"
+        >
+          <div className="absolute inset-0 bg-gradient-to-br from-[#0d9488]/90 via-[#11770e]/85 to-[#073b08]/90" />
+          <div className="relative z-10">
+            <img
+              src="/logo-fet-blanco.png"
+              alt="Fundación Escuela Tecnológica"
+              className="h-auto w-48 max-w-full object-contain object-left"
+            />
+          </div>
+          <div className="relative z-10 max-w-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/75">Fundación Escuela Tecnológica</p>
+            <h1 className="mt-3 text-3xl lg:text-4xl font-bold leading-tight tracking-tight">Aprender juntos, avanzar más.</h1>
+            <p className="mt-4 text-sm leading-relaxed text-white/85">Conecta con docentes y encuentra acompañamiento para tus retos académicos.</p>
+          </div>
+          <p className="relative z-10 text-xs text-white/65">Plataforma institucional de tutorías</p>
+        </aside>
 
-      {/* Brand Header */}
-      <div className="relative z-10 sm:mx-auto sm:w-full sm:max-w-md text-center mb-6">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#11770e] to-[#7ce200] text-white shadow-xl shadow-[#11770e]/30 mb-3 border border-[#7ce200]/30">
-          <GraduationCap className="w-8 h-8 text-[#fffaed]" />
-        </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#fffaed]">
-          Agendamientos Tutorias FET
-        </h1>
-        <p className="mt-1 text-xs sm:text-sm text-stone-300 font-medium">
-          Plataforma Institucional de Tutorías
-        </p>
-      </div>
-
-      {/* Main card */}
-      <div className="relative z-10 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white rounded-2xl shadow-2xl border border-stone-200/80 overflow-hidden">
-          {/* Tabs: Iniciar Sesión / Registrarse */}
-          <div className="flex border-b border-stone-200 bg-[#fffaed]/50 p-1.5 gap-1.5">
-            <button
-              id="tab-login-btn"
-              type="button"
-              onClick={() => {
-                setActiveTab('login');
-                setLoginError(null);
-              }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer ${
-                activeTab === 'login'
-                  ? 'bg-white text-[#11770e] shadow-xs border border-stone-200/80'
-                  : 'text-stone-600 hover:text-[#2b2b2b] hover:bg-[#eaf8ea]'
-              }`}
-            >
-              <LogIn className="w-4 h-4" />
-              <span>Iniciar Sesión</span>
-            </button>
-
-            <button
-              id="tab-register-btn"
-              type="button"
-              onClick={() => {
-                setActiveTab('register');
-                setRegError(null);
-                setRegSuccessMsg(null);
-              }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer ${
-                activeTab === 'register'
-                  ? 'bg-white text-[#11770e] shadow-xs border border-stone-200/80'
-                  : 'text-stone-600 hover:text-[#2b2b2b] hover:bg-[#eaf8ea]'
-              }`}
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>Registrarse</span>
-            </button>
+        <section className="min-w-0 flex-1 px-6 py-7 sm:px-10 sm:py-9 lg:px-14 lg:py-12">
+          <div className="mb-8 flex items-center justify-between gap-3 md:justify-end">
+            <div className="flex items-center gap-2 md:hidden">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-700 text-white">
+                <GraduationCap aria-hidden="true" className="h-5 w-5" />
+              </div>
+              <span className="text-sm font-bold text-slate-900">Tutorías FET</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs sm:text-sm">
+              <span className="text-slate-500">{activeTab === 'login' ? '¿No tienes cuenta?' : '¿Ya tienes cuenta?'}</span>
+              <button
+                id="auth-mode-toggle"
+                type="button"
+                onClick={() => {
+                  setActiveTab(activeTab === 'login' ? 'register' : 'login');
+                  setLoginError(null);
+                  setRegError(null);
+                  setRegSuccessMsg(null);
+                }}
+                className="min-h-11 px-1 font-bold text-brand-700 hover:text-brand-800 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+              >
+                {activeTab === 'login' ? 'Registrarse' : 'Iniciar sesión'}
+              </button>
+            </div>
           </div>
 
           {/* TAB 1: LOGIN */}
           {activeTab === 'login' && (
-            <div className="p-6 sm:p-7 space-y-5 animate-in fade-in duration-150">
+            <div className="mx-auto w-full max-w-md space-y-6 animate-in fade-in duration-150">
               <div>
-                <h2 className="text-base font-bold text-slate-900">
-                  Acceso al Sistema
+                <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                  Iniciar sesión
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-sm text-slate-500 mt-1">
                   Ingresa tus credenciales para continuar
                 </p>
               </div>
@@ -287,9 +270,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
               {loginError && (
                 <div
                   id="alert-login-error"
-                  className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-xs text-rose-700 animate-in fade-in"
+                  role="alert"
+                  className="p-3 bg-danger-soft border border-danger-border rounded-xl flex items-start gap-2 text-xs text-danger animate-in fade-in"
                 >
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <AlertCircle aria-hidden="true" className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>{loginError}</span>
                 </div>
               )}
@@ -304,16 +288,19 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                      <UserIcon className="w-4 h-4" />
+                      <UserIcon aria-hidden="true" className="w-4 h-4" />
                     </div>
                     <input
                       id="login-identity-input"
                       type="text"
+                      name="username"
+                      autoComplete="username"
+                      spellCheck={false}
                       value={loginIdentity}
                       onChange={(e) => setLoginIdentity(e.target.value)}
-                      placeholder="Usuario, correo o carnet"
+                      placeholder="Correo institucional o carnet"
                       required
-                      className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
+                      className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
                     />
                   </div>
                 </div>
@@ -327,23 +314,26 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                      <Lock className="w-4 h-4" />
+                      <Lock aria-hidden="true" className="w-4 h-4" />
                     </div>
                     <input
                       id="login-password-input"
                       type={showPassword ? 'text' : 'password'}
+                      name="password"
+                      autoComplete="current-password"
                       value={loginPassword}
                       onChange={(e) => setLoginPassword(e.target.value)}
                       placeholder="Contraseña"
                       required
-                      className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-9 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
+                      className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-9 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
                     />
                     <button
                       type="button"
+                      aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                     >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {showPassword ? <EyeOff aria-hidden="true" className="w-4 h-4" /> : <Eye aria-hidden="true" className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
@@ -353,7 +343,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     <input
                       type="checkbox"
                       defaultChecked
-                      className="rounded border-slate-300 text-[#11770e] focus:ring-[#11770e]"
+                      className="rounded border-slate-300 text-brand-700 focus:ring-brand-600"
                     />
                     <span>Recordar sesión</span>
                   </label>
@@ -366,7 +356,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                       setForgotSuccess(null);
                       setShowForgotModal(true);
                     }}
-                    className="font-medium text-[#11770e] hover:text-[#0d5c0b] hover:underline cursor-pointer transition-colors"
+                    className="font-medium text-brand-700 hover:text-brand-800 hover:underline cursor-pointer transition-colors"
                   >
                     ¿Olvidaste tu contraseña?
                   </button>
@@ -376,49 +366,38 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   id="btn-login-submit"
                   type="submit"
                   disabled={loginLoading}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold text-white bg-[#11770e] hover:bg-[#0d5c0b] shadow-md shadow-[#11770e]/20 transition-all disabled:opacity-50 cursor-pointer"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold text-white bg-gradient-to-b from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800 shadow-md shadow-brand-900/20 transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   {loginLoading ? (
                     <span className="flex items-center gap-2">
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Ingresando...
+                      Ingresando…
                     </span>
                   ) : (
                     <>
                       <span>Ingresar al Sistema</span>
-                      <ArrowRight className="w-4 h-4" />
+                      <ArrowRight aria-hidden="true" className="w-4 h-4" />
                     </>
                   )}
                 </button>
               </form>
 
-              {/* Discreet footer with links */}
-              <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-                <span>
-                  ¿No tienes cuenta?{' '}
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('register')}
-                    className="font-semibold text-[#11770e] hover:text-[#0d5c0b] hover:underline cursor-pointer"
-                  >
-                    Regístrate
-                  </button>
-                </span>
-              </div>
             </div>
           )}
 
           {/* TAB 2: REGISTER */}
           {activeTab === 'register' && (
-            <div className="p-6 sm:p-7 space-y-4 animate-in fade-in duration-150">
+            <div className="mx-auto w-full max-w-xl space-y-5 animate-in fade-in duration-150">
               <div>
-                <h2 className="text-base font-bold text-slate-900">
-                  Crear Cuenta
+                <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                  Crear cuenta
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-sm text-slate-500 mt-1">
                   Ingresa tus datos esenciales para registrarte como estudiante
                 </p>
               </div>
+
+              <form onSubmit={handleRegisterSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
 
               {/* Career selector */}
               <div>
@@ -430,7 +409,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                    <Briefcase className="w-4 h-4" />
+                    <Briefcase aria-hidden="true" className="w-4 h-4" />
                   </div>
                   <select
                     id="reg-career"
@@ -440,7 +419,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                       setSemester(1);
                     }}
                     required
-                    className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
+                    className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
                   >
                     <option value="" disabled>
                       Selecciona tu carrera
@@ -464,14 +443,14 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                      <Layers className="w-4 h-4" />
+                      <Layers aria-hidden="true" className="w-4 h-4" />
                     </div>
                     <select
                       id="reg-semester"
                       value={semester}
                       onChange={(e) => setSemester(e.target.value)}
                       required
-                      className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
+                      className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
                     >
                       <option value="" disabled>
                         Selecciona tu semestre
@@ -492,9 +471,9 @@ export const AuthView: React.FC<AuthViewProps> = ({
               {regSuccessMsg && (
                 <div
                   id="alert-register-success"
-                  className="p-3 bg-[#eaf8ea] border border-[#bce6bc] rounded-xl flex items-center gap-2 text-xs text-[#11770e] font-semibold animate-in fade-in"
+                  className="sm:col-span-2 p-3 bg-brand-50 border border-brand-200 rounded-xl flex items-center gap-2 text-xs text-brand-700 font-semibold animate-in fade-in"
                 >
-                  <CheckCircle2 className="w-4 h-4 text-[#11770e] shrink-0" />
+                  <CheckCircle2 aria-hidden="true" className="w-4 h-4 text-brand-700 shrink-0" />
                   <span>{regSuccessMsg}</span>
                 </div>
               )}
@@ -502,15 +481,14 @@ export const AuthView: React.FC<AuthViewProps> = ({
               {regError && (
                 <div
                   id="alert-register-error"
-                  className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-xs text-rose-700 animate-in fade-in"
+                  className="sm:col-span-2 p-3 bg-danger-soft border border-danger-border rounded-xl flex items-start gap-2 text-xs text-danger animate-in fade-in"
                 >
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <AlertCircle aria-hidden="true" className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>{regError}</span>
                 </div>
               )}
 
               {/* Simple unified form */}
-              <form onSubmit={handleRegisterSubmit} className="space-y-3">
                 <div>
                   <label
                     htmlFor="reg-fullname"
@@ -520,7 +498,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                      <UserIcon className="w-4 h-4" />
+                      <UserIcon aria-hidden="true" className="w-4 h-4" />
                     </div>
                     <input
                       id="reg-fullname"
@@ -530,12 +508,11 @@ export const AuthView: React.FC<AuthViewProps> = ({
                       placeholder="Nombre completo"
                       required
                       minLength={5}
-                      className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
+                      className="w-full min-w-0 text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label
                       htmlFor="reg-account"
@@ -545,7 +522,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                        <CreditCard className="w-4 h-4" />
+                        <CreditCard aria-hidden="true" className="w-4 h-4" />
                       </div>
                       <input
                         id="reg-account"
@@ -554,37 +531,12 @@ export const AuthView: React.FC<AuthViewProps> = ({
                         onChange={(e) => setAccount(e.target.value)}
                         placeholder="Carnet institucional"
                         required
-                        className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e] uppercase font-mono"
+                        className="w-full min-w-0 text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-600 uppercase font-mono"
                       />
                     </div>
                   </div>
 
-                  <div>
-                    <label
-                      htmlFor="reg-username"
-                      className="block text-xs font-semibold text-slate-700 mb-1"
-                    >
-                      Nombre de Usuario
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                        <UserCheck className="w-4 h-4" />
-                      </div>
-                      <input
-                        id="reg-username"
-                        type="text"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        placeholder="Nombre de usuario"
-                        required
-                        minLength={3}
-                        className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e] lowercase font-mono"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
+                <div className="sm:col-span-2">
                   <label
                     htmlFor="reg-email"
                     className="block text-xs font-semibold text-slate-700 mb-1"
@@ -593,21 +545,23 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                      <Mail className="w-4 h-4" />
+                      <Mail aria-hidden="true" className="w-4 h-4" />
                     </div>
                     <input
                       id="reg-email"
                       type="email"
+                      name="email"
+                      autoComplete="email"
+                      spellCheck={false}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="Correo institucional"
                       required
-                      className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e]"
+                      className="w-full min-w-0 text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-600"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label
                       htmlFor="reg-password"
@@ -617,87 +571,87 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                        <Lock className="w-4 h-4" />
+                        <Lock aria-hidden="true" className="w-4 h-4" />
                       </div>
                       <input
                         id="reg-password"
                         type={showRegPassword ? 'text' : 'password'}
+                        name="new-password"
+                        autoComplete="new-password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-placeholder="Contraseña"
+                        placeholder="Contraseña"
                         required
                         minLength={6}
-                        className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-9 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e]"
+                        className="w-full min-w-0 text-sm rounded-lg border border-slate-300 pl-9 pr-9 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-600"
                       />
                       <button
                         type="button"
+                        aria-label={showRegPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                         onClick={() => setShowRegPassword(!showRegPassword)}
                         className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                       >
-                        {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        {showRegPassword ? <EyeOff aria-hidden="true" className="w-4 h-4" /> : <Eye aria-hidden="true" className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
-
                   <div>
                     <label
-                      htmlFor="reg-phone"
+                      htmlFor="reg-confirm-password"
                       className="block text-xs font-semibold text-slate-700 mb-1"
                     >
-                      Teléfono (Opcional)
+                      Confirmar contraseña
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                        <Phone className="w-4 h-4" />
+                        <Lock aria-hidden="true" className="w-4 h-4" />
                       </div>
                       <input
-                        id="reg-phone"
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="Teléfono"
-                        className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#11770e]"
+                        id="reg-confirm-password"
+                        type={showConfirmRegPassword ? 'text' : 'password'}
+                        name="confirm-password"
+                        autoComplete="new-password"
+                        value={confirmRegPassword}
+                        onChange={(e) => setConfirmRegPassword(e.target.value)}
+                        placeholder="Confirmar contraseña"
+                        required
+                        minLength={6}
+                        aria-invalid={confirmRegPassword.length > 0 && password !== confirmRegPassword}
+                        className="w-full min-w-0 text-sm rounded-lg border border-slate-300 pl-9 pr-9 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-600"
                       />
+                      <button
+                        type="button"
+                        aria-label={showConfirmRegPassword ? 'Ocultar confirmación' : 'Mostrar confirmación'}
+                        onClick={() => setShowConfirmRegPassword(!showConfirmRegPassword)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        {showConfirmRegPassword ? <EyeOff aria-hidden="true" className="w-4 h-4" /> : <Eye aria-hidden="true" className="w-4 h-4" />}
+                      </button>
                     </div>
                   </div>
-                </div>
-
                 <button
                   id="btn-submit-register"
                   type="submit"
                   disabled={regLoading}
-                  className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold text-white bg-[#11770e] hover:bg-[#0d5c0b] shadow-md shadow-[#11770e]/20 transition-all disabled:opacity-50 cursor-pointer"
+                  className="sm:col-span-2 w-full mt-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-semibold text-white bg-gradient-to-b from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800 shadow-md shadow-brand-900/20 transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   {regLoading ? (
                     <span className="flex items-center gap-2">
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Creando cuenta...
+                      Creando cuenta…
                     </span>
                   ) : (
                     <>
                       <span>Registrarme como Estudiante</span>
-                      <ArrowRight className="w-4 h-4" />
+                      <ArrowRight aria-hidden="true" className="w-4 h-4" />
                     </>
                   )}
                 </button>
               </form>
 
-              <div className="text-center text-xs text-slate-500 pt-2 border-t border-slate-100">
-                ¿Ya tienes una cuenta registrada?{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('login');
-                    setRegError(null);
-                  }}
-                  className="font-semibold text-[#11770e] hover:text-[#0d5c0b] hover:underline cursor-pointer"
-                >
-                  Inicia sesión aquí
-                </button>
-              </div>
             </div>
           )}
-        </div>
+        </section>
       </div>
 
       {/* MODAL: RECUPERACIÓN DE CONTRASEÑA */}
@@ -706,8 +660,8 @@ placeholder="Contraseña"
           <div className="bg-white border border-stone-200 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-[#eaf8ea] text-[#11770e] flex items-center justify-center">
-                  <KeyRound className="w-4 h-4" />
+                <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center">
+                  <KeyRound aria-hidden="true" className="w-4 h-4" />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">
@@ -721,22 +675,23 @@ placeholder="Contraseña"
               <button
                 type="button"
                 onClick={() => setShowForgotModal(false)}
+                aria-label="Cerrar recuperación de contraseña"
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X aria-hidden="true" className="w-4 h-4" />
               </button>
             </div>
 
             {forgotError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-xs text-rose-700 animate-in fade-in">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div role="alert" className="p-3 bg-danger-soft border border-danger-border rounded-xl flex items-start gap-2 text-xs text-danger animate-in fade-in">
+                <AlertCircle aria-hidden="true" className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>{forgotError}</span>
               </div>
             )}
 
             {forgotSuccess && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-2 text-xs text-emerald-700 animate-in fade-in">
-                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+              <div className="p-3 bg-brand-50 border border-brand-200 rounded-xl flex items-start gap-2 text-xs text-brand-700 animate-in fade-in">
+                <CheckCircle2 aria-hidden="true" className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>{forgotSuccess}</span>
               </div>
             )}
@@ -745,7 +700,7 @@ placeholder="Contraseña"
             {forgotStep === 'request' && (
               <form onSubmit={handleRequestReset} className="space-y-4">
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Ingresa tu correo institucional o nombre de usuario. Te enviaremos un código de seguridad para restablecer el acceso a tu cuenta.
+                  Ingresa tu correo institucional o carnet. Te enviaremos un código de seguridad para restablecer el acceso a tu cuenta.
                 </p>
 
                 <div>
@@ -754,7 +709,7 @@ placeholder="Contraseña"
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                      <Mail className="w-4 h-4" />
+                      <Mail aria-hidden="true" className="w-4 h-4" />
                     </div>
                     <input
                       type="text"
@@ -762,7 +717,7 @@ placeholder="Contraseña"
                       onChange={(e) => setForgotIdentity(e.target.value)}
                       placeholder="Correo o usuario"
                       required
-                      className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
+                      className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
                     />
                   </div>
                 </div>
@@ -778,9 +733,9 @@ placeholder="Contraseña"
                   <button
                     type="submit"
                     disabled={forgotLoading}
-                    className="flex-1 py-2 px-3 bg-[#11770e] hover:bg-[#0d5c0b] text-white text-xs font-semibold rounded-xl shadow-xs disabled:opacity-50 cursor-pointer"
+                    className="flex-1 py-2 px-3 bg-gradient-to-b from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800 text-white text-xs font-semibold rounded-xl shadow-xs disabled:opacity-50 cursor-pointer"
                   >
-                    {forgotLoading ? 'Enviando...' : 'Enviar Código'}
+                    {forgotLoading ? 'Enviando…' : 'Enviar Código'}
                   </button>
                 </div>
               </form>
@@ -795,12 +750,15 @@ placeholder="Contraseña"
                   </label>
                   <input
                     type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    spellCheck={false}
                     value={resetToken}
                     onChange={(e) => setResetToken(e.target.value)}
                     placeholder="Código de 6 dígitos"
                     required
                     maxLength={6}
-                    className="w-full text-center tracking-widest font-mono text-base font-bold rounded-lg border border-slate-300 py-2 text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
+                    className="w-full text-center tracking-widest font-mono text-base font-bold rounded-lg border border-slate-300 py-2 text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
                   />
                 </div>
 
@@ -814,7 +772,7 @@ placeholder="Contraseña"
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Nueva contraseña"
                     required
-                    className="w-full text-sm rounded-lg border border-slate-300 px-3 py-2 text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
+                    className="w-full text-sm rounded-lg border border-slate-300 px-3 py-2 text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
                   />
                 </div>
 
@@ -828,7 +786,7 @@ placeholder="Contraseña"
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Confirmar contraseña"
                     required
-                    className="w-full text-sm rounded-lg border border-slate-300 px-3 py-2 text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#11770e] focus:border-[#11770e]"
+                    className="w-full text-sm rounded-lg border border-slate-300 px-3 py-2 text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
                   />
                 </div>
 
@@ -843,9 +801,9 @@ placeholder="Contraseña"
                   <button
                     type="submit"
                     disabled={forgotLoading}
-                    className="flex-1 py-2 px-3 bg-[#11770e] hover:bg-[#0d5c0b] text-white text-xs font-semibold rounded-xl shadow-xs disabled:opacity-50 cursor-pointer"
+                    className="flex-1 py-2 px-3 bg-gradient-to-b from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800 text-white text-xs font-semibold rounded-xl shadow-xs disabled:opacity-50 cursor-pointer"
                   >
-                    {forgotLoading ? 'Actualizando...' : 'Cambiar Contraseña'}
+                    {forgotLoading ? 'Actualizando…' : 'Cambiar Contraseña'}
                   </button>
                 </div>
               </form>

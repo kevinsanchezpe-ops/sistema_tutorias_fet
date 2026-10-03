@@ -2,7 +2,6 @@ import React, { useState, Fragment } from 'react';
 import {
   BinnacleEntry,
   Career,
-  InstitutionInfo,
   ScheduleSlot,
   SectionClassroom,
   SubjectCourse,
@@ -28,8 +27,17 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend
+  Legend,
+  CartesianGrid
 } from 'recharts';
+import {
+  YafaPageHeader,
+  YafaCard,
+  YafaStatus,
+  YafaEmptyState,
+  YafaChartSkeleton,
+  YAFA_ACCENTS
+} from './admin/yafaDashboard';
 import {
   LayoutDashboard,
   CheckCircle,
@@ -37,7 +45,6 @@ import {
   Users,
   Shield,
   FileText,
-  Building,
   Check,
   AlertCircle,
   Search,
@@ -70,7 +77,8 @@ import {
   Plus,
   BarChart3,
   ListOrdered,
-  CalendarDays
+  CalendarDays,
+  ExternalLink
 } from 'lucide-react';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
 import { TutoringCalendarView } from './TutoringCalendarView';
@@ -87,7 +95,6 @@ interface AdminDashboardProps {
   schedules?: ScheduleSlot[];
   availabilities?: TeacherAvailability[];
   binnacle: BinnacleEntry[];
-  institution: InstitutionInfo;
   analytics: {
     totalTutorings: number;
     pendingCount: number;
@@ -124,14 +131,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   schedules = [],
   availabilities = [],
   binnacle,
-  institution,
   analytics,
   onRefresh,
   onOpenRegister,
   onOpenTests
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'careers' | 'subjects' | 'teachers' | 'tutorings' | 'users' | 'binnacle' | 'institution'
+    'overview' | 'careers' | 'subjects' | 'teachers' | 'tutorings' | 'users' | 'binnacle'
   >('overview');
 
   // Filter for tutorings list
@@ -219,15 +225,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [deleteUserLoading, setDeleteUserLoading] = useState<boolean>(false);
   const [deleteUserError, setDeleteUserError] = useState<string | null>(null);
   const [deleteUserSuccess, setDeleteUserSuccess] = useState<string | null>(null);
-
-  // Institution Edit Form
-  const [instName, setInstName] = useState(institution.name);
-  const [instMission, setInstMission] = useState(institution.mission);
-  const [instVision, setInstVision] = useState(institution.vision);
-  const [instPhone, setInstPhone] = useState(institution.phone);
-  const [instEmail, setInstEmail] = useState(institution.email);
-  const [instAddress, setInstAddress] = useState(institution.address);
-  const [instSavedMsg, setInstSavedMsg] = useState(false);
 
   const formatTutoringDateTime = (dateStr: string, timeLabel?: string, reservTime?: string) => {
     let dayName = '';
@@ -351,205 +348,69 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  // Save Institution
-  const handleSaveInstitution = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setInstSavedMsg(false);
-    const res = await ApiClient.updateInstitution(
-      {
-        name: instName,
-        mission: instMission,
-        vision: instVision,
-        phone: instPhone,
-        email: instEmail,
-        address: instAddress
-      },
-      currentUser
-    );
-    if (res.success) {
-      setInstSavedMsg(true);
-      setTimeout(() => setInstSavedMsg(false), 3000);
-      onRefresh();
-    }
-  };
+  const adminNavItems: { id: typeof activeTab; label: string; icon: React.ReactNode; count?: number }[] = [
+    { id: 'overview', label: 'Métricas', icon: <LayoutDashboard aria-hidden="true" className="h-4 w-4" /> },
+    { id: 'subjects', label: 'Asignaturas', icon: <BookOpen aria-hidden="true" className="h-4 w-4" />, count: subjects.length },
+    { id: 'careers', label: 'Carreras', icon: <GraduationCap aria-hidden="true" className="h-4 w-4" />, count: careers.length },
+    { id: 'teachers', label: 'Docentes', icon: <Briefcase aria-hidden="true" className="h-4 w-4" />, count: users.filter((u) => u.role === UserRole.TEACHER).length },
+    { id: 'tutorings', label: 'Solicitudes', icon: <CheckCircle aria-hidden="true" className="h-4 w-4" />, count: tutorings.filter((t) => t.status === TutoringStatus.PENDING).length },
+    { id: 'users', label: 'Estudiantes y cuentas', icon: <Users aria-hidden="true" className="h-4 w-4" />, count: users.filter((u) => u.role === UserRole.STUDENT).length },
+    { id: 'binnacle', label: 'Bitácora', icon: <FileText aria-hidden="true" className="h-4 w-4" /> },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
-        {/* Left Sidebar Navigation */}
-        <aside className="w-full lg:w-64 shrink-0 bg-white rounded-2xl border border-stone-200 p-4 space-y-5 shadow-xs">
-        <div>
-          <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">
-            Menú Principal
+    <div className="grid grid-cols-1 gap-4 pb-8 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start">
+      <header className="overflow-hidden rounded-xl border border-[#e2e6e2] bg-white lg:sticky lg:top-4">
+        <div className="p-3">
+          <div className="flex min-w-0 items-center gap-3 rounded-xl bg-stone-50/70 p-3">
+            <UserAvatar user={currentUser} size="sm" className="shrink-0 border border-stone-200" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-brand-700">Administrador</p>
+              <h1 className="mt-0.5 truncate text-xs font-semibold tracking-tight text-slate-900" title={currentUser.fullName}>{currentUser.fullName}</h1>
+            </div>
           </div>
-          <nav className="space-y-1">
+          <div className="mt-2 flex items-center justify-between gap-3 px-1">
+            <span className="text-[10px] text-stone-500">Panel FET</span>
             <button
-              id="tab-admin-overview"
-              onClick={() => setActiveTab('overview')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
-                activeTab === 'overview'
-                  ? 'bg-[#11770e] text-white shadow-xs'
-                  : 'text-stone-700 hover:bg-[#eaf8ea] hover:text-[#11770e]'
-              }`}
+              type="button"
+              onClick={onRefresh}
+              aria-label="Actualizar datos del panel"
+              title="Actualizar datos"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 transition-colors hover:bg-stone-50 hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
             >
-              <div className="flex items-center gap-2.5">
-                <LayoutDashboard className="w-4 h-4" />
-                <span>Métricas y Panel</span>
-              </div>
+              <RefreshCw aria-hidden="true" className="h-4 w-4" />
             </button>
-
-            <button
-              id="tab-admin-subjects"
-              onClick={() => setActiveTab('subjects')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
-                activeTab === 'subjects'
-                  ? 'bg-[#11770e] text-white shadow-xs'
-                  : 'text-stone-700 hover:bg-[#eaf8ea] hover:text-[#11770e]'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <BookOpen className="w-4 h-4" />
-                <span>Asignaturas</span>
-              </div>
-              <span
-                className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                  activeTab === 'subjects' ? 'bg-white/20 text-white' : 'bg-stone-100 text-stone-600'
-                }`}
-              >
-                {subjects.length}
-              </span>
-            </button>
-
-            <button
-              id="tab-admin-careers"
-              onClick={() => setActiveTab('careers')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
-                activeTab === 'careers'
-                  ? 'bg-[#11770e] text-white shadow-xs'
-                  : 'text-stone-700 hover:bg-[#eaf8ea] hover:text-[#11770e]'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <GraduationCap className="w-4 h-4" />
-                <span>Carreras</span>
-              </div>
-              <span
-                className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                  activeTab === 'careers' ? 'bg-white/20 text-white' : 'bg-stone-100 text-stone-600'
-                }`}
-              >
-                {careers.length}
-              </span>
-            </button>
-
-            <button
-              id="tab-admin-teachers"
-              onClick={() => setActiveTab('teachers')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
-                activeTab === 'teachers'
-                  ? 'bg-[#11770e] text-white shadow-xs'
-                  : 'text-stone-700 hover:bg-[#eaf8ea] hover:text-[#11770e]'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Briefcase className="w-4 h-4" />
-                <span>Docentes</span>
-              </div>
-              <span
-                className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                  activeTab === 'teachers' ? 'bg-white/20 text-white' : 'bg-stone-100 text-stone-600'
-                }`}
-              >
-                {users.filter((u) => u.role === UserRole.TEACHER).length}
-              </span>
-            </button>
-
-            <button
-              id="tab-admin-tutorings"
-              onClick={() => setActiveTab('tutorings')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
-                activeTab === 'tutorings'
-                  ? 'bg-[#11770e] text-white shadow-xs'
-                  : 'text-stone-700 hover:bg-[#eaf8ea] hover:text-[#11770e]'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <CheckCircle className="w-4 h-4" />
-                <span>Solicitudes</span>
-              </div>
-              {tutorings.filter((t) => t.status === TutoringStatus.PENDING).length > 0 && (
-                <span
-                  className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                    activeTab === 'tutorings'
-                      ? 'bg-white text-[#11770e]'
-                      : 'bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc]'
-                  }`}
-                >
-                  {tutorings.filter((t) => t.status === TutoringStatus.PENDING).length} pend.
-                </span>
-              )}
-            </button>
-
-            <button
-              id="tab-admin-users"
-              onClick={() => setActiveTab('users')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
-                activeTab === 'users'
-                  ? 'bg-[#11770e] text-white shadow-xs'
-                  : 'text-stone-700 hover:bg-[#eaf8ea] hover:text-[#11770e]'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Users className="w-4 h-4" />
-                <span>Estudiantes y Cuentas</span>
-              </div>
-              <span
-                className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                  activeTab === 'users' ? 'bg-white/20 text-white' : 'bg-stone-100 text-stone-600'
-                }`}
-              >
-                {users.length}
-              </span>
-            </button>
-          </nav>
-        </div>
-
-        <div className="pt-3 border-t border-stone-200">
-          <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">
-            Sistema y Auditoría
           </div>
-          <nav className="space-y-1">
-            <button
-              id="tab-admin-binnacle"
-              onClick={() => setActiveTab('binnacle')}
-              className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
-                activeTab === 'binnacle'
-                  ? 'bg-[#11770e] text-white shadow-xs'
-                  : 'text-stone-700 hover:bg-[#eaf8ea] hover:text-[#11770e]'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              <span>Bitácora de Auditoría</span>
-            </button>
-
-            <button
-              id="tab-admin-institution"
-              onClick={() => setActiveTab('institution')}
-              className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
-                activeTab === 'institution'
-                  ? 'bg-[#11770e] text-white shadow-xs'
-                  : 'text-stone-700 hover:bg-[#eaf8ea] hover:text-[#11770e]'
-              }`}
-            >
-              <Building className="w-4 h-4" />
-              <span>Configuración Institucional</span>
-            </button>
-          </nav>
         </div>
-      </aside>
+        <nav aria-label="Paneles de administración" className="flex gap-1 overflow-x-auto border-t border-stone-100 px-2 py-2 lg:flex-col lg:overflow-visible lg:px-2 lg:pb-3">
+          {adminNavItems.map((item) => {
+            const selected = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                id={`tab-admin-${item.id}`}
+                type="button"
+                onClick={() => setActiveTab(item.id)}
+                aria-current={selected ? 'page' : undefined}
+                className={`inline-flex min-h-11 shrink-0 items-center gap-2.5 rounded-lg px-3 text-left text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 lg:w-full ${
+                  selected ? 'bg-brand-50 text-brand-800 font-semibold' : 'text-stone-600 hover:bg-stone-50 hover:text-slate-900'
+                }`}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+                {item.count !== undefined && (
+                  <span className={`ml-auto min-w-5 rounded-md px-1.5 py-0.5 text-center text-[10px] tabular-nums ${selected ? 'bg-white text-brand-700' : 'bg-stone-100 text-stone-500'}`}>
+                    {item.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+      </header>
 
       {/* Main Content Area */}
-      <div className="flex-1 w-full min-w-0 space-y-6">
+      <div className="min-w-0 space-y-4 lg:pt-1">
         {/* TAB: CARRERAS */}
         {activeTab === 'careers' && (
           <AdminCareersTab
@@ -622,16 +483,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               name: 'Virtual',
               count: virtualCount,
               percentage: totalTuts > 0 ? Math.round((virtualCount / totalTuts) * 100) : 0,
-              color: '#475569'
+              color: '#2563eb'
             }
           ];
 
           const statusData = !filterActive && analytics?.statusDistribution ? analytics.statusDistribution : [
-            { name: 'Pendientes', count: pendingTuts, color: '#F59E0B' },
-            { name: 'Aprobadas', count: approvedTuts, color: '#7ce200' },
-            { name: 'En Proceso', count: inProgTuts, color: '#3B82F6' },
+            { name: 'Pendientes', count: pendingTuts, color: '#D97706' },
+            { name: 'Aprobadas', count: approvedTuts, color: '#2E9E34' },
+            { name: 'En Proceso', count: inProgTuts, color: '#0284C7' },
             { name: 'Finalizadas', count: completedTuts, color: '#11770e' },
-            { name: 'Canceladas', count: cancelledTuts, color: '#EF4444' }
+            { name: 'Canceladas', count: cancelledTuts, color: '#BE123C' }
           ];
 
           const activeSubjects = dashSubjects.filter((s) => s.isActive);
@@ -645,7 +506,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               const careerObj = careers.find((c) => c.id === s.careerId);
               return {
                 id: s.id,
-                subject: s.name.length > 20 ? s.name.substring(0, 18) + '...' : s.name,
+                subject: s.name.length > 20 ? s.name.substring(0, 18) + '…' : s.name,
                 fullName: s.name,
                 semester: s.semester,
                 careerName: careerObj?.name || '',
@@ -661,11 +522,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           const avgDemandPerSubject = activeSubjects.length > 0 ? (totalDemandRequests / activeSubjects.length).toFixed(1) : '0';
 
           const ratingData = !filterActive && analytics?.ratingDistribution ? analytics.ratingDistribution : [
-            { stars: '5 Estrellas', count: dashTutoringsFiltered.filter((t) => t.score >= 5).length, color: '#10B981' },
-            { stars: '4 Estrellas', count: dashTutoringsFiltered.filter((t) => t.score === 4).length, color: '#3B82F6' },
-            { stars: '3 Estrellas', count: dashTutoringsFiltered.filter((t) => t.score === 3).length, color: '#F59E0B' },
-            { stars: '2 Estrellas', count: dashTutoringsFiltered.filter((t) => t.score === 2).length, color: '#F97316' },
-            { stars: '1 Estrella', count: dashTutoringsFiltered.filter((t) => t.score === 1).length, color: '#EF4444' }
+            { stars: '5 Estrellas', count: dashTutoringsFiltered.filter((t) => t.score >= 5).length, color: '#11770e' },
+            { stars: '4 Estrellas', count: dashTutoringsFiltered.filter((t) => t.score === 4).length, color: '#0284C7' },
+            { stars: '3 Estrellas', count: dashTutoringsFiltered.filter((t) => t.score === 3).length, color: '#D97706' },
+            { stars: '2 Estrellas', count: dashTutoringsFiltered.filter((t) => t.score === 2).length, color: '#EA580C' },
+            { stars: '1 Estrella', count: dashTutoringsFiltered.filter((t) => t.score === 1).length, color: '#BE123C' }
           ];
 
           const teacherWorkload = !filterActive && analytics?.teacherWorkload
@@ -717,300 +578,127 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             .sort((a, b) => (a.reservDate || '').localeCompare(b.reservDate || ''));
 
           return (
-            <div className="space-y-6 animate-in fade-in duration-200">
-              {/* Top Greeting & Action Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
+            <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-200 min-w-0">
+              <header className="flex flex-col gap-4 rounded-xl border border-stone-200 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                      Hola, {currentUser.fullName}
-                    </h2>
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#11770e] animate-pulse" title="Sistema Activo" />
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Panel institucional de gestión y métricas académicas FET en tiempo real.
-                  </p>
+                  <p className="text-xs font-medium text-brand-700">Panel de administración</p>
+                  <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Métricas académicas</h2>
+                  <p className="mt-1 text-sm text-stone-500">Resumen de solicitudes, actividad y resultados institucionales.</p>
                 </div>
-
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex h-9 items-center gap-2 rounded-lg border border-stone-200 px-3 text-xs font-medium text-stone-600">
+                    <span aria-hidden="true" className="h-2 w-2 rounded-full bg-brand-600" /> Sistema activo
+                  </span>
                   <button
                     onClick={onRefresh}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-stone-200 hover:border-stone-300 hover:bg-[#fffaed] text-stone-700 rounded-xl text-xs font-semibold shadow-2xs transition-all cursor-pointer"
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                     title="Actualizar datos desde la base de datos"
                   >
-                    <RefreshCw className="w-3.5 h-3.5 text-[#11770e]" />
-                    <span>Actualizar</span>
+                    <RefreshCw className="h-4 w-4" aria-hidden="true" /> Actualizar
                   </button>
-
                   <button
                     onClick={() => setActiveTab('tutorings')}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#11770e] hover:bg-[#0d5c0b] text-white rounded-xl text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                    className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-700 px-3 text-xs font-semibold text-white transition-colors hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                   >
-                    <span>Ver Solicitudes</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    Ver solicitudes <ArrowRight className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </div>
+              </header>
+
+              {/* Filtros globales en banda compacta rectangular (ruta-específicos van al contenido) */}
+              <div className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
+                <div className="flex shrink-0 items-center gap-2 text-xs font-semibold text-slate-700">
+                  <Filter className="h-4 w-4 text-brand-700" aria-hidden="true" />
+                  <span>Filtrar métricas</span>
+                </div>
+                <CareerSemesterFilter
+                  careers={careers}
+                  selectedCareer={selectedDashCareer}
+                  careerFilter={dashCareerFilter}
+                  semesterFilter={dashSemesterFilter}
+                  onCareerChange={setDashCareerFilter}
+                  onSemesterChange={setDashSemesterFilter}
+                />
+                {(dashCareerFilter !== 'all' || dashSemesterFilter !== 'all') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDashCareerFilter('all');
+                      setDashSemesterFilter('all');
+                    }}
+                    className="inline-flex h-9 items-center rounded-lg border border-stone-200 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 sm:ml-auto"
+                  >
+                    Limpiar filtros
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" role="region" aria-label="Indicadores clave">
+                {[
+                  { title: 'Solicitudes', value: totalTuts, detail: `${pendingTuts + approvedTuts + inProgTuts} activas`, color: 'text-slate-900' },
+                  { title: 'Docentes tutores', value: dashUsers.filter((u) => u.role === UserRole.TEACHER).length, detail: 'Docentes habilitados', color: 'text-slate-900' },
+                  { title: 'Asistencia promedio', value: `${attRate}%`, detail: 'En tutorías finalizadas', color: 'text-brand-700' },
+                  { title: 'Tasa de éxito', value: `${compRate}%`, detail: `${completedTuts} tutorías concluidas`, color: 'text-brand-700' }
+                ].map((metric) => (
+                  <article key={metric.title} className="min-w-0 rounded-xl border border-stone-200 bg-white px-4 py-3.5">
+                    <h3 className="text-xs font-medium text-stone-500">{metric.title}</h3>
+                    <p className={`mt-2 text-2xl font-semibold tracking-tight tabular-nums ${metric.color}`}>{metric.value}</p>
+                    <p className="mt-1 truncate text-xs text-stone-500" title={metric.detail}>{metric.detail}</p>
+                    {metric.title === 'Asistencia promedio' && (
+                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-stone-100" aria-label={`Asistencia ${attRate}%`} role="img">
+                        <span className="block h-full rounded-full bg-brand-600" style={{ width: `${attRate}%` }} />
+                      </div>
+                    )}
+                  </article>
+                ))}
               </div>
 
               {/* 70/30 Split Layout */}
-              <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+              <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-6 items-start">
                 {/* Left 70% Column */}
-                <div className="xl:col-span-8 space-y-6">
-                  {/* Hero Featured Card & 2x2 Metric Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                    {/* Featured Hero Card */}
-                    <div className="md:col-span-5 bg-gradient-to-br from-[#11770e] to-[#0d5c0b] text-white p-5 rounded-2xl flex flex-col justify-between shadow-xs relative overflow-hidden">
-                      <div className="space-y-2">
-                        <span className="inline-block px-2.5 py-1 bg-white/20 backdrop-blur-xs text-white text-[11px] font-bold rounded-lg uppercase tracking-wider">
-                          ¡Ciclo Académico Activo!
-                        </span>
-                        <h3 className="text-base font-bold text-white tracking-tight leading-snug">
-                          Gestión Integral de Tutorías FET
-                        </h3>
-                        <p className="text-xs text-white/90 leading-relaxed">
-                          Supervisa el progreso de las tutorías presenciales y virtuales en tiempo real.
-                        </p>
+                <div className="xl:col-span-8 space-y-4 sm:space-y-6 min-w-0">
+
+                  {/* Rendimiento y Demanda por Asignatura — análisis primario Yafa */}
+                  <YafaCard
+                    title="Rendimiento y demanda por asignatura"
+                    subtitle={`Monitoreo de materias con mayor interés · ${totalDemandRequests} ${totalDemandRequests === 1 ? 'solicitud' : 'solicitudes'}`}
+                    accent="cyan"
+                    summary={topSubject ? `Mayor demanda: ${topSubject.fullName} con ${topSubject.count} tutorías.` : 'Sin demanda registrada.'}
+                    action={
+                      <div className="flex items-center bg-[#f8fafd] p-0.5 rounded-md border border-[#dadce0]" role="tablist" aria-label="Vista de demanda">
+                        <button type="button" role="tab" aria-selected={demandViewMode === 'chart'} onClick={() => setDemandViewMode('chart')} className={`inline-flex items-center gap-1.5 px-3 h-8 text-xs rounded-[6px] font-semibold transition-colors cursor-pointer ${demandViewMode === 'chart' ? 'bg-[#202124] text-white' : 'text-[#5f6368] hover:text-[#202124]'}`}><BarChart3 className="w-3.5 h-3.5" aria-hidden="true" /><span>Gráfico</span></button>
+                        <button type="button" role="tab" aria-selected={demandViewMode === 'ranking'} onClick={() => setDemandViewMode('ranking')} className={`inline-flex items-center gap-1.5 px-3 h-8 text-xs rounded-[6px] font-semibold transition-colors cursor-pointer ${demandViewMode === 'ranking' ? 'bg-[#202124] text-white' : 'text-[#5f6368] hover:text-[#202124]'}`}><ListOrdered className="w-3.5 h-3.5" aria-hidden="true" /><span>Ranking</span></button>
                       </div>
+                    }
+                  >
+                    <dl className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-4">
+                      <div className="bg-[#f8fafd] border border-[#e8eaed] rounded-md p-3"><dt className="text-[10px] font-bold text-[#5f6368] uppercase tracking-wider">Mayor demanda</dt><dd className="text-xs font-bold text-[#202124] truncate mt-1">{topSubject ? topSubject.fullName : 'Sin solicitudes'}</dd>{topSubject && <dd className="text-[11px] font-semibold text-[#11770e]">{topSubject.count} {topSubject.count === 1 ? 'tutoría' : 'tutorías'}</dd>}</div>
+                      <div className="bg-[#f8fafd] border border-[#e8eaed] rounded-md p-3"><dt className="text-[10px] font-bold text-[#5f6368] uppercase tracking-wider">Materias con solicitudes</dt><dd className="text-xs font-bold text-[#202124] mt-1">{subjectsWithDemandCount} de {activeSubjects.length} activas</dd><dd className="text-[11px] text-[#5f6368]">{activeSubjects.length > 0 ? Math.round((subjectsWithDemandCount / activeSubjects.length) * 100) : 0}% con demanda</dd></div>
+                      <div className="bg-[#f8fafd] border border-[#e8eaed] rounded-md p-3"><dt className="text-[10px] font-bold text-[#5f6368] uppercase tracking-wider">Promedio por materia</dt><dd className="text-xs font-bold text-[#202124] mt-1">{avgDemandPerSubject} tutorías</dd><dd className="text-[11px] text-[#5f6368]">por asignatura registrada</dd></div>
+                    </dl>
 
-                      <div className="pt-4 mt-2 flex items-center justify-between border-t border-white/15 text-xs">
-                        <div>
-                          <span className="font-black text-lg">{pendingTuts}</span>
-                          <span className="text-white/80 ml-1.5 text-[11px]">pendientes</span>
-                        </div>
-                        <button
-                          onClick={() => setActiveTab('tutorings')}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-white text-[#11770e] rounded-xl text-xs font-bold hover:bg-[#fffaed] transition-colors cursor-pointer shadow-xs"
-                        >
-                          <span>Gestionar</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* 2x2 Metric Cards */}
-                    <div className="md:col-span-7 grid grid-cols-2 gap-3">
-                      {/* KPI 1: Total Solicitudes */}
-                      <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs flex flex-col justify-between">
-                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                          Total Solicitudes
-                        </span>
-                        <div className="text-2xl font-black text-slate-900 my-1">{totalTuts}</div>
-                        <div className="text-[11px] text-slate-500">
-                          <span className="text-[#11770e] font-bold">{pendingTuts + approvedTuts + inProgTuts}</span> activas
-                        </div>
-                      </div>
-
-                      {/* KPI 2: Docentes Tutores */}
-                      <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs flex flex-col justify-between">
-                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                          Docentes Tutores
-                        </span>
-                        <div className="text-2xl font-black text-slate-900 my-1">
-                          {dashUsers.filter((u) => u.role === UserRole.TEACHER).length}
-                        </div>
-                        <div className="text-[11px] text-slate-500">Docentes habilitados</div>
-                      </div>
-
-                      {/* KPI 3: Asistencia */}
-                      <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs flex flex-col justify-between">
-                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                          Asistencia Promedio
-                        </span>
-                        <div className="text-2xl font-black text-slate-900 my-1">{attRate}%</div>
-                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                          <div className="bg-[#11770e] h-1.5 rounded-full" style={{ width: `${attRate}%` }} />
-                        </div>
-                      </div>
-
-                      {/* KPI 4: Tasa de Éxito */}
-                      <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs flex flex-col justify-between">
-                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                          Tasa de Éxito
-                        </span>
-                        <div className="text-2xl font-black text-[#11770e] my-1">{compRate}%</div>
-                        <div className="text-[11px] text-slate-500">{completedTuts} concluidas</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Rendimiento y Demanda por Asignatura */}
-                  <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-4">
-                    {/* Header Row: Title & View Switcher */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-stone-100">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-slate-900 leading-tight">
-                            Rendimiento y Demanda por Asignatura
-                          </h4>
-                          <span className="text-[11px] font-semibold text-[#11770e] bg-[#eaf8ea] px-2 py-0.5 rounded-md border border-[#bce6bc]/60 shrink-0">
-                            {totalDemandRequests} {totalDemandRequests === 1 ? 'solicitud' : 'solicitudes'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Monitoreo de materias con mayor interés de tutoría académica
-                        </p>
-                      </div>
-
-                      {/* View Switcher: Gráfico vs Ranking */}
-                      <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0 self-start sm:self-auto">
-                        <button
-                          type="button"
-                          onClick={() => setDemandViewMode('chart')}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-lg font-bold transition-all cursor-pointer ${
-                            demandViewMode === 'chart'
-                              ? 'bg-white text-[#11770e] shadow-2xs'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                          title="Vista Gráfico de Barras"
-                        >
-                          <BarChart3 className="w-3.5 h-3.5" />
-                          <span>Gráfico</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDemandViewMode('ranking')}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-lg font-bold transition-all cursor-pointer ${
-                            demandViewMode === 'ranking'
-                              ? 'bg-white text-[#11770e] shadow-2xs'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                          title="Vista Ranking Detallado"
-                        >
-                          <ListOrdered className="w-3.5 h-3.5" />
-                          <span>Ranking</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Filter Strip Row */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-[#fafaf7] p-2.5 rounded-xl border border-stone-200/80">
-                      <div className="flex items-center gap-1.5 text-xs text-stone-600 font-semibold">
-                        <Filter className="w-3.5 h-3.5 text-[#11770e]" />
-                        <span>Filtrar por Programa y Nivel:</span>
-                      </div>
-
-                      <CareerSemesterFilter
-                        careers={careers}
-                        selectedCareer={selectedDashCareer}
-                        careerFilter={dashCareerFilter}
-                        semesterFilter={dashSemesterFilter}
-                        onCareerChange={setDashCareerFilter}
-                        onSemesterChange={setDashSemesterFilter}
-                      />
-                    </div>
-
-                    {/* Mini KPI Demand Summary Strip */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                      {/* Top Materia */}
-                      <div className="bg-[#fafaf7] border border-stone-200/80 rounded-xl p-3 flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-[#11770e]/10 text-[#11770e] flex items-center justify-center shrink-0">
-                          <Award className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
-                            Mayor Demanda
-                          </span>
-                          <span className="text-xs font-bold text-slate-800 truncate block">
-                            {topSubject ? topSubject.fullName : 'Sin solicitudes'}
-                          </span>
-                          {topSubject && (
-                            <span className="text-[11px] font-semibold text-[#11770e]">
-                              {topSubject.count} {topSubject.count === 1 ? 'tutoría' : 'tutorías'}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Materias Solicitadas */}
-                      <div className="bg-[#fafaf7] border border-stone-200/80 rounded-xl p-3 flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
-                          <BookOpen className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
-                            Materias con Solicitudes
-                          </span>
-                          <span className="text-xs font-bold text-slate-800">
-                            {subjectsWithDemandCount} de {activeSubjects.length} activas
-                          </span>
-                          <span className="text-[11px] text-slate-500 block">
-                            {activeSubjects.length > 0
-                              ? Math.round((subjectsWithDemandCount / activeSubjects.length) * 100)
-                              : 0}% con demanda
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Promedio Solicitudes */}
-                      <div className="bg-[#fafaf7] border border-stone-200/80 rounded-xl p-3 flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
-                          <TrendingUp className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
-                            Promedio por Materia
-                          </span>
-                          <span className="text-xs font-bold text-slate-800">
-                            {avgDemandPerSubject} tutorías
-                          </span>
-                          <span className="text-[11px] text-slate-500 block">
-                            por asignatura registrada
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Chart View */}
                     {demandViewMode === 'chart' && (
-                      <div className="pt-2">
+                      <div>
                         {totalDemandRequests === 0 ? (
-                          <div className="py-12 px-4 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                            <BookOpen className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                            <p className="text-xs font-semibold text-slate-600">
-                              No hay tutorías registradas para los filtros seleccionados
-                            </p>
-                            <p className="text-[11px] text-slate-400 mt-0.5">
-                              Cambia el filtro de carrera o semestre para explorar otros periodos.
-                            </p>
-                          </div>
+                          <YafaEmptyState icon={<BookOpen className="w-4 h-4" aria-hidden="true" />} title="No hay tutorías para los filtros seleccionados" hint="Cambia el filtro de carrera o semestre para explorar otros periodos." />
                         ) : (
-                          <div className="h-72 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart
-                                data={courseData.slice(0, 10)}
-                                margin={{ top: 15, right: 15, left: -20, bottom: 35 }}
-                              >
-                                <XAxis
-                                  dataKey="subject"
-                                  tick={{ fontSize: 11, fill: '#475569' }}
-                                  angle={-20}
-                                  textAnchor="end"
-                                />
-                                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748B' }} />
-                                <Tooltip
-                                  contentStyle={{
-                                    backgroundColor: '#1e293b',
-                                    border: 'none',
-                                    borderRadius: '10px',
-                                    color: '#FFFFFF',
-                                    fontSize: '12px',
-                                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
-                                  }}
-                                  formatter={(val: any) => [`${val} tutorías`, 'Demanda']}
-                                  labelFormatter={(label: any) => {
-                                    const match = courseData.find((c) => c.subject === label || c.fullName === label);
-                                    return match ? match.fullName : label;
-                                  }}
-                                />
-                                <Bar
-                                  dataKey="count"
-                                  fill="#11770e"
-                                  radius={[6, 6, 0, 0]}
-                                  name="Tutorías Solicitadas"
-                                />
-                              </BarChart>
-                            </ResponsiveContainer>
-                          </div>
+                          <>
+                            <div className="h-72 w-full">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={courseData.slice(0, 10)} margin={{ top: 15, right: 15, left: -10, bottom: 35 }}>
+                                  <CartesianGrid stroke="#e8eef6" vertical={false} />
+                                  <XAxis dataKey="subject" tick={{ fontSize: 12, fill: '#5f6368' }} angle={-20} textAnchor="end" interval={0} />
+                                  <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#5f6368' }} width={36} />
+                                  <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #dadce0', borderRadius: '8px', color: '#202124', fontSize: '12px' }} formatter={(val: any) => [`${val} tutorías`, 'Demanda']} labelFormatter={(label: any) => { const match = courseData.find((c) => c.subject === label || c.fullName === label); return match ? match.fullName : label; }} />
+                                  <Bar dataKey="count" radius={[6, 6, 0, 0]} name="Tutorías Solicitadas">
+                                    {courseData.slice(0, 10).map((c) => { const palette = ['#67e8f9', '#86efac', '#f9a8d4', '#c4b5fd', '#5dadec']; let h = 0; for (let i = 0; i < c.id.length; i++) h = (h * 31 + c.id.charCodeAt(i)) % 997; return <Cell key={c.id} fill={palette[h % palette.length]} stroke="#202124" strokeOpacity={0.08} />; })}
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                            <p className="text-xs text-[#5f6368] mt-2">{topSubject ? `Mayor demanda: ${topSubject.fullName} (${topSubject.count}).` : ''} Colores estables por asignatura.</p>
+                            <details className="mt-2 text-xs text-[#3c4043]"><summary className="cursor-pointer font-semibold text-[#11770e]">Ver valores de la gráfica</summary><ul className="mt-2 space-y-1 max-h-40 overflow-y-auto">{courseData.slice(0, 10).map((c) => (<li key={c.id} className="flex justify-between gap-2 tabular-nums"><span className="truncate">{c.fullName}</span><span className="font-bold">{c.count}</span></li>))}</ul></details>
+                          </>
                         )}
                       </div>
                     )}
@@ -1020,29 +708,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="pt-2">
                         {courseData.length === 0 ? (
                           <div className="py-12 px-4 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                            <BookOpen className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                            <BookOpen aria-hidden="true" className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                             <p className="text-xs font-semibold text-slate-600">
                               No hay asignaturas activas en este filtro
                             </p>
                           </div>
                         ) : (
-                          <div className="overflow-hidden rounded-xl border border-stone-200">
-                            <div className="max-h-72 overflow-y-auto divide-y divide-stone-100">
+                          <div className="overflow-hidden rounded-md border border-[#dadce0]">
+                            <div className="max-h-72 overflow-y-auto divide-y divide-[#e8eaed]">
                               {courseData.map((item, idx) => {
                                 const percentOfMax = Math.round((item.count / maxSubjectCount) * 100);
                                 return (
                                   <div
                                     key={item.id}
-                                    className="p-3 bg-white hover:bg-slate-50/70 transition-colors flex items-center justify-between gap-3 text-xs"
+                                    className="p-3 bg-white hover:bg-[#f8fafd] transition-colors flex items-center justify-between gap-3 text-xs"
                                   >
                                     <div className="flex items-center gap-3 min-w-0 flex-1">
                                       {/* Rank Badge */}
                                       <span
                                         className={`w-6 h-6 rounded-lg text-[11px] font-extrabold flex items-center justify-center shrink-0 ${
                                           idx === 0 && item.count > 0
-                                            ? 'bg-[#11770e] text-white'
+                                            ? 'bg-brand-600 text-white'
                                             : idx < 3 && item.count > 0
-                                            ? 'bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc]'
+                                            ? 'bg-brand-50 text-brand-700 border border-brand-200'
                                             : 'bg-slate-100 text-slate-500'
                                         }`}
                                       >
@@ -1069,7 +757,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         {/* Progress Bar */}
                                         <div className="w-full bg-slate-100 rounded-full h-1.5 mt-1.5 overflow-hidden max-w-md">
                                           <div
-                                            className="bg-[#11770e] h-1.5 rounded-full transition-all duration-300"
+                                            className="bg-brand-600 h-1.5 rounded-full transition-[width] duration-300"
                                             style={{ width: `${item.count > 0 ? Math.max(percentOfMax, 5) : 0}%` }}
                                           />
                                         </div>
@@ -1081,7 +769,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       <span
                                         className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${
                                           item.count > 0
-                                            ? 'bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc]/60'
+                                            ? 'bg-brand-50 text-brand-700 border border-brand-200/60'
                                             : 'bg-slate-100 text-slate-400'
                                         }`}
                                       >
@@ -1096,21 +784,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         )}
                       </div>
                     )}
-                  </div>
+                  </YafaCard>
 
-                  {/* Flujo / Pipeline de Estados */}
-                  <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-bold text-slate-900 text-sm">Flujo de Estados de las Tutorías</h3>
-                        <p className="text-xs text-slate-500">Distribución de las solicitudes a lo largo del ciclo</p>
-                      </div>
-                      <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
-                        {totalTuts} Totales
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-1 text-xs">
+                  {/* Flujo / Pipeline de Estados — Yafa */}
+                  <YafaCard title="Flujo de estados de las tutorías" subtitle="Distribución de las solicitudes a lo largo del ciclo" accent="blue" action={<span className="text-xs font-semibold text-[#3c4043] tabular-nums">{totalTuts} totales</span>}>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
                       {/* Pendientes */}
                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1">
                         <div className="flex items-center justify-between text-slate-700 font-semibold">
@@ -1127,7 +805,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1">
                         <div className="flex items-center justify-between text-slate-700 font-semibold">
                           <span>Programadas</span>
-                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                          <span className="w-2 h-2 rounded-full bg-brand-500" />
                         </div>
                         <div className="text-2xl font-bold text-slate-900">{approvedTuts}</div>
                         <div className="text-[11px] text-slate-500">
@@ -1148,13 +826,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
 
                       {/* Finalizadas */}
-                      <div className="bg-[#eaf8ea] border border-[#bce6bc] rounded-xl p-3.5 space-y-1">
-                        <div className="flex items-center justify-between text-[#11770e] font-semibold">
+                      <div className="bg-brand-50 border border-brand-200 rounded-xl p-3.5 space-y-1">
+                        <div className="flex items-center justify-between text-brand-700 font-semibold">
                           <span>Finalizadas</span>
-                          <span className="w-2 h-2 rounded-full bg-[#11770e]" />
+                          <span className="w-2 h-2 rounded-full bg-brand-600" />
                         </div>
-                        <div className="text-2xl font-bold text-[#0d5c0b]">{completedTuts}</div>
-                        <div className="text-[11px] text-[#11770e]">
+                        <div className="text-2xl font-bold text-brand-800">{completedTuts}</div>
+                        <div className="text-[11px] text-brand-700">
                           {totalTuts > 0 ? Math.round((completedTuts / totalTuts) * 100) : 0}% del total
                         </div>
                       </div>
@@ -1163,7 +841,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1 col-span-2 sm:col-span-1">
                         <div className="flex items-center justify-between text-slate-700 font-semibold">
                           <span>Canceladas</span>
-                          <span className="w-2 h-2 rounded-full bg-rose-500" />
+                          <span className="w-2 h-2 rounded-full bg-danger" />
                         </div>
                         <div className="text-2xl font-bold text-slate-900">{cancelledTuts}</div>
                         <div className="text-[11px] text-slate-500">
@@ -1171,33 +849,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </YafaCard>
 
-                  {/* Resumen por Carrera y Semestre */}
-                  <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-900">Resumen por Carrera y Semestre</h4>
-                        <p className="text-xs text-slate-500">
-                          Asignaturas activas, estudiantes y tutorías registradas
-                        </p>
-                      </div>
-                      <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
-                        {dashCareerFilter !== 'all'
-                          ? (selectedDashCareer?.name || 'Carrera específica')
-                          : 'Todas las carreras'}
-                      </span>
-                    </div>
-
-                    <div className="overflow-x-auto max-h-80 overflow-y-auto rounded-xl border border-slate-100">
+                  {/* Resumen por Carrera y Semestre — evidencia densa Yafa */}
+                  <YafaCard title="Resumen por carrera y semestre" subtitle="Asignaturas activas, estudiantes y tutorías registradas" accent="violet" action={<span className="text-[11px] font-semibold text-[#5f6368]">{dashCareerFilter !== 'all' ? (selectedDashCareer?.name || 'Carrera específica') : 'Todas las carreras'}</span>}>
+                    <div className="overflow-x-auto max-h-80 overflow-y-auto rounded-md border border-[#dadce0]" role="region" aria-label="Resumen por carrera y semestre" tabIndex={0}>
                       <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider border-b border-slate-200 sticky top-0">
+                        <thead className="bg-[#f8fafd] text-[#5f6368] font-semibold uppercase tracking-wider border-b border-[#dadce0] sticky top-0 z-10">
                           <tr>
                             <th className="px-4 py-3">Carrera</th>
                             <th className="px-4 py-3">Semestre</th>
-                            <th className="px-4 py-3 text-center">Asignaturas</th>
-                            <th className="px-4 py-3 text-center">Estudiantes</th>
-                            <th className="px-4 py-3 text-center">Tutorías</th>
+                            <th className="px-4 py-3 text-right tabular-nums">Asignaturas</th>
+                            <th className="px-4 py-3 text-right tabular-nums">Estudiantes</th>
+                            <th className="px-4 py-3 text-right tabular-nums">Tutorías</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -1212,7 +876,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             if (rows.length === 0 || !totals) return null;
                             return (
                               <Fragment key={c.id}>
-                                <tr className="bg-[#fafaf7]">
+                                <tr className="bg-stone-50">
                                   <td colSpan={5} className="px-4 py-2 font-extrabold text-slate-800">
                                     {c.name}{' '}
                                     <span className="text-[10px] font-semibold text-slate-400">({c.codePrefix})</span>
@@ -1230,9 +894,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold">
                                   <td className="px-4 py-2 text-slate-800">Totales</td>
                                   <td className="px-4 py-2 text-slate-500 font-normal">{c.numberOfSemesters} semestres</td>
-                                  <td className="px-4 py-2 text-center text-[#11770e]">{totals.subjectCount}</td>
+                                  <td className="px-4 py-2 text-center text-brand-700">{totals.subjectCount}</td>
                                   <td className="px-4 py-2 text-center text-blue-700">{totals.studentCount}</td>
-                                  <td className="px-4 py-2 text-center text-indigo-700">{totals.tutoringCount}</td>
+                                  <td className="px-4 py-2 text-center text-info">{totals.tutoringCount}</td>
                                 </tr>
                               </Fragment>
                             );
@@ -1240,7 +904,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </tbody>
                       </table>
                     </div>
-                  </div>
+                  </YafaCard>
                 </div>
 
                 {/* Right 30% Column */}
@@ -1253,28 +917,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <button
                         type="button"
                         onClick={() => setScheduleTab('schedule')}
-                        className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                           scheduleTab === 'schedule'
-                            ? 'bg-white text-[#11770e] shadow-2xs'
+                            ? 'bg-white text-brand-700 shadow-2xs'
                             : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
-                        <Calendar className="w-3.5 h-3.5" />
+                        <Calendar aria-hidden="true" className="w-3.5 h-3.5" />
                         <span>Horario</span>
-                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[#eaf8ea] text-[#11770e] font-black">
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-brand-50 text-brand-700 font-black">
                           {weekTotalTutorings}
                         </span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setScheduleTab('events')}
-                        className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                           scheduleTab === 'events'
-                            ? 'bg-white text-[#11770e] shadow-2xs'
+                            ? 'bg-white text-brand-700 shadow-2xs'
                             : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
-                        <CalendarCheck className="w-3.5 h-3.5" />
+                        <CalendarCheck aria-hidden="true" className="w-3.5 h-3.5" />
                         <span>Eventos</span>
                         <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 font-black">
                           {upcomingTutorings.length}
@@ -1288,14 +952,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {/* Week Navigator Bar */}
                         <div className="flex items-center justify-between pt-0.5">
                           {/* Week Navigation Buttons */}
-                          <div className="flex items-center gap-1 bg-[#fafaf7] p-0.5 rounded-lg border border-stone-200/80">
+                          <div className="flex items-center gap-1 bg-stone-50 p-0.5 rounded-lg border border-stone-200/80">
                             <button
                               type="button"
                               onClick={() => setWeekOffset((prev) => prev - 1)}
-                              className="p-1 rounded-md hover:bg-white hover:text-[#11770e] text-slate-600 cursor-pointer transition-colors"
+                              className="p-1 rounded-md hover:bg-white hover:text-brand-700 text-slate-600 cursor-pointer transition-colors"
                               title="Semana anterior"
                             >
-                              <ChevronLeft className="w-3.5 h-3.5" />
+                              <ChevronLeft aria-hidden="true" className="w-3.5 h-3.5" />
                             </button>
                             <button
                               type="button"
@@ -1305,7 +969,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               }}
                               className={`px-2.5 py-0.5 text-[11px] rounded-md font-bold cursor-pointer transition-colors ${
                                 weekOffset === 0
-                                  ? 'bg-[#11770e] text-white shadow-2xs'
+                                  ? 'bg-brand-600 text-white shadow-2xs'
                                   : 'hover:bg-white text-slate-700'
                               }`}
                               title="Ir a semana actual"
@@ -1315,10 +979,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <button
                               type="button"
                               onClick={() => setWeekOffset((prev) => prev + 1)}
-                              className="p-1 rounded-md hover:bg-white hover:text-[#11770e] text-slate-600 cursor-pointer transition-colors"
+                              className="p-1 rounded-md hover:bg-white hover:text-brand-700 text-slate-600 cursor-pointer transition-colors"
                               title="Semana siguiente"
                             >
-                              <ChevronRight className="w-3.5 h-3.5" />
+                              <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
                             </button>
                           </div>
 
@@ -1334,13 +998,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
 
                         {/* Interactive Day Filter Strip */}
-                        <div className="grid grid-cols-7 gap-1 bg-[#fafaf7] p-1 rounded-xl border border-stone-200/80">
+                        <div className="grid grid-cols-7 gap-1 bg-stone-50 p-1 rounded-xl border border-stone-200/80">
                           <button
                             type="button"
                             onClick={() => setSelectedScheduleDay('all')}
-                            className={`py-1 text-center rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                            className={`py-1 text-center rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${
                               selectedScheduleDay === 'all'
-                                ? 'bg-[#11770e] text-white shadow-2xs'
+                                ? 'bg-brand-600 text-white shadow-2xs'
                                 : 'text-slate-600 hover:bg-white'
                             }`}
                           >
@@ -1355,18 +1019,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 key={d.dateStr}
                                 type="button"
                                 onClick={() => setSelectedScheduleDay(isSelected ? 'all' : d.dateStr)}
-                                className={`py-1 text-center rounded-lg text-[10px] transition-all relative cursor-pointer ${
+                                className={`py-1 text-center rounded-lg text-[10px] transition-colors relative cursor-pointer ${
                                   isSelected
-                                    ? 'bg-[#11770e] text-white font-black shadow-2xs'
+                                    ? 'bg-brand-600 text-white font-black shadow-2xs'
                                     : isToday
-                                    ? 'bg-[#eaf8ea] text-[#11770e] font-bold border border-[#bce6bc]'
+                                    ? 'bg-brand-50 text-brand-700 font-bold border border-brand-200'
                                     : 'text-slate-600 hover:bg-white font-medium'
                                 }`}
                               >
                                 <span className="block leading-none text-[9px] uppercase">{d.dayName}</span>
                                 <span className="block leading-tight font-bold text-xs mt-0.5">{d.dayNumber}</span>
                                 {hasSessions && !isSelected && (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-[#11770e] mx-auto mt-0.5 block" />
+                                  <span className="w-1.5 h-1.5 rounded-full bg-brand-600 mx-auto mt-0.5 block" />
                                 )}
                               </button>
                             );
@@ -1376,8 +1040,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {/* Day-by-Day Session Cards */}
                         <div className="space-y-2.5 max-h-[440px] overflow-y-auto pr-0.5">
                           {selectedScheduleDay === 'all' && weekTotalTutorings === 0 ? (
-                            <div className="py-8 px-4 text-center bg-[#fafaf7] rounded-xl border border-dashed border-stone-200">
-                              <Calendar className="w-7 h-7 text-stone-300 mx-auto mb-1.5" />
+                            <div className="py-8 px-4 text-center bg-stone-50 rounded-xl border border-dashed border-stone-200">
+                              <Calendar aria-hidden="true" className="w-7 h-7 text-stone-300 mx-auto mb-1.5" />
                               <p className="text-xs font-semibold text-slate-700">
                                 Sin tutorías programadas esta semana
                               </p>
@@ -1396,10 +1060,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 return (
                                   <div
                                     key={day.dateStr}
-                                    className={`p-3 rounded-xl border transition-all ${
+                                    className={`p-3 rounded-xl border transition-colors ${
                                       isToday
-                                        ? 'bg-[#eaf8ea]/40 border-[#bce6bc]'
-                                        : 'bg-[#fafaf7] border-stone-200/80'
+                                        ? 'bg-brand-50/40 border-brand-200'
+                                        : 'bg-stone-50 border-stone-200/80'
                                     }`}
                                   >
                                     <div className="flex items-center justify-between mb-2">
@@ -1407,7 +1071,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         <span
                                           className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center ${
                                             isToday
-                                              ? 'bg-[#11770e] text-white'
+                                              ? 'bg-brand-600 text-white'
                                               : 'bg-white text-slate-700 border border-slate-200'
                                           }`}
                                         >
@@ -1417,7 +1081,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                           {day.dayName}, {day.dayNumber} {day.monthName}
                                         </span>
                                         {isToday && (
-                                          <span className="text-[10px] bg-[#11770e] text-white px-1.5 py-0.2 rounded font-bold">
+                                          <span className="text-[10px] bg-brand-600 text-white px-1.5 py-0.2 rounded font-bold">
                                             Hoy
                                           </span>
                                         )}
@@ -1438,14 +1102,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                           <div
                                             key={tut.id}
                                             onClick={() => setSelectedCalendarTutoring(tut)}
-                                            className="p-2.5 bg-white rounded-xl border border-stone-200 hover:border-[#11770e] hover:shadow-2xs transition-all cursor-pointer text-xs space-y-1.5"
+                                            className="p-2.5 bg-white rounded-xl border border-stone-200 hover:border-brand-600 hover:shadow-2xs transition-[color,background-color,border-color,box-shadow] cursor-pointer text-xs space-y-1.5"
                                           >
                                             <div className="flex items-start justify-between gap-2">
                                               <span className="font-bold text-slate-800 leading-tight">
                                                 {tut.subjectCourseName || tut.subject}
                                               </span>
-                                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc]/60 shrink-0">
-                                                <Clock className="w-3 h-3" />
+                                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-brand-50 text-brand-700 border border-brand-200/60 shrink-0">
+                                                <Clock aria-hidden="true" className="w-3 h-3" />
                                                 {tut.reservTime || tut.scheduleLabel}
                                               </span>
                                             </div>
@@ -1457,12 +1121,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                               <span className="flex items-center gap-1 text-[10px] font-semibold text-stone-600">
                                                 {tut.modality === TutoringModality.PRESENCIAL ? (
                                                   <>
-                                                    <MapPin className="w-3 h-3 text-[#11770e]" />
+                                                    <MapPin aria-hidden="true" className="w-3 h-3 text-brand-700" />
                                                     Presencial
                                                   </>
                                                 ) : (
                                                   <>
-                                                    <Video className="w-3 h-3 text-indigo-600" />
+                                                    <Video aria-hidden="true" className="w-3 h-3 text-info" />
                                                     Virtual
                                                   </>
                                                 )}
@@ -1487,14 +1151,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <span className="font-bold text-stone-500 uppercase tracking-wider">
                             Agenda y Citas Confirmadas
                           </span>
-                          <span className="font-semibold text-[#11770e]">
+                          <span className="font-semibold text-brand-700">
                             {upcomingTutorings.length} en total
                           </span>
                         </div>
 
                         {upcomingTutorings.length === 0 ? (
                           <div className="py-10 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                            <CalendarCheck className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                            <CalendarCheck aria-hidden="true" className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                             <p className="text-xs font-semibold text-slate-600">
                               No hay tutorías o eventos programados
                             </p>
@@ -1511,21 +1175,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <div
                                   key={tut.id}
                                   onClick={() => setSelectedCalendarTutoring(tut)}
-                                  className="p-3 bg-white rounded-xl border border-stone-200 hover:border-[#11770e] hover:shadow-2xs transition-all cursor-pointer text-xs space-y-2"
+                                  className="p-3 bg-white rounded-xl border border-stone-200 hover:border-brand-600 hover:shadow-2xs transition-[color,background-color,border-color,box-shadow] cursor-pointer text-xs space-y-2"
                                 >
                                   <div className="flex items-center justify-between gap-2">
                                     <span
                                       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
                                         isToday
-                                          ? 'bg-[#11770e] text-white'
+                                          ? 'bg-brand-600 text-white'
                                           : 'bg-stone-100 text-stone-700'
                                       }`}
                                     >
-                                      <Calendar className="w-3 h-3" />
+                                      <Calendar aria-hidden="true" className="w-3 h-3" />
                                       {isToday ? '¡Hoy!' : dt.formattedDate}
                                     </span>
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc]/60">
-                                      <Clock className="w-3 h-3" />
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-brand-50 text-brand-700 border border-brand-200/60">
+                                      <Clock aria-hidden="true" className="w-3 h-3" />
                                       {dt.timeDisplay}
                                     </span>
                                   </div>
@@ -1548,12 +1212,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <span className="flex items-center gap-1 text-[10px] font-semibold text-stone-600">
                                       {tut.modality === TutoringModality.PRESENCIAL ? (
                                         <>
-                                          <MapPin className="w-3 h-3 text-[#11770e]" />
+                                          <MapPin aria-hidden="true" className="w-3 h-3 text-brand-700" />
                                           {tut.space || 'Presencial'}
                                         </>
                                       ) : (
                                         <>
-                                          <Video className="w-3 h-3 text-indigo-600" />
+                                          <Video aria-hidden="true" className="w-3 h-3 text-info" />
                                           Virtual
                                         </>
                                       )}
@@ -1578,6 +1242,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
 
                     <div className="h-44 w-full flex items-center justify-center relative">
+                      <div aria-hidden="true" className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <span className="text-2xl font-black text-slate-900 tabular-nums">{totalTuts}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">tutorías</span>
+                      </div>
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
@@ -1607,10 +1275,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="p-2.5 rounded-xl bg-[#eaf8ea] border border-[#bce6bc] flex flex-col justify-between">
-                        <div className="font-bold text-[#11770e] text-[11px]">Presencial</div>
-                        <div className="text-lg font-black text-[#0d5c0b] mt-1">{presencialCount}</div>
-                        <div className="text-[10px] text-[#11770e]">
+                      <div className="p-2.5 rounded-xl bg-brand-50 border border-brand-200 flex flex-col justify-between">
+                        <div className="font-bold text-brand-700 text-[11px]">Presencial</div>
+                        <div className="text-lg font-black text-brand-800 mt-1">{presencialCount}</div>
+                        <div className="text-[10px] text-brand-700">
                           {totalTuts > 0 ? Math.round((presencialCount / totalTuts) * 100) : 0}%
                         </div>
                       </div>
@@ -1629,7 +1297,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-3">
                     <div className="flex items-center justify-between">
                       <h4 className="text-sm font-bold text-slate-900">Docentes con Mayor Actividad</h4>
-                      <span className="text-[11px] text-[#11770e] font-bold">Top</span>
+                      <span className="text-[11px] text-brand-700 font-bold">Top</span>
                     </div>
 
                     {teacherWorkload.length === 0 ? (
@@ -1644,12 +1312,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             className="p-2.5 rounded-xl border border-slate-100 bg-slate-50/70 flex items-center justify-between gap-2 text-xs"
                           >
                             <div className="flex items-center gap-2 min-w-0">
-                              <span className="w-5 h-5 rounded-md bg-[#eaf8ea] text-[#11770e] font-bold text-[10px] flex items-center justify-center shrink-0">
+                              <span className="w-5 h-5 rounded-md bg-brand-50 text-brand-700 font-bold text-[10px] flex items-center justify-center shrink-0">
                                 {idx + 1}
                               </span>
                               <span className="font-bold text-slate-800 truncate">{t.name}</span>
                             </div>
-                            <span className="font-semibold text-[#11770e] bg-[#eaf8ea] px-2 py-0.5 rounded-md text-[11px] shrink-0">
+                            <span className="font-semibold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-md text-[11px] shrink-0">
                               {t.total} {t.total === 1 ? 'tutoría' : 'tutorías'}
                             </span>
                           </div>
@@ -1665,81 +1333,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* TAB 2: TUTORING REQUESTS MANAGEMENT */}
       {activeTab === 'tutorings' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
+        <div className="space-y-5 animate-in fade-in duration-200">
+          <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-lg font-black text-slate-900 tracking-tight">
-                Aprobación y Gestión de Solicitudes de Tutoría
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Revise, apruebe espacios físicos o virtuales y supervise el ciclo de vida de cada tutoría solicitada.
-              </p>
+              <p className="text-xs font-medium text-brand-700">Gestión académica</p>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Solicitudes de tutoría</h2>
+              <p className="mt-1 text-sm text-stone-500">Revisa cada solicitud, asigna un espacio y sigue su estado.</p>
             </div>
+            <span className="text-xs font-medium text-stone-500">{filteredTutorings.length} {filteredTutorings.length === 1 ? 'resultado' : 'resultados'}</span>
+          </header>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-600 bg-stone-100 px-3 py-1.5 rounded-xl">
-                {filteredTutorings.length} solicitudes
-              </span>
-            </div>
-          </div>
-
-          {/* KPI Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-            <div className="bg-white p-3.5 rounded-xl border border-stone-200 shadow-2xs space-y-1">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Pendientes</span>
-              <div className="text-2xl font-black text-amber-600">
-                {dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.PENDING).length}
-              </div>
-              <div className="text-[11px] text-slate-400">Por asignar espacio</div>
-            </div>
-
-            <div className="bg-white p-3.5 rounded-xl border border-stone-200 shadow-2xs space-y-1">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Programadas</span>
-              <div className="text-2xl font-black text-emerald-600">
-                {dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.APPROVED).length}
-              </div>
-              <div className="text-[11px] text-slate-400">Con aula / enlace</div>
-            </div>
-
-            <div className="bg-white p-3.5 rounded-xl border border-stone-200 shadow-2xs space-y-1">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">En Proceso</span>
-              <div className="text-2xl font-black text-blue-600">
-                {dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.IN_PROGRESS).length}
-              </div>
-              <div className="text-[11px] text-slate-400">Sesión activa</div>
-            </div>
-
-            <div className="bg-white p-3.5 rounded-xl border border-stone-200 shadow-2xs space-y-1">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Finalizadas</span>
-              <div className="text-2xl font-black text-[#11770e]">
-                {dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.COMPLETED).length}
-              </div>
-              <div className="text-[11px] text-[#11770e] font-semibold">Completadas con éxito</div>
-            </div>
-
-            <div className="bg-white p-3.5 rounded-xl border border-stone-200 shadow-2xs space-y-1 col-span-2 sm:col-span-1">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Canceladas</span>
-              <div className="text-2xl font-black text-rose-600">
-                {dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.CANCELLED).length}
-              </div>
-              <div className="text-[11px] text-slate-400">Rechazadas o anuladas</div>
-            </div>
-          </div>
+          {/* Resumen del estado de solicitudes */}
+          <dl className="grid grid-cols-2 divide-x divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white sm:grid-cols-3 sm:divide-y-0 xl:grid-cols-5">
+            <div className="p-3.5 sm:p-4"><dt className="text-xs text-stone-500">Pendientes</dt><dd className="mt-1 text-xl font-semibold tabular-nums text-amber-700">{dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.PENDING).length}</dd></div>
+            <div className="p-3.5 sm:p-4"><dt className="text-xs text-stone-500">Programadas</dt><dd className="mt-1 text-xl font-semibold tabular-nums text-brand-700">{dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.APPROVED).length}</dd></div>
+            <div className="p-3.5 sm:p-4"><dt className="text-xs text-stone-500">En curso</dt><dd className="mt-1 text-xl font-semibold tabular-nums text-sky-700">{dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.IN_PROGRESS).length}</dd></div>
+            <div className="p-3.5 sm:p-4"><dt className="text-xs text-stone-500">Finalizadas</dt><dd className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.COMPLETED).length}</dd></div>
+            <div className="p-3.5 sm:p-4"><dt className="text-xs text-stone-500">Canceladas</dt><dd className="mt-1 text-xl font-semibold tabular-nums text-stone-500">{dashTutoringsFiltered.filter((t) => t.status === TutoringStatus.CANCELLED).length}</dd></div>
+          </dl>
 
           {/* Search & Filter Bar */}
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden space-y-4">
-            <div className="p-4 bg-stone-50/70 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+            <div className="flex flex-col gap-3 border-b border-stone-100 bg-stone-50/60 p-3.5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                  <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
                   <input
                     id="search-admin-tutorings"
                     type="text"
                     value={tutoringSearch}
                     onChange={(e) => setTutoringSearch(e.target.value)}
-                    placeholder="Buscar por código, alumno, materia..."
-                    className="pl-9 pr-3 py-1.5 text-xs rounded-xl border border-stone-300 w-60 focus:ring-2 focus:ring-[#11770e] bg-white text-slate-900"
+                    placeholder="Buscar por código, alumno, materia…"
+                    aria-label="Buscar solicitudes"
+                    className="h-10 w-full rounded-lg border border-stone-200 bg-white pl-9 pr-3 text-sm text-slate-800 placeholder:text-stone-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20 sm:w-60"
                   />
                 </div>
 
@@ -1747,7 +1373,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   id="select-filter-status"
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="text-xs rounded-xl border border-stone-300 py-1.5 px-3 bg-white font-semibold text-slate-700 focus:ring-2 focus:ring-[#11770e]"
+                  aria-label="Filtrar solicitudes por estado"
+                  className="h-10 rounded-lg border border-stone-200 bg-white px-3 text-sm font-medium text-slate-700 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20"
                 >
                   <option value="all">Todos los Estados</option>
                   <option value={String(TutoringStatus.PENDING)}>Pendientes</option>
@@ -1767,13 +1394,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 />
               </div>
 
-              <div className="flex items-center gap-1.5 bg-stone-200/70 p-1 rounded-xl text-xs font-semibold shrink-0">
+              <div className="flex items-center gap-1 rounded-lg border border-stone-200 bg-white p-1 text-xs font-medium shrink-0">
                 <button
                   type="button"
                   onClick={() => setDisplayMode('list')}
-                  className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  className={`inline-flex min-h-10 items-center rounded-md px-3 transition-colors cursor-pointer ${
                     displayMode === 'list'
-                      ? 'bg-white text-[#11770e] shadow-2xs font-bold'
+                      ? 'bg-white text-brand-700 shadow-2xs font-bold'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -1782,9 +1409,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <button
                   type="button"
                   onClick={() => setDisplayMode('calendar')}
-                  className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  className={`inline-flex min-h-10 items-center rounded-md px-3 transition-colors cursor-pointer ${
                     displayMode === 'calendar'
-                      ? 'bg-white text-[#11770e] shadow-2xs font-bold'
+                      ? 'bg-white text-brand-700 shadow-2xs font-bold'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -1802,146 +1429,95 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 />
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider border-b border-stone-200 text-[11px]">
-                    <tr>
-                      <th className="px-4 py-3.5">Código</th>
-                      <th className="px-4 py-3.5">Solicitante</th>
-                      <th className="px-4 py-3.5">Materia y Asunto</th>
-                      <th className="px-4 py-3.5">Docente</th>
-                      <th className="px-4 py-3.5">Fecha y Hora</th>
-                      <th className="px-4 py-3.5">Espacio Asignado</th>
-                      <th className="px-4 py-3.5 text-center">Estado</th>
-                      <th className="px-4 py-3.5 text-right">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredTutorings.length === 0 ? (
-                      <tr>
-                        <td colSpan={8} className="text-center py-12 text-slate-400 text-xs">
-                          No se encontraron solicitudes con los filtros aplicados.
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredTutorings.map((tut) => (
-                        <tr key={tut.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="px-4 py-3.5 font-mono font-bold">
-                            <span className="bg-stone-100 text-slate-800 border border-stone-200 px-2 py-0.5 rounded-md text-[11px]">
-                              {tut.code}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3.5">
-                            <div className="font-bold text-slate-900">{tut.petitionerStudentName}</div>
-                            <div className="text-[11px] text-slate-500 font-mono">{tut.petitionerAccount}</div>
-                          </td>
-                          <td className="px-4 py-3.5">
-                            <div className="font-semibold text-slate-800">{tut.subject}</div>
-                            <div className="text-[11px] text-slate-500">{tut.subjectCourseName}</div>
-                            {tut.attachmentUrl ? (
+              <section aria-label="Solicitudes registradas" className="p-4 sm:p-5">
+                {filteredTutorings.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-stone-300 bg-white px-4 py-14 text-center">
+                    <FileText aria-hidden="true" className="mx-auto mb-3 h-8 w-8 text-stone-300" />
+                    <p className="text-sm font-semibold text-slate-800">No hay solicitudes para mostrar</p>
+                    <p className="mt-1 text-sm text-stone-500">Cambia los filtros para revisar otras tutorías.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredTutorings.map((tut) => {
+                      const dt = formatTutoringDateTime(tut.reservDate, tut.scheduleLabel, tut.reservTime);
+                      const requester = users.find((user) => user.id === tut.petitionerStudentId || user.fullName === tut.petitionerStudentName);
+                      const teacher = users.find((user) => user.id === tut.teacherId || user.fullName === tut.teacherName);
+                      const participants = tut.assistants?.length || 0;
+                      const hasMeetLink = tut.modality === TutoringModality.VIRTUAL && Boolean(tut.space?.startsWith('http'));
+                      return (
+                        <article key={tut.id} className="rounded-xl border border-stone-200 bg-white p-4 transition-colors hover:border-stone-300 sm:p-5">
+                          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-md border border-stone-200 bg-stone-50 px-2 py-1 font-mono text-[11px] font-medium text-stone-600">{tut.code}</span>
+                                <StatusBadge status={tut.status} size="sm" />
+                              </div>
+                              <h3 className="mt-2 text-base font-semibold text-slate-900">{tut.subjectCourseName || tut.subject}</h3>
+                              {tut.subject && tut.subjectCourseName && tut.subject !== tut.subjectCourseName && <p className="mt-0.5 text-sm text-stone-500">Tema: {tut.subject}</p>}
+
+                              <dl className="mt-4 grid grid-cols-1 gap-x-5 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                                <div className="flex min-w-0 items-start gap-2.5">
+                                  <Users aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" />
+                                  <div className="min-w-0"><dt className="text-xs text-stone-500">Solicitante</dt><dd className="mt-0.5 truncate font-medium text-slate-800">{tut.petitionerStudentName}</dd><dd className="mt-0.5 text-[11px] text-stone-500">{tut.petitionerAccount || requester?.account || '—'}{participants > 1 ? ` · ${participants} participantes` : ''}</dd></div>
+                                </div>
+                                <div className="flex min-w-0 items-start gap-2.5">
+                                  <GraduationCap aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" />
+                                  <div className="min-w-0"><dt className="text-xs text-stone-500">Docente</dt><dd className="mt-0.5 truncate font-medium text-slate-800">{tut.teacherName || teacher?.fullName || 'Por asignar'}</dd></div>
+                                </div>
+                                <div className="flex min-w-0 items-start gap-2.5">
+                                  <Calendar aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-brand-700" />
+                                  <div className="min-w-0"><dt className="text-xs text-stone-500">Fecha y hora</dt><dd className="mt-0.5 font-medium text-slate-800">{dt.formattedDate}</dd><dd className="mt-0.5 text-xs text-stone-500">{dt.timeDisplay}</dd></div>
+                                </div>
+                                <div className="flex min-w-0 items-start gap-2.5">
+                                  {tut.modality === TutoringModality.PRESENCIAL ? <MapPin aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" /> : <Video aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" />}
+                                  <div className="min-w-0"><dt className="text-xs text-stone-500">{tut.modality === TutoringModality.PRESENCIAL ? 'Espacio' : 'Modalidad'}</dt><dd className="mt-0.5 break-words font-medium text-slate-800">
+                                    {hasMeetLink ? <a href={tut.space} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-700 underline">Abrir Meet <ExternalLink aria-hidden="true" className="h-3 w-3" /></a> : tut.space ? `${tut.space}${tut.block ? ` · Bloque ${tut.block}` : ''}` : tut.modality === TutoringModality.PRESENCIAL ? 'Por asignar' : 'Virtual · Enlace pendiente'}
+                                  </dd></div>
+                                </div>
+                              </dl>
+
+                              {tut.attachmentName && (
+                                <div className="mt-3">
+                                  {tut.attachmentUrl ? (
+                                    <button type="button" onClick={() => setViewingAttachment({ fileName: tut.attachmentName || 'Archivo adjunto', fileUrl: tut.attachmentUrl! })} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-stone-200 px-2.5 text-xs font-medium text-slate-700 transition-colors hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"><Paperclip aria-hidden="true" className="h-3.5 w-3.5 text-stone-500" />Ver adjunto</button>
+                                  ) : <span className="inline-flex items-center gap-1.5 text-xs text-stone-500"><Paperclip aria-hidden="true" className="h-3.5 w-3.5" />{tut.attachmentName}</span>}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 border-t border-stone-100 pt-3 xl:max-w-[310px] xl:justify-end xl:border-l xl:pt-0 xl:pl-4">
                               <button
                                 type="button"
-                                onClick={() =>
-                                  setViewingAttachment({
-                                    fileName: tut.attachmentName || 'Archivo adjunto',
-                                    fileUrl: tut.attachmentUrl!
-                                  })
-                                }
-                                className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-[#11770e] hover:text-[#0d5c0b] hover:underline bg-[#eaf8ea] border border-[#bce6bc] px-2 py-0.5 rounded-md cursor-pointer transition-colors"
-                                title="Ver archivo adjunto"
-                              >
-                                <Paperclip className="w-3 h-3" />
-                                <span className="truncate max-w-[130px]">{tut.attachmentName || 'Ver adjunto'}</span>
-                              </button>
-                            ) : tut.attachmentName ? (
-                              <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                                <Paperclip className="w-3 h-3" />
-                                <span className="truncate max-w-[130px]">{tut.attachmentName}</span>
-                              </span>
-                            ) : null}
-                          </td>
-                          <td className="px-4 py-3.5 text-slate-700 font-medium">{tut.teacherName}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            {(() => {
-                              const dt = formatTutoringDateTime(tut.reservDate, tut.scheduleLabel, tut.reservTime);
-                              return (
-                                <div className="flex flex-col gap-1">
-                                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                                    <Calendar className="w-3.5 h-3.5 text-[#11770e] shrink-0" />
-                                    <span>{dt.formattedDate}</span>
-                                  </div>
-                                  <div className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#11770e] bg-[#eaf8ea] border border-[#bce6bc] px-2 py-0.5 rounded-md w-fit">
-                                    <Clock className="w-3 h-3 text-[#11770e] shrink-0" />
-                                    <span>{dt.timeDisplay}</span>
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </td>
-                          <td className="px-4 py-3.5 text-slate-600 max-w-[150px] truncate" title={tut.block ? `${tut.space} (Bloque ${tut.block})` : tut.space}>{tut.space}{tut.block ? ` — Bl. ${tut.block}` : ''}</td>
-                          <td className="px-4 py-3.5 text-center">
-                            <StatusBadge status={tut.status} size="sm" />
-                          </td>
-                          <td className="px-4 py-3.5 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
                                 id={`btn-view-detail-${tut.id}`}
                                 onClick={() => setSelectedDetailTutoring(tut)}
-                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-xs transition-colors flex items-center gap-1 shadow-xs cursor-pointer"
+                                className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-stone-200 px-3 text-xs font-medium text-slate-700 transition-colors hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
                                 title="Ver detalle de la solicitud"
-                              >
-                                <FileText className="w-3.5 h-3.5" />
-                                Detalle
-                              </button>
+                              ><FileText aria-hidden="true" className="h-3.5 w-3.5" />Detalle</button>
                               {tut.status === TutoringStatus.PENDING && (
                                 <>
                                   <button
+                                    type="button"
                                     id={`btn-open-approve-${tut.id}`}
                                     onClick={() => {
                                       setApprovingTutoring(tut);
-                                      setAssignedSpace(
-                                        tut.modality === TutoringModality.PRESENCIAL
-                                          ? tut.space && tut.space !== 'Pendiente aula' ? tut.space : ''
-                                          : 'https://meet.google.com/gt-tutoria-live'
-                                      );
+                                      setAssignedSpace(tut.modality === TutoringModality.PRESENCIAL ? tut.space && tut.space !== 'Pendiente aula' ? tut.space : '' : 'https://meet.google.com/gt-tutoria-live');
                                       setAssignedBlock(tut.block || '');
                                     }}
-                                    className="px-2.5 py-1 bg-[#11770e] hover:bg-[#0d5c0b] text-white rounded-lg font-semibold text-xs transition-colors flex items-center gap-1 shadow-xs cursor-pointer"
+                                    className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-brand-700 px-3 text-xs font-semibold text-white transition-colors hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
                                     title="Aprobar y asignar aula o enlace"
-                                  >
-                                    <Check className="w-3.5 h-3.5" />
-                                    Aprobar
-                                  </button>
-
-                                  <button
-                                    id={`btn-open-cancel-${tut.id}`}
-                                    onClick={() => setCancellingTutoring(tut)}
-                                    className="px-2.5 py-1 text-rose-600 hover:bg-rose-50 border border-stone-200 rounded-lg font-semibold text-xs transition-colors cursor-pointer"
-                                    title="Rechazar solicitud"
-                                  >
-                                    Rechazar
-                                  </button>
+                                  ><Check aria-hidden="true" className="h-3.5 w-3.5" />Aprobar</button>
+                                  <button type="button" id={`btn-open-cancel-${tut.id}`} onClick={() => setCancellingTutoring(tut)} className="inline-flex min-h-10 items-center rounded-lg border border-stone-200 px-3 text-xs font-medium text-danger transition-colors hover:bg-danger-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger">Rechazar</button>
                                 </>
                               )}
-
-                              {tut.status === TutoringStatus.APPROVED && (
-                                <button
-                                  id={`btn-open-cancel-approved-${tut.id}`}
-                                  onClick={() => setCancellingTutoring(tut)}
-                                  className="px-2.5 py-1 text-rose-600 hover:bg-rose-50 border border-stone-200 rounded-lg font-semibold text-xs transition-colors cursor-pointer"
-                                  title="Cancelar tutoría programada"
-                                >
-                                  Cancelar
-                                </button>
-                              )}
+                              {tut.status === TutoringStatus.APPROVED && <button type="button" id={`btn-open-cancel-approved-${tut.id}`} onClick={() => setCancellingTutoring(tut)} className="inline-flex min-h-10 items-center rounded-lg border border-stone-200 px-3 text-xs font-medium text-danger transition-colors hover:bg-danger-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger">Cancelar</button>}
                             </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
             )}
           </div>
         </div>
@@ -1949,96 +1525,79 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* TAB 3: USER MANAGEMENT */}
       {activeTab === 'users' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
-            <div>
-              <h2 className="text-lg font-black text-slate-900 tracking-tight">
-                Gestión de Estudiantes y Usuarios
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Administración de cuentas estudiantiles, docentes y administradores registrados en la plataforma.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <YafaPageHeader
+            icon={<Users aria-hidden="true" className="h-[18px] w-[18px]" />}
+            title="Estudiantes y cuentas"
+            subtitle="Administra perfiles, roles y acceso a la plataforma."
+            right={<button
                 id="btn-admin-add-user"
                 onClick={onOpenRegister}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#11770e] hover:bg-[#0d5c0b] text-white rounded-xl text-xs font-semibold shadow-xs cursor-pointer transition-all"
+                className="inline-flex h-9 items-center gap-2 rounded-md bg-[#11770e] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#0d5c0b] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#11770e]"
               >
-                <Plus className="w-4 h-4" />
-                <span>Registrar Nuevo Estudiante</span>
-              </button>
-            </div>
-          </div>
+                <Plus aria-hidden="true" className="w-4 h-4" />
+                <span>Registrar estudiante</span>
+              </button>}
+          />
 
-          {/* KPI Strip */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-            <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                Total Usuarios
-              </span>
-              <div className="text-2xl font-black text-slate-900 mt-1">{users.length}</div>
-              <div className="text-[11px] text-slate-500 mt-0.5">Cuentas institucionales</div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                Estudiantes Activos
-              </span>
-              <div className="text-2xl font-black text-[#11770e] mt-1">
-                {users.filter((u) => u.role === UserRole.STUDENT && u.isActive).length}
+          {/* Resumen compacto de cuentas */}
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {[
+              { label: 'Cuentas registradas', value: users.length },
+              { label: 'Estudiantes activos', value: users.filter((u) => u.role === UserRole.STUDENT && u.isActive).length },
+              { label: 'Personal institucional', value: users.filter((u) => u.role === UserRole.TEACHER || u.role === UserRole.ADMIN).length }
+            ].map((item) => (
+              <div key={item.label} className="rounded-xl border border-stone-200 bg-white px-4 py-3">
+                <dt className="text-xs font-medium text-stone-500">{item.label}</dt>
+                <dd className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 tabular-nums">{item.value}</dd>
               </div>
-              <div className="text-[11px] text-slate-500 mt-0.5">Habilitados para solicitar tutorías</div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                Docentes y Personal
-              </span>
-              <div className="text-2xl font-black text-slate-700 mt-1">
-                {users.filter((u) => u.role === UserRole.TEACHER || u.role === UserRole.ADMIN).length}
-              </div>
-              <div className="text-[11px] text-slate-500 mt-0.5">Tutores y coordinadores</div>
-            </div>
-          </div>
+            ))}
+          </dl>
 
           {deleteUserSuccess && (
-            <div className="p-3.5 bg-[#eaf8ea] border border-[#bce6bc] rounded-xl flex items-center gap-2.5 text-xs text-[#0d5c0b] animate-in fade-in">
-              <CheckCircle className="w-4 h-4 text-[#11770e] shrink-0" />
+            <div className="p-3.5 bg-brand-50 border border-brand-200 rounded-xl flex items-center gap-2.5 text-xs text-brand-800 animate-in fade-in">
+              <CheckCircle aria-hidden="true" className="w-4 h-4 text-brand-700 shrink-0" />
               <span className="font-semibold">{deleteUserSuccess}</span>
             </div>
           )}
 
-          {/* Users Table Card */}
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden space-y-4">
-            <div className="p-4 bg-stone-50/70 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+          {/* Directorio con filtros y fichas adaptables */}
+          <section className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+            <div className="border-b border-stone-200 px-4 py-4 sm:px-5">
+              <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900">Directorio de cuentas</h2>
+                  <p className="mt-0.5 text-xs text-stone-500">Consulta perfiles, roles y estado de acceso.</p>
+                </div>
+                <p className="text-xs text-stone-500" aria-live="polite">{filteredUsers.length} resultados</p>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_auto_auto]">
+                <label className="relative block">
+                  <span className="sr-only">Buscar usuario por nombre, carnet o correo</span>
+                  <Search aria-hidden="true" className="absolute left-3 top-3 h-4 w-4 text-stone-400" />
                   <input
                     id="search-admin-users"
                     type="text"
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
-                    placeholder="Buscar por nombre o carnet..."
-                    className="pl-9 pr-3 py-1.5 text-xs rounded-xl border border-stone-300 w-60 focus:ring-2 focus:ring-[#11770e] bg-white text-slate-900"
+                    placeholder="Buscar por nombre, carnet o correo…"
+                    className="h-10 w-full rounded-lg border border-stone-200 bg-white pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
                   />
-                </div>
-
-                <select
-                  id="select-filter-user-role"
-                  value={userRoleFilter}
-                  onChange={(e) => setUserRoleFilter(e.target.value)}
-                  className="text-xs rounded-xl border border-stone-300 py-1.5 px-3 bg-white font-semibold text-slate-700 focus:ring-2 focus:ring-[#11770e]"
-                >
-                  <option value="all">Todos los Roles</option>
-                  <option value={UserRole.STUDENT}>Estudiantes</option>
-                  <option value={UserRole.TEACHER}>Docentes</option>
-                  <option value={UserRole.ADMIN}>Administradores</option>
-                </select>
-
+                </label>
+                <label>
+                  <span className="sr-only">Filtrar por rol</span>
+                  <select
+                    id="select-filter-user-role"
+                    value={userRoleFilter}
+                    onChange={(e) => setUserRoleFilter(e.target.value)}
+                    className="h-10 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 sm:min-w-44"
+                  >
+                    <option value="all">Todos los roles</option>
+                    <option value={UserRole.STUDENT}>Estudiantes</option>
+                    <option value={UserRole.TEACHER}>Docentes</option>
+                    <option value={UserRole.ADMIN}>Administradores</option>
+                  </select>
+                </label>
                 <CareerSemesterFilter
                   careers={careers}
                   selectedCareer={selectedDashCareer}
@@ -2048,343 +1607,153 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   onSemesterChange={setDashSemesterFilter}
                 />
               </div>
-
-              <span className="text-xs text-slate-500 font-medium">
-                Mostrando {filteredUsers.length} usuarios
-              </span>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider border-b border-stone-200 text-[11px]">
-                  <tr>
-                    <th className="px-4 py-3.5">Nombre Completo</th>
-                    <th className="px-4 py-3.5">Usuario</th>
-                    <th className="px-4 py-3.5">Rol</th>
-                    <th className="px-4 py-3.5">Carnet / Código</th>
-                    <th className="px-4 py-3.5">Carrera / Semestre</th>
-                    <th className="px-4 py-3.5">Correo</th>
-                    <th className="px-4 py-3.5 text-center">Estado</th>
-                    <th className="px-4 py-3.5 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredUsers.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="py-12 text-center text-slate-400 text-xs">
-                        No se encontraron usuarios con los criterios de búsqueda.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredUsers.map((u) => (
-                      <tr key={u.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="px-4 py-3.5 font-bold text-slate-900">
-                          <div className="flex items-center gap-2.5">
-                            <UserAvatar user={u} size="sm" className="border border-[#bce6bc]/40 shadow-2xs shrink-0" />
-                            <span className="font-bold text-slate-900">{u.fullName}</span>
+            {filteredUsers.length === 0 ? (
+              <div className="px-5 py-14 text-center">
+                <Users aria-hidden="true" className="mx-auto h-8 w-8 text-stone-300" />
+                <p className="mt-3 text-sm font-medium text-slate-700">No hay cuentas para mostrar</p>
+                <p className="mt-1 text-xs text-stone-500">Prueba cambiando los filtros o el texto de búsqueda.</p>
+              </div>
+            ) : (
+              <ul className="grid grid-cols-1 gap-3 bg-stone-50/60 p-3 sm:grid-cols-2 xl:grid-cols-3 sm:p-4">
+                {filteredUsers.map((u) => {
+                  const roleLabel = u.role === UserRole.STUDENT ? 'Estudiante' : u.role === UserRole.TEACHER ? 'Docente' : 'Administrador';
+                  const careerName = u.careerId ? careers.find((c) => c.id === u.careerId)?.name || u.careerId : null;
+                  return (
+                    <li key={u.id} className="flex min-w-0 flex-col rounded-xl border border-stone-200 bg-white p-4 transition-colors hover:border-stone-300">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <UserAvatar user={u} size="md" className="shrink-0 border border-stone-200" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="truncate text-sm font-semibold text-slate-900" title={u.fullName}>{u.fullName}</h3>
+                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${u.role === UserRole.STUDENT ? 'border-sky-200 bg-sky-50 text-sky-800' : u.role === UserRole.TEACHER ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-violet-200 bg-violet-50 text-violet-800'}`}>
+                              {roleLabel}
+                            </span>
                           </div>
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-500 font-mono">@{u.username}</td>
-                        <td className="px-4 py-3.5">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              u.role === UserRole.STUDENT
-                                ? 'bg-sky-50 text-sky-800 border border-sky-200'
-                                : u.role === UserRole.TEACHER
-                                ? 'bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc]'
-                                : 'bg-purple-50 text-purple-800 border border-purple-200'
-                            }`}
-                          >
-                            {u.role === UserRole.STUDENT
-                              ? 'Estudiante'
-                              : u.role === UserRole.TEACHER
-                              ? 'Docente'
-                              : 'Administrador'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3.5 font-mono text-slate-700 font-bold">{u.account}</td>
-                        <td className="px-4 py-3.5">
-                          {u.careerId ? (
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-semibold text-slate-700 truncate max-w-[150px]">
-                                {careers.find((c) => c.id === u.careerId)?.name || u.careerId}
-                              </span>
-                              {u.role === UserRole.STUDENT && u.semester ? (
-                                <span className="bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc] rounded-md px-1.5 py-0.5 text-[10px] font-bold">
-                                  S{u.semester}
-                                </span>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-600">{u.email}</td>
-                        <td className="px-4 py-3.5 text-center">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              u.isActive
-                                ? 'bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc]'
-                                : 'bg-stone-100 text-stone-500 border border-stone-200'
-                            }`}
-                          >
-                            {u.isActive ? 'Activo' : 'Inactivo'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3.5 text-right">
-                          {u.id !== currentUser.id && (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                id={`btn-toggle-user-${u.id}`}
-                                onClick={() => handleToggleUserActive(u.id)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
-                                  u.isActive
-                                    ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
-                                    : 'bg-[#eaf8ea] text-[#11770e] border-[#bce6bc] hover:bg-[#bce6bc]/40'
-                                }`}
-                              >
-                                {u.isActive ? 'Desactivar' : 'Activar'}
-                              </button>
+                          <p className="mt-1 break-all text-xs text-stone-500">{u.email}</p>
+                        </div>
+                      </div>
 
-                              <button
-                                id={`btn-delete-user-${u.id}`}
-                                onClick={() => {
-                                  setDeletingUser(u);
-                                  setDeleteUserError(null);
-                                }}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-stone-200 text-slate-600 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-colors cursor-pointer"
-                                title={
-                                  u.role === UserRole.STUDENT
-                                    ? 'Eliminar estudiante definitivamente'
-                                    : 'Eliminar usuario'
-                                }
-                              >
-                                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                                <span>Eliminar</span>
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                      <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 border-t border-stone-100 pt-3 text-xs">
+                        <div className="min-w-0">
+                          <dt className="text-stone-500">Carnet / código</dt>
+                          <dd className="mt-0.5 truncate font-medium text-slate-800" title={u.account}>{u.account || '—'}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-stone-500">Acceso</dt>
+                          <dd className={`mt-0.5 font-medium ${u.isActive ? 'text-brand-700' : 'text-stone-500'}`}>{u.isActive ? 'Activo' : 'Inactivo'}</dd>
+                        </div>
+                        <div className="col-span-2 min-w-0">
+                          <dt className="text-stone-500">Carrera{u.role === UserRole.STUDENT ? ' · semestre' : ''}</dt>
+                          <dd className="mt-0.5 truncate font-medium text-slate-800" title={careerName || undefined}>
+                            {careerName || '—'}{u.role === UserRole.STUDENT && u.semester ? ` · Semestre ${u.semester}` : ''}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      {u.id !== currentUser.id && (
+                        <div className="mt-4 flex gap-2 border-t border-stone-100 pt-3">
+                          <button
+                            id={`btn-toggle-user-${u.id}`}
+                            onClick={() => handleToggleUserActive(u.id)}
+                            className={`min-h-10 flex-1 rounded-lg border px-3 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 ${u.isActive ? 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100'}`}
+                          >
+                            {u.isActive ? 'Desactivar acceso' : 'Activar acceso'}
+                          </button>
+                          <button
+                            id={`btn-delete-user-${u.id}`}
+                            onClick={() => { setDeletingUser(u); setDeleteUserError(null); }}
+                            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-stone-200 px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-danger-border hover:bg-danger-soft hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
+                            title={u.role === UserRole.STUDENT ? 'Eliminar estudiante definitivamente' : 'Eliminar usuario'}
+                            aria-label={`Eliminar cuenta de ${u.fullName}`}
+                          >
+                            <Trash2 aria-hidden="true" className="h-4 w-4" />
+                            <span>Eliminar</span>
+                          </button>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
         </div>
       )}
 
       {/* TAB 4: BINNACLE */}
       {activeTab === 'binnacle' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
-            <div>
-              <h2 className="text-lg font-black text-slate-900 tracking-tight">
-                Bitácora de Auditoría y Seguridad
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Trazabilidad y registro inmutable de transacciones académicas y administrativas.
-              </p>
-            </div>
-            <span className="text-xs font-semibold text-slate-600 bg-stone-100 px-3 py-1.5 rounded-xl">
-              {binnacle.length} eventos registrados
-            </span>
-          </div>
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <YafaPageHeader
+            icon={<ShieldCheck aria-hidden="true" className="h-[18px] w-[18px]" />}
+            title="Bitácora de auditoría"
+            subtitle="Actividad académica y administrativa registrada en la plataforma."
+            right={<span className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600">{binnacle.length} eventos</span>}
+          />
 
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider border-b border-stone-200 text-[11px]">
-                  <tr>
-                    <th className="px-4 py-3.5">Fecha y Hora</th>
-                    <th className="px-4 py-3.5">Tipo de Evento</th>
-                    <th className="px-4 py-3.5">Descripción de la Acción</th>
-                    <th className="px-4 py-3.5">Usuario Responsable</th>
-                    <th className="px-4 py-3.5">Dirección IP</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs">
-                  {binnacle.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-slate-400 text-xs">
-                        No hay eventos registrados en la bitácora.
-                      </td>
-                    </tr>
-                  ) : (
-                    binnacle.map((b) => {
-                      const eventType = b.typeEvent || (b as any).eventType || 'Evento';
-                      const dateStr = b.dateEvent || (b as any).date || '';
-                      const hourStr = b.hourEvent || (b as any).hour || (b as any).time || '';
-
-                      let formattedDate = dateStr;
-                      if (dateStr && dateStr.includes('-')) {
-                        const parts = dateStr.split('-');
-                        if (parts.length === 3) {
-                          const year = parseInt(parts[0], 10);
-                          const month = parseInt(parts[1], 10) - 1;
-                          const day = parseInt(parts[2], 10);
-                          const d = new Date(year, month, day);
-                          const rawMonth = d.toLocaleDateString('es-CO', { month: 'short' });
-                          formattedDate = `${day} ${rawMonth} ${year}`;
-                        }
-                      }
-
-                      return (
-                        <tr key={b.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <div className="flex items-center gap-1.5 font-medium text-slate-800">
-                              <Calendar className="w-3.5 h-3.5 text-[#11770e]" />
-                              <span>{formattedDate || 'Fecha sin registrar'}</span>
-                            </div>
-                            {hourStr && (
-                              <div className="flex items-center gap-1 text-[10px] text-stone-500 font-mono mt-0.5 pl-5">
-                                <Clock className="w-3 h-3 text-stone-400" />
-                                <span>{hourStr}</span>
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-[#eaf8ea] text-[#11770e] border border-[#bce6bc]/70">
-                              {eventType}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-slate-800 font-medium leading-relaxed">
-                            {b.description}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600 font-mono text-[11px] whitespace-nowrap">
-                            <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
-                              @{b.username}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-slate-400 font-mono text-[11px] whitespace-nowrap">
-                            {b.ipAddress || '127.0.0.1'}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 5: INSTITUTION SETTINGS */}
-      {activeTab === 'institution' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
-            <div>
-              <h2 className="text-lg font-black text-slate-900 tracking-tight">
-                Configuración Institucional FET
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Parámetros oficiales del centro educativo reflejados en actas, constancias y notificaciones.
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-xs p-6 max-w-3xl">
-            {instSavedMsg && (
-              <div className="mb-4 p-3.5 bg-[#eaf8ea] border border-[#bce6bc] text-[#0d5c0b] rounded-xl text-xs flex items-center gap-2.5 animate-in fade-in">
-                <Check className="w-4 h-4 text-[#11770e] shrink-0" />
-                <span className="font-semibold">Información institucional guardada exitosamente.</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSaveInstitution} className="space-y-5 text-xs">
+          <section className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+            <div className="flex flex-col gap-1 border-b border-stone-200 px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-5">
               <div>
-                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Nombre Institucional *
-                </label>
-                <input
-                  type="text"
-                  value={instName}
-                  onChange={(e) => setInstName(e.target.value)}
-                  required
-                  className="w-full text-xs rounded-xl border border-stone-300 p-2.5 text-slate-800 focus:ring-2 focus:ring-[#11770e]"
-                />
+                <h2 className="text-sm font-semibold text-slate-900">Actividad reciente</h2>
+                <p className="mt-0.5 text-xs text-stone-500">Cada registro conserva fecha, responsable, descripción y origen.</p>
               </div>
+              <span className="text-xs text-stone-500">Más recientes primero</span>
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Misión Institucional
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={instMission}
-                    onChange={(e) => setInstMission(e.target.value)}
-                    className="w-full text-xs rounded-xl border border-stone-300 p-2.5 text-slate-800 focus:ring-2 focus:ring-[#11770e]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Visión Institucional
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={instVision}
-                    onChange={(e) => setInstVision(e.target.value)}
-                    className="w-full text-xs rounded-xl border border-stone-300 p-2.5 text-slate-800 focus:ring-2 focus:ring-[#11770e]"
-                  />
-                </div>
+            {binnacle.length === 0 ? (
+              <div className="px-5 py-14 text-center">
+                <ShieldCheck aria-hidden="true" className="mx-auto h-8 w-8 text-stone-300" />
+                <p className="mt-3 text-sm font-medium text-slate-700">Aún no hay actividad registrada</p>
+                <p className="mt-1 text-xs text-stone-500">Los eventos aparecerán aquí cuando se realicen acciones en la plataforma.</p>
               </div>
+            ) : (
+              <ul className="divide-y divide-stone-100">
+                {binnacle.map((b) => {
+                  const eventType = b.typeEvent || (b as any).eventType || 'Evento';
+                  const dateStr = b.dateEvent || (b as any).date || '';
+                  const hourStr = b.hourEvent || (b as any).hour || (b as any).time || '';
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Teléfono
-                  </label>
-                  <input
-                    type="text"
-                    value={instPhone}
-                    onChange={(e) => setInstPhone(e.target.value)}
-                    className="w-full rounded-xl border border-stone-300 p-2.5 text-slate-800 focus:ring-2 focus:ring-[#11770e]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Correo Electrónico
-                  </label>
-                  <input
-                    type="email"
-                    value={instEmail}
-                    onChange={(e) => setInstEmail(e.target.value)}
-                    className="w-full rounded-xl border border-stone-300 p-2.5 text-slate-800 focus:ring-2 focus:ring-[#11770e]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Dirección del Campus
-                  </label>
-                  <input
-                    type="text"
-                    value={instAddress}
-                    onChange={(e) => setInstAddress(e.target.value)}
-                    className="w-full rounded-xl border border-stone-300 p-2.5 text-slate-800 focus:ring-2 focus:ring-[#11770e]"
-                  />
-                </div>
-              </div>
+                  let formattedDate = dateStr;
+                  if (dateStr && dateStr.includes('-')) {
+                    const parts = dateStr.split('-');
+                    if (parts.length === 3) {
+                      const year = parseInt(parts[0], 10);
+                      const month = parseInt(parts[1], 10) - 1;
+                      const day = parseInt(parts[2], 10);
+                      const d = new Date(year, month, day);
+                      const rawMonth = d.toLocaleDateString('es-CO', { month: 'short' });
+                      formattedDate = `${day} ${rawMonth} ${year}`;
+                    }
+                  }
 
-              <div className="flex justify-end pt-2">
-                <button
-                  id="btn-save-institution"
-                  type="submit"
-                  className="px-5 py-2.5 bg-[#11770e] hover:bg-[#0d5c0b] text-white rounded-xl font-semibold text-xs shadow-xs transition-colors cursor-pointer"
-                >
-                  Guardar Cambios Institucionales
-                </button>
-              </div>
-            </form>
-          </div>
+                  return (
+                    <li key={b.id} className="grid gap-3 px-4 py-4 transition-colors hover:bg-stone-50/70 sm:grid-cols-[150px_minmax(0,1fr)] sm:px-5">
+                      <div className="flex items-center gap-2 text-xs text-stone-600 sm:items-start sm:pt-0.5">
+                        <Calendar aria-hidden="true" className="h-4 w-4 shrink-0 text-stone-400" />
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:block">
+                          <p className="font-medium text-slate-700">{formattedDate || 'Fecha sin registrar'}</p>
+                          {hourStr && <p className="font-mono text-[11px] text-stone-500 sm:mt-1">{hourStr}</p>}
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-flex rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[10px] font-semibold text-brand-700">{eventType}</span>
+                          <span className="text-xs text-stone-500">@{b.username || 'usuario desconocido'}</span>
+                        </div>
+                        <p className="mt-2 break-words text-sm leading-5 text-slate-800">{b.description}</p>
+                        <p className="mt-2 font-mono text-[11px] text-stone-400">IP de origen · {b.ipAddress || '127.0.0.1'}</p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
         </div>
       )}
+
       </div>
-    </div>
 
       {/* MODAL: APPROVE TUTORING */}
       {approvingTutoring && (
@@ -2396,9 +1765,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             id="modal-approve-card"
             className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden"
           >
-            <div className="px-5 py-4 bg-emerald-50 border-b border-emerald-100 flex items-center justify-between">
-              <h3 className="font-bold text-emerald-950 text-sm flex items-center gap-1.5">
-                <Check className="w-4 h-4 text-emerald-600" />
+            <div className="px-5 py-4 bg-brand-50 border-b border-brand-100 flex items-center justify-between">
+              <h3 className="font-bold text-brand-900 text-sm flex items-center gap-1.5">
+                <Check aria-hidden="true" className="w-4 h-4 text-brand-700" />
                 Aprobar y Programar Tutoría {approvingTutoring.code}
               </h3>
               <button
@@ -2418,12 +1787,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="text-slate-600">Docente: {approvingTutoring.teacherName}</div>
                 <div className="flex items-center gap-2 pt-1 text-slate-700">
                   <span className="font-bold text-slate-900 flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-[#11770e]" />
+                    <Calendar aria-hidden="true" className="w-3.5 h-3.5 text-brand-700" />
                     {formatTutoringDateTime(approvingTutoring.reservDate, approvingTutoring.scheduleLabel, approvingTutoring.reservTime).formattedDate}
                   </span>
                   <span className="text-slate-300">•</span>
-                  <span className="font-semibold text-[#11770e] flex items-center gap-1 bg-[#eaf8ea] border border-[#bce6bc] px-2 py-0.5 rounded-md">
-                    <Clock className="w-3 h-3" />
+                  <span className="font-semibold text-brand-700 flex items-center gap-1 bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-md">
+                    <Clock aria-hidden="true" className="w-3 h-3" />
                     {approvingTutoring.reservTime || approvingTutoring.scheduleLabel}
                   </span>
                 </div>
@@ -2453,7 +1822,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       required
                       maxLength={200}
                       placeholder="Salón o aula"
-                      className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:ring-2 focus:ring-emerald-500"
+                      className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
                     />
                     <input
                       id="input-approve-block"
@@ -2463,7 +1832,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       required
                       maxLength={50}
                       placeholder="Bloque o edificio"
-                      className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:ring-2 focus:ring-emerald-500"
+                      className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
                     />
                   </div>
                 ) : (
@@ -2474,13 +1843,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     onChange={(e) => setAssignedSpace(e.target.value)}
                     required
                     placeholder="Enlace de videollamada (Google Meet, Zoom, etc.)"
-                    className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:ring-2 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
                   />
                 )}
               </div>
 
               {approvalError && (
-                <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs">
+                <div role="alert" className="p-2.5 bg-danger-soft border border-danger-border text-danger rounded-lg text-xs">
                   {approvalError}
                 </div>
               )}
@@ -2497,9 +1866,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   id="btn-confirm-approve"
                   type="submit"
                   disabled={approving}
-                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold shadow-xs disabled:opacity-50"
+                  className="px-4 py-1.5 bg-brand-700 hover:bg-brand-800 text-white rounded-lg font-semibold shadow-xs disabled:opacity-50"
                 >
-                  {approving ? 'Guardando...' : 'Confirmar Aprobación'}
+                  {approving ? 'Guardando…' : 'Confirmar Aprobación'}
                 </button>
               </div>
             </form>
@@ -2517,9 +1886,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             id="modal-cancel-card"
             className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden"
           >
-            <div className="px-5 py-4 bg-rose-50 border-b border-rose-100 flex items-center justify-between">
-              <h3 className="font-bold text-rose-950 text-sm flex items-center gap-1.5">
-                <Ban className="w-4 h-4 text-rose-600" />
+            <div className="px-5 py-4 bg-danger-soft border-b border-danger-border flex items-center justify-between">
+              <h3 className="font-bold text-danger text-sm flex items-center gap-1.5">
+                <Ban aria-hidden="true" className="w-4 h-4 text-danger" />
                 Cancelar Solicitud {cancellingTutoring.code}
               </h3>
               <button
@@ -2558,12 +1927,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   required
                   minLength={5}
                   placeholder="Motivo de la cancelación"
-                  className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:ring-2 focus:ring-rose-500"
+                  className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:ring-2 focus:ring-danger"
                 />
               </div>
 
               {cancelError && (
-                <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs">
+                <div role="alert" className="p-2.5 bg-danger-soft border border-danger-border text-danger rounded-lg text-xs">
                   {cancelError}
                 </div>
               )}
@@ -2580,9 +1949,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   id="btn-confirm-cancel"
                   type="submit"
                   disabled={cancelling}
-                  className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold shadow-xs disabled:opacity-50"
+                  className="px-4 py-1.5 bg-gradient-to-b from-danger to-rose-800 hover:from-rose-800 hover:to-rose-900 text-white rounded-lg font-semibold shadow-xs disabled:opacity-50"
                 >
-                  {cancelling ? 'Cancelando...' : 'Confirmar Cancelación'}
+                  {cancelling ? 'Cancelando…' : 'Confirmar Cancelación'}
                 </button>
               </div>
             </form>
@@ -2600,9 +1969,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             id="modal-delete-user-card"
             className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden"
           >
-            <div className="px-5 py-4 bg-rose-50 border-b border-rose-100 flex items-center justify-between">
-              <h3 className="font-bold text-rose-950 text-sm flex items-center gap-2">
-                <Trash2 className="w-4 h-4 text-rose-600" />
+            <div className="px-5 py-4 bg-danger-soft border-b border-danger-border flex items-center justify-between">
+              <h3 className="font-bold text-danger text-sm flex items-center gap-2">
+                <Trash2 aria-hidden="true" className="w-4 h-4 text-danger" />
                 <span>
                   Confirmar Eliminación de {deletingUser.role === UserRole.STUDENT ? 'Estudiante' : 'Usuario'}
                 </span>
@@ -2624,7 +1993,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
                 <div className="font-bold text-slate-900 text-sm">{deletingUser.fullName}</div>
                 <div className="flex items-center gap-2 text-slate-600">
-                  <span className="font-mono bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded font-bold">
+                  <span className="font-mono bg-info-soft text-info border border-info-border px-1.5 py-0.2 rounded font-bold">
                     {deletingUser.account}
                   </span>
                   <span>•</span>
@@ -2636,13 +2005,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               {deleteUserError && (
-                <div id="alert-delete-user-error" className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-xs text-rose-700">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div id="alert-delete-user-error" role="alert" className="p-3 bg-danger-soft border border-danger-border rounded-xl flex items-start gap-2 text-xs text-danger">
+                  <AlertCircle aria-hidden="true" className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>{deleteUserError}</span>
                 </div>
               )}
 
-              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-800">
+              <div className="p-2.5 bg-warning-soft border border-warning-border rounded-lg text-[11px] text-amber-800">
                 Esta acción removerá de forma irreversible al usuario. No se puede eliminar a un usuario que tenga solicitudes de tutorías activas (pendientes, aprobadas o en curso).
               </div>
 
@@ -2660,16 +2029,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   type="button"
                   onClick={handleDeleteUser}
                   disabled={deleteUserLoading}
-                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs disabled:opacity-50 cursor-pointer"
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-b from-danger to-rose-800 hover:from-rose-800 hover:to-rose-900 rounded-lg shadow-xs disabled:opacity-50 cursor-pointer"
                 >
                   {deleteUserLoading ? (
                     <>
                       <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Eliminando...</span>
+                      <span>Eliminando…</span>
                     </>
                   ) : (
                     <>
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 aria-hidden="true" className="w-3.5 h-3.5" />
                       <span>Eliminar Permanentemente</span>
                     </>
                   )}
@@ -2723,7 +2092,7 @@ const CareerSemesterFilter: React.FC<{
         onCareerChange(e.target.value);
         onSemesterChange('all');
       }}
-      className="rounded-xl border border-stone-200 bg-white px-2.5 py-1.5 text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/30 focus:border-[#11770e] transition-all cursor-pointer shadow-2xs text-xs max-w-[200px] truncate"
+      className="rounded-md border border-[#8792a2] bg-white px-2.5 h-8 text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/40 focus:border-[#11770e] transition-colors cursor-pointer text-xs max-w-[200px] truncate"
     >
       <option value="all">Todas las carreras</option>
       {careers.map((c) => (
@@ -2737,7 +2106,7 @@ const CareerSemesterFilter: React.FC<{
       value={semesterFilter}
       onChange={(e) => onSemesterChange(e.target.value)}
       disabled={careerFilter === 'all'}
-      className="rounded-xl border border-stone-200 bg-white px-2 py-1.5 text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/30 focus:border-[#11770e] transition-all cursor-pointer shadow-2xs text-xs w-auto max-w-[135px] disabled:opacity-50 disabled:bg-stone-50 disabled:cursor-not-allowed"
+      className="rounded-md border border-[#8792a2] bg-white px-2 h-8 text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#11770e]/40 focus:border-[#11770e] transition-colors cursor-pointer text-xs w-auto max-w-[135px] disabled:opacity-50 disabled:bg-stone-50 disabled:cursor-not-allowed"
     >
       <option value="all">Todos los semestres</option>
       {Array.from({ length: selectedCareer?.numberOfSemesters || 10 }, (_, i) => i + 1).map((n) => (

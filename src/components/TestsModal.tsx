@@ -27,10 +27,10 @@ export const TestsModal: React.FC<TestsModalProps> = ({ onClose }) => {
         id="modal-tests-card"
         className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-[#fffaed]/70">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-brand-50/70">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-[#11770e]" />
-            <h3 className="text-base font-semibold text-[#2b2b2b]">
+            <ShieldCheck aria-hidden="true" className="w-5 h-5 text-brand-700" />
+            <h3 className="text-base font-semibold text-stone-900">
               Verificador de Reglas de Negocio (Clean Architecture)
             </h3>
           </div>
@@ -39,7 +39,7 @@ export const TestsModal: React.FC<TestsModalProps> = ({ onClose }) => {
               id="btn-rerun-tests"
               onClick={handleRerun}
               disabled={running}
-              className="text-xs font-semibold text-[#11770e] hover:text-[#0d5c0b] flex items-center gap-1 px-2.5 py-1 rounded-md hover:bg-[#eaf8ea] transition-colors cursor-pointer"
+              className="text-xs font-semibold text-brand-700 hover:text-brand-800 flex items-center gap-1 px-2.5 py-1 rounded-md hover:bg-brand-50 transition-colors cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${running ? 'animate-spin' : ''}`} />
               Re-ejecutar Pruebas
@@ -47,24 +47,25 @@ export const TestsModal: React.FC<TestsModalProps> = ({ onClose }) => {
             <button
               id="btn-close-tests-modal"
               onClick={onClose}
+              aria-label="Cerrar verificador"
               className="text-slate-400 hover:text-slate-600 p-1 rounded-md cursor-pointer"
             >
-              <X className="w-5 h-5" />
+              <X aria-hidden="true" className="w-5 h-5" />
             </button>
           </div>
         </div>
 
         <div className="p-6 space-y-4 overflow-y-auto">
-          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
+          <div className="p-4 bg-brand-50 border border-brand-200 rounded-xl flex items-center justify-between">
             <div>
-              <div className="text-emerald-950 font-bold text-base">
+              <div className="text-brand-900 font-bold text-base">
                 Todas las reglas invariantes están protegidas
               </div>
-              <div className="text-emerald-800 text-xs mt-0.5">
+              <div className="text-brand-800 text-xs mt-0.5">
                 {testResult.passed} de {testResult.total} pruebas unitarias pasan satisfactoriamente.
               </div>
             </div>
-            <span className="text-2xl font-black text-emerald-700">100%</span>
+            <span className="text-2xl font-black text-brand-700">100%</span>
           </div>
 
           <div className="space-y-2.5">
@@ -74,14 +75,14 @@ export const TestsModal: React.FC<TestsModalProps> = ({ onClose }) => {
                 className="p-3 rounded-lg border border-slate-200 bg-slate-50/50 flex items-start gap-3"
               >
                 {r.success ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <CheckCircle2 aria-hidden="true" className="w-4 h-4 text-brand-700 shrink-0 mt-0.5" />
                 ) : (
-                  <XCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <XCircle aria-hidden="true" className="w-4 h-4 text-danger shrink-0 mt-0.5" />
                 )}
                 <div className="flex-1">
                   <div className="text-xs font-semibold text-slate-800">{r.name}</div>
                   <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                    Resultado: <span className="font-semibold text-emerald-700">{r.message}</span>
+                    Resultado: <span className="font-semibold text-brand-700">{r.message}</span>
                   </div>
                 </div>
               </div>

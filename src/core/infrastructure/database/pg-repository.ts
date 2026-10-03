@@ -121,7 +121,7 @@ export class PgRepository {
   public async getUsers(): Promise<User[]> {
     const pool = await getPgPool();
     const res = await pool.query(
-      `SELECT id, username, full_name as "fullName", alias, email, phone, role, account,
+      `SELECT id, username, full_name as "fullName", alias, email, role, account,
               campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
               career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
               semester, photo_url as "photoUrl", observations, is_active as "isActive",
@@ -134,7 +134,7 @@ export class PgRepository {
   public async getUserById(id: string): Promise<User | null> {
     const pool = await getPgPool();
     const res = await pool.query(
-      `SELECT id, username, full_name as "fullName", alias, email, phone, role, account,
+      `SELECT id, username, full_name as "fullName", alias, email, role, account,
               campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
               career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
               semester, photo_url as "photoUrl", observations, is_active as "isActive",
@@ -149,7 +149,7 @@ export class PgRepository {
     const pool = await getPgPool();
     const cleanTerm = term.toLowerCase().trim();
     const res = await pool.query(
-      `SELECT id, username, full_name as "fullName", alias, email, phone, role, account,
+      `SELECT id, username, full_name as "fullName", alias, email, role, account,
               campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
               career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
               semester, photo_url as "photoUrl", observations, is_active as "isActive",
@@ -253,7 +253,7 @@ export class PgRepository {
     const term = identity.toLowerCase().trim();
 
     let query = `
-      SELECT id, username, password_hash as "passwordHash", full_name as "fullName", alias, email, phone, role, account,
+      SELECT id, username, password_hash as "passwordHash", full_name as "fullName", alias, email, role, account,
              campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
              career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
              semester, photo_url as "photoUrl", observations, is_active as "isActive",
@@ -311,10 +311,10 @@ export class PgRepository {
     const studentCareer = this.resolveCareer(dto.careerId);
 
     await pool.query(
-      `INSERT INTO users (id, username, password_hash, full_name, alias, email, phone, role, account,
+      `INSERT INTO users (id, username, password_hash, full_name, alias, email, role, account,
                           campus_id, campus_name, career_id, career_name, birth_date, admission_date,
                           semester, photo_url, observations, is_active, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, true, $19);`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, true, $18);`,
       [
         id,
         dto.username,
@@ -322,7 +322,6 @@ export class PgRepository {
         dto.fullName,
         alias,
         dto.email,
-        dto.phone || '',
         UserRole.STUDENT,
         dto.account,
         dto.campusId || 'cam-1',
@@ -369,10 +368,10 @@ export class PgRepository {
     const teacherCareer = this.resolveCareer(dto.careerId);
 
     await pool.query(
-      `INSERT INTO users (id, username, password_hash, full_name, alias, email, phone, role, account,
+      `INSERT INTO users (id, username, password_hash, full_name, alias, email, role, account,
                           campus_id, campus_name, career_id, career_name, birth_date, admission_date,
                           semester, photo_url, observations, is_active, must_change_password, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 0, $16, $17, true, true, $18);`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0, $15, $16, true, true, $17);`,
       [
         id,
         dto.username,
@@ -380,7 +379,6 @@ export class PgRepository {
         dto.fullName,
         alias,
         dto.email,
-        dto.phone || '',
         UserRole.TEACHER,
         dto.account || '',
         dto.campusId || 'cam-1',
@@ -509,7 +507,7 @@ export class PgRepository {
 
   public async updateTeacherProfile(
     userId: string,
-    dto: { fullName?: string; phone?: string; email?: string; careerId?: string },
+    dto: { fullName?: string; email?: string; careerId?: string },
     actor: User
   ): Promise<User> {
     const pool = await getPgPool();
@@ -528,12 +526,11 @@ export class PgRepository {
     await pool.query(
       `UPDATE users SET
          full_name = COALESCE($1, full_name),
-         phone = COALESCE($2, phone),
-         email = COALESCE($3, email),
-         career_id = COALESCE($4, career_id),
-         career_name = COALESCE($5, career_name)
-       WHERE id = $6;`,
-      [dto.fullName || null, dto.phone || null, dto.email || null, careerId, careerName, userId]
+         email = COALESCE($2, email),
+         career_id = COALESCE($3, career_id),
+         career_name = COALESCE($4, career_name)
+       WHERE id = $5;`,
+      [dto.fullName || null, dto.email || null, careerId, careerName, userId]
     );
 
     await this.logBinnacle(
@@ -546,7 +543,7 @@ export class PgRepository {
 
   public async updateUserProfile(
     userId: string,
-    dto: { photoUrl?: string | null; phone?: string; alias?: string },
+    dto: { photoUrl?: string | null; alias?: string },
     actor: User
   ): Promise<User> {
     const pool = await getPgPool();
@@ -561,9 +558,6 @@ export class PgRepository {
 
     if (dto.photoUrl !== undefined) {
       await pool.query(`UPDATE users SET photo_url = $1 WHERE id = $2;`, [dto.photoUrl || '', userId]);
-    }
-    if (dto.phone !== undefined) {
-      await pool.query(`UPDATE users SET phone = $1 WHERE id = $2;`, [dto.phone || '', userId]);
     }
     if (dto.alias !== undefined) {
       await pool.query(`UPDATE users SET alias = $1 WHERE id = $2;`, [dto.alias || '', userId]);
@@ -907,7 +901,7 @@ export class PgRepository {
     const asstRes = await pool.query(
       `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
               student_name as "studentName", student_account as "studentAccount",
-              student_phone as "studentPhone", student_email as "studentEmail",
+              student_email as "studentEmail",
               is_petitioner as "isPetitioner", has_attended as "hasAttended",
               joined_at as "joinedAt"
        FROM tutoring_assistants;`
@@ -937,6 +931,7 @@ export class PgRepository {
 
     return tutRes.rows.map((t) => ({
       ...t,
+      score: Number(t.score || 0),
       assistants: assistantsByTutoring[t.id] || [],
       ratings: ratingsByTutoring[t.id] || []
     }));
@@ -962,7 +957,7 @@ export class PgRepository {
     const asstRes = await pool.query(
       `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
               student_name as "studentName", student_account as "studentAccount",
-              student_phone as "studentPhone", student_email as "studentEmail",
+              student_email as "studentEmail",
               is_petitioner as "isPetitioner", has_attended as "hasAttended",
               joined_at as "joinedAt"
        FROM tutoring_assistants WHERE tutoring_id = $1;`,
@@ -975,7 +970,12 @@ export class PgRepository {
        FROM tutoring_ratings WHERE tutoring_id = $1 ORDER BY created_at ASC;`,
       [id]
     );
-    return { ...tutRes.rows[0], assistants: asstRes.rows, ratings: oneRateRes.rows };
+    return {
+      ...tutRes.rows[0],
+      score: Number(tutRes.rows[0].score || 0),
+      assistants: asstRes.rows,
+      ratings: (oneRateRes.rows || []).map((r) => ({ ...r, score: Number(r.score || 0) }))
+    };
   }
 
   public async createTutoring(dto: CreateTutoringDto, user: User): Promise<Tutoring> {
@@ -1071,9 +1071,9 @@ export class PgRepository {
     // Add petitioner as assistant
     const asstId = `asst-${Date.now()}`;
     await pool.query(
-      `INSERT INTO tutoring_assistants (id, tutoring_id, student_id, student_name, student_account, student_phone, student_email, is_petitioner, has_attended, joined_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, true, false, $8);`,
-      [asstId, id, user.id, user.fullName, user.account, user.phone, user.email, nowStr]
+      `INSERT INTO tutoring_assistants (id, tutoring_id, student_id, student_name, student_account, student_email, is_petitioner, has_attended, joined_at)
+       VALUES ($1, $2, $3, $4, $5, $6, true, false, $7);`,
+      [asstId, id, user.id, user.fullName, user.account, user.email, nowStr]
     );
 
     await this.logBinnacle(
@@ -1286,7 +1286,8 @@ export class PgRepository {
     await this.addNotification(
       tut.petitionerStudentId,
       'Califica tu Tutoría',
-      `La tutoría ${tut.code} ha finalizado. Por favor ingresa para calificar la sesión.`
+      `La tutoría ${tut.code} ha finalizado. Por favor ingresa para calificar la sesión.`,
+      tutoringId
     );
 
     return (await this.getTutoringById(tutoringId))!;
@@ -1342,9 +1343,9 @@ export class PgRepository {
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
 
     await pool.query(
-      `INSERT INTO tutoring_assistants (id, tutoring_id, student_id, student_name, student_account, student_phone, student_email, is_petitioner, has_attended, joined_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, false, false, $8);`,
-      [asstId, tutoringId, student.id, student.fullName, student.account, student.phone, student.email, nowStr]
+      `INSERT INTO tutoring_assistants (id, tutoring_id, student_id, student_name, student_account, student_email, is_petitioner, has_attended, joined_at)
+       VALUES ($1, $2, $3, $4, $5, $6, false, false, $7);`,
+      [asstId, tutoringId, student.id, student.fullName, student.account, student.email, nowStr]
     );
 
     await this.logBinnacle(

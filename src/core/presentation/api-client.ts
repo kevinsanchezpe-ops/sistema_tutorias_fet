@@ -455,7 +455,7 @@ export class ApiClient {
 
   public static async updateTeacherProfile(
     teacherId: string,
-    dto: { fullName?: string; phone?: string; email?: string; careerId?: string; subjectIds?: string[] },
+    dto: { fullName?: string; email?: string; careerId?: string; subjectIds?: string[] },
     admin: User
   ): Promise<ApiResponse<User>> {
     const res = await request<User>(`/teachers/${teacherId}`, {
@@ -475,7 +475,7 @@ export class ApiClient {
 
   public static async updateUserProfile(
     userId: string,
-    data: { photoUrl?: string | null; phone?: string; alias?: string },
+    data: { photoUrl?: string | null; alias?: string },
     actor: User
   ): Promise<ApiResponse<User>> {
     const res = await request<User>(`/users/${userId}/profile`, {

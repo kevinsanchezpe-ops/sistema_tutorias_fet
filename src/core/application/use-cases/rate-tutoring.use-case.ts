@@ -68,7 +68,8 @@ export class RateTutoringUseCase {
     db.addNotification(
       tutoring.teacherId,
       'Nueva Calificación Recibida',
-      `El estudiante ${student.fullName} ha calificado su tutoría ${tutoring.code} con ${dto.score}/5 estrellas. Comentario: "${dto.studentComment.trim()}"`
+      `El estudiante ${student.fullName} ha calificado su tutoría ${tutoring.code} con ${dto.score}/5 estrellas. Comentario: "${dto.studentComment.trim()}"`,
+      tutoring.id
     );
 
     db.notify();
