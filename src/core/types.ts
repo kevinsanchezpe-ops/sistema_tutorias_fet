@@ -35,6 +35,11 @@ export enum TutoringModality {
   VIRTUAL = 1
 }
 
+export enum TutoringType {
+  INDIVIDUAL = 'INDIVIDUAL',
+  GROUP = 'GROUP'
+}
+
 export interface Career {
   id: string;
   name: string;
@@ -62,6 +67,7 @@ export interface User {
   observations?: string;
   isActive: boolean;
   mustChangePassword?: boolean;
+  sessionVersion?: number;
   createdAt: string;
   passwordHash?: string;
 }
@@ -135,6 +141,8 @@ export interface Tutoring {
   reservDate: string; // YYYY-MM-DD
   requestDate: string;
   modality: TutoringModality;
+  type?: TutoringType;
+  maxParticipants?: number | null;
   status: TutoringStatus;
   space: string; // Aula física o enlace virtual
   block?: string; // Bloque/edificio del aula en presenciales (ej. "B2"), escrito manualmente

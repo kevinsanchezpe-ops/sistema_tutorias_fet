@@ -21,6 +21,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSuccess
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
 
   const selectedCareer = careers.find((c) => c.id === careerId);
 
@@ -33,7 +34,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSuccess
     setErrorMsg(null);
     setLoading(true);
 
-    const res = await ApiClient.registerStudent({
+    const res = await ApiClient.registerStudentByAdmin({
       fullName,
       email,
       birthDate,
@@ -42,14 +43,14 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSuccess
       careerId,
       semester: Number(semester),
       campusId: 'cmp-1',
-      // El identificador interno se genera desde el correo; no se solicita al usuario.
+      // El identificador interno se genera desde el correo institucional.
       username: email.trim().toLowerCase()
     });
 
     setLoading(false);
     if (res.success && res.data) {
       onSuccess(res.data);
-      onClose();
+      setTemporaryPassword(res.data.temporaryPassword);
     } else {
       setErrorMsg(res.error?.message || 'Error al registrar al estudiante.');
     }
@@ -90,7 +91,16 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSuccess
           </button>
         </header>
 
-        <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
+        {temporaryPassword ? (
+          <div className="space-y-5 p-5 sm:p-7">
+            <div role="status" className="rounded-xl border border-brand-200 bg-brand-50 p-4">
+              <p className="text-sm font-semibold text-brand-900">Cuenta creada</p>
+              <p className="mt-1 text-sm text-brand-800">Entrega esta contraseña temporal al estudiante. Se le pedirá cambiarla al iniciar sesión.</p>
+              <code className="mt-3 block select-all rounded-lg border border-brand-200 bg-white px-3 py-2 font-mono text-base font-bold text-slate-900">{temporaryPassword}</code>
+            </div>
+            <button type="button" onClick={onClose} className="min-h-10 w-full rounded-lg bg-brand-700 px-4 text-sm font-semibold text-white hover:bg-brand-800">Listo</button>
+          </div>
+        ) : <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
           <div className="space-y-6 overflow-y-auto px-5 py-5 sm:px-7">
             <section aria-labelledby="student-personal-heading" className="space-y-4">
               <div className="flex items-center gap-2 border-b border-stone-100 pb-2">
@@ -164,7 +174,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onSuccess
               {loading ? 'Registrando…' : 'Crear cuenta de estudiante'}
             </button>
           </footer>
-        </form>
+        </form>}
       </div>
     </div>
   );

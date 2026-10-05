@@ -157,6 +157,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [approvingTutoring, setApprovingTutoring] = useState<Tutoring | null>(null);
   const [assignedSpace, setAssignedSpace] = useState<string>('');
   const [assignedBlock, setAssignedBlock] = useState<string>('');
+  const [confirmedCapacity, setConfirmedCapacity] = useState<number>(10);
   const [approving, setApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [approvalSuccess, setApprovalSuccess] = useState<string | null>(null);
@@ -164,6 +165,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const openApproveModal = (tut: Tutoring) => {
     setApprovingTutoring(tut);
     setApprovalError(null);
+    setConfirmedCapacity(Math.max(2, Math.min(tut.assistants?.length || 2, 10)));
     if (tut.modality === TutoringModality.PRESENCIAL) {
       setAssignedSpace(tut.space && tut.space !== 'Pendiente aula' ? tut.space : '');
       setAssignedBlock(tut.block || '');
@@ -179,7 +181,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     setApproving(true);
     setApprovalError(null);
 
-    const res = await ApiClient.approveTutoring(approvingTutoring.id, assignedSpace, currentUser, assignedBlock);
+    const res = await ApiClient.approveTutoring(approvingTutoring.id, assignedSpace, currentUser, assignedBlock, confirmedCapacity);
     setApproving(false);
 
     if (res.success) {
@@ -2073,6 +2075,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   />
                 )}
               </div>
+
+              {approvingTutoring.type === 'GROUP' && (
+                <div>
+                  <label htmlFor="approval-group-capacity" className="block font-bold text-slate-800 uppercase tracking-wider text-[10px] mb-1.5">Cupo máximo de participantes (incluye al solicitante)</label>
+                  <input id="approval-group-capacity" type="number" min={Math.max(2, approvingTutoring.assistants.length)} max={approvingTutoring.modality === TutoringModality.PRESENCIAL ? (sections.find((s) => s.name.toLowerCase() === assignedSpace.trim().toLowerCase())?.capacity || undefined) : 30} value={confirmedCapacity} onChange={(e) => setConfirmedCapacity(Number(e.target.value))} required className="w-full rounded-xl border border-stone-200 p-3 text-xs" />
+                </div>
+              )}
 
               {approvalError && (
                 <div role="alert" className="p-3.5 bg-danger-soft border border-danger-border text-danger rounded-xl text-xs flex items-center gap-2">

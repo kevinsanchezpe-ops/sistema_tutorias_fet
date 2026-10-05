@@ -19,8 +19,8 @@ export function getPgConfig(): PgConfig {
   const connectionString = process.env.DATABASE_URL;
 
   if (connectionString && !connectionString.includes('TU_PASSWORD_AQUI')) {
-    const isLocal = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
     const parsedUrl = new URL(connectionString);
+    const isLocal = ['localhost', '127.0.0.1', 'postgres'].includes(parsedUrl.hostname);
     const sslMode = parsedUrl.searchParams.get('sslmode')?.toLowerCase();
     const legacyVerifyFullModes = ['prefer', 'require', 'verify-ca'];
     // pg currently treats these legacy modes as verify-full. Convert them to
@@ -28,10 +28,17 @@ export function getPgConfig(): PgConfig {
     if (sslMode && legacyVerifyFullModes.includes(sslMode)) {
       parsedUrl.searchParams.set('sslmode', 'verify-full');
     }
-    const verifyTls = Boolean(sslMode && [...legacyVerifyFullModes, 'verify-full'].includes(sslMode));
+    // Solo desactiva TLS explícitamente para el PostgreSQL local del compose.
+    // Las conexiones remotas siempre validan el certificado del servidor.
+    if (sslMode === 'disable' && isLocal) {
+      return { connectionString: parsedUrl.toString(), ssl: undefined };
+    }
+    if (!isLocal && !parsedUrl.searchParams.has('sslmode')) {
+      parsedUrl.searchParams.set('sslmode', 'verify-full');
+    }
     return {
       connectionString: parsedUrl.toString(),
-      ssl: isLocal ? undefined : { rejectUnauthorized: verifyTls }
+      ssl: isLocal ? undefined : { rejectUnauthorized: true }
     };
   }
 

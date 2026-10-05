@@ -14,6 +14,7 @@ export interface RegisterStudentDto {
   campusId?: string;
   username: string;
   password?: string;
+  confirmPassword?: string;
 }
 
 export class RegisterStudentUseCase {

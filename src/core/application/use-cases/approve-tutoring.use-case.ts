@@ -1,12 +1,13 @@
 import { BusinessRuleException, ScheduleConflictService } from '../../domain/services/schedule-conflict.service';
 import { TutoringStateMachineService } from '../../domain/services/state-machine.service';
 import { db } from '../../infrastructure/database/database';
-import { Tutoring, TutoringModality, TutoringStatus, User, UserRole } from '../../types';
+import { Tutoring, TutoringModality, TutoringStatus, TutoringType, User, UserRole } from '../../types';
 
 export interface ApproveTutoringDto {
   tutoringId: string;
   space: string; // Aula física escrita manualmente (e.g. "Aula 25") o Enlace URL (e.g. "https://meet.google.com/xyz")
   block?: string; // Bloque/edificio escrito manualmente en presenciales (e.g. "B2")
+  maxParticipants?: number;
 }
 
 export class ApproveTutoringUseCase {
@@ -35,6 +36,10 @@ export class ApproveTutoringUseCase {
           : 'Debe ingresar el enlace de la reunión virtual.',
         'SPACE_REQUIRED'
       );
+    }
+    const group = (tutoring.type || TutoringType.GROUP) === TutoringType.GROUP;
+    if (group && (!Number.isInteger(dto.maxParticipants) || Number(dto.maxParticipants) < Math.max(2, tutoring.assistants.length))) {
+      throw new BusinessRuleException('Indique un cupo grupal que incluya a los participantes ya inscritos.', 'INVALID_CAPACITY');
     }
 
     const block = (dto.block || '').trim();
@@ -68,6 +73,7 @@ export class ApproveTutoringUseCase {
     }
 
     tutoring.status = TutoringStatus.APPROVED;
+    tutoring.maxParticipants = group ? Number(dto.maxParticipants) : 1;
     tutoring.space = dto.space.trim();
     tutoring.block = tutoring.modality === TutoringModality.PRESENCIAL ? block : '';
     tutoring.approvedById = approver.id;

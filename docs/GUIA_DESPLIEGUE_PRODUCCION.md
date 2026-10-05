@@ -1,99 +1,52 @@
-# GUÍA DE DESPLIEGUE Y OPERACIÓN EN PRODUCCIÓN (FET)
-## Sistema: "Agendamientos Tutorías FET"
-### Fundación Escuela Tecnológica de Neiva - FET
-**Fecha:** Septiembre 2026 | **Versión:** 1.0 (Producción Certificada)
+# Despliegue y operación del sistema FET
 
----
+## Arquitectura actual
 
-## 1. RESUMEN DE COMPONENTES DE SEGURIDAD IMPLEMENTADOS
+- Cliente: React 19, TypeScript, Vite y Tailwind CSS.
+- Servidor: Express 4 con endpoints REST bajo `/api`.
+- Persistencia: PostgreSQL, acceso mediante `pg` y consultas parametrizadas.
+- Sesión: JWT de 2 horas en cookie `HttpOnly`; el servidor vuelve a validar cuenta, estado, versión de sesión y rol contra PostgreSQL en cada petición autenticada.
+- Contraseñas: bcrypt con 12 rondas. Las cuentas creadas por administración deben cambiar la contraseña temporal al entrar.
+- Adjuntos de tutorías: guardados en volumen `uploads` y descargados solo tras comprobar la identidad y participación.
 
-| Componente | Mecanismo | Beneficio para la FET |
-| :--- | :--- | :--- |
-| **Cifrado de Claves** | `bcryptjs` (Cost Factor: 10 rondas de sal) | Las contraseñas de docentes y alumnos nunca se guardan en texto claro. Resistente a filtraciones de base de datos. |
-| **Sesiones y Tokens** | `jsonwebtoken` (JWT con firma HS256, expiración de 12 horas) | Los usuarios reciben credenciales criptográficas tras el login; el backend verifica la identidad y previene suplantaciones (IDOR). |
-| **Anti Fuerza Bruta** | `express-rate-limit` (50 peticiones / 15 min por IP) | Protege los formularios de login y registro contra ataques automatizados de diccionarios o bots. |
-| **Cabeceras HTTP** | `helmet` + `cors` | Mitiga ataques de Clickjacking, Cross-Site Scripting (XSS) y MIME-sniffing. |
-| **Emails de Negocio** | Adaptador `EmailService` con plantillas HTML FET | Notificación oportuna a docentes al recibir citas y a alumnos al confirmarse o rechazarse sus tutorías. |
+## Configurar localmente
 
----
+1. Copia `.env.example` como `.env` y cambia las credenciales de PostgreSQL y `JWT_SECRET`.
+2. Para dominios institucionales adicionales, configura `INSTITUTIONAL_EMAIL_DOMAINS` como lista separada por comas. El valor inicial es `fet.edu.co` y debe confirmarse con la institución.
+3. SMTP puede omitirse en desarrollo. Sin SMTP los mensajes se simulan y no llegan al correo.
+4. Inicia PostgreSQL y ejecuta `npm run dev`.
 
-## 2. CONFIGURACIÓN DEL SERVIDOR EN PRODUCCIÓN
+El archivo `.env` contiene secretos y no se sube al repositorio. `.env.example` no contiene credenciales reales.
 
-### 2.1. Variables de Entorno (`.env`)
-En el servidor de producción (Linux Ubuntu Server / Debian o Windows Server):
+## Producción con Docker Compose
 
-```ini
-# Base de Datos PostgreSQL
-PORT=3000
-NODE_ENV=production
-DATABASE_URL=postgresql://usuario_fet:password_seguro@localhost:5432/gt_db
+Configura secretos aleatorios en el entorno del servidor o en un `.env` privado: `POSTGRES_USER`, `POSTGRES_PASSWORD` (solo hexadecimal para interpolación segura en URL), `JWT_SECRET` (mínimo 32 caracteres aleatorios), `FRONTEND_URL` con HTTPS, `INSTITUTIONAL_EMAIL_DOMAINS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` y opcionalmente `SMTP_FROM`.
 
-# Claves Secretas Criptográficas
-JWT_SECRET=clave_secreta_institucional_fet_2026_muy_larga_y_segura
-JWT_EXPIRATION=12h
+Luego ejecuta:
 
-# Dominio Institucional
-FRONTEND_URL=https://tutorias.fet.edu.co
+```sh
+docker compose up --build -d
 ```
 
----
+El servicio PostgreSQL no publica su puerto al host. El servidor web publica el puerto 3000; se recomienda ponerlo detrás de un proxy inverso con TLS y permitir tráfico externo solo por HTTPS. La base y los archivos cargados usan volúmenes persistentes.
 
-## 3. ARTEFACTOS DE DESPLIEGUE (DOCKER / NGINX / PM2)
+La base Docker interna usa una red privada del Compose y no TLS entre contenedores. Para una base de datos gestionada/remota, usa `DATABASE_URL` con `sslmode=verify-full` y certificado CA confiable. No uses `sslmode=disable` para un servidor remoto.
 
-### 3.1. Opción A: Despliegue con PM2 y Servidor Node.js
-```bash
-# 1. Instalar PM2 globalmente
-npm install -g pm2
+## Backups y recuperación
 
-# 2. Compilar el proyecto para producción
-npm run build
+Respaldar PostgreSQL y el volumen de adjuntos de manera coordinada; conservar copias cifradas fuera del servidor y ensayar restauraciones periódicas. La pérdida del volumen `uploads` deja enlaces de adjuntos sin archivo aunque PostgreSQL conserve sus registros.
 
-# 3. Iniciar el servicio con reinicio automático
-pm2 start dist/server.cjs --name "fet-tutorias"
+Ejemplo de backup de base en instalación local:
 
-# 4. Guardar configuración para arranque del sistema
-pm2 save
-pm2 startup
+```sh
+pg_dump "$DATABASE_URL" --format=custom --file="gt_db.dump"
 ```
 
-### 3.2. Opción B: Configuración de Nginx como Proxy Inverso con SSL
-```nginx
-server {
-    listen 80;
-    server_name tutorias.fet.edu.co;
-    return 301 https://$host$request_uri;
-}
+## Antes de abrir el acceso público
 
-server {
-    listen 443 ssl http2;
-    server_name tutorias.fet.edu.co;
-
-    ssl_certificate /etc/letsencrypt/live/tutorias.fet.edu.co/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/tutorias.fet.edu.co/privkey.pem;
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
----
-
-## 4. RUTINA DE COPIAS DE SEGURIDAD (BACKUPS)
-
-Para programar copias de seguridad automáticas de PostgreSQL en Linux:
-```bash
-# Crear directorio de copias
-mkdir -p /var/backups/fet_db
-
-# Script en crontab para ejecutarse diariamente a las 2:00 AM
-0 2 * * * pg_dump -U postgres -d gt_db -F c -b -v -f "/var/backups/fet_db/gt_db_$(date +\%Y\%m\%d).dump"
-```
+- Reemplaza todos los secretos del entorno y verifica la URL HTTPS.
+- Confirma el dominio de correo institucional permitido.
+- Confirma el SMTP saliente y la entrega de recuperación de contraseñas.
+- Conserva la base y los uploads en volúmenes persistentes con backups probados.
+- Mantén actualizadas las dependencias y ejecuta `npm audit` durante el ciclo de publicación.
+- No uses cuentas ni datos de muestra para usuarios reales.

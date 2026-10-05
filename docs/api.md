@@ -1,87 +1,69 @@
-# Documentación de la API REST - Sistema GT
+# API REST actual
 
-Todas las respuestas de la API devuelven un formato estructurado estándar:
+El servidor Express expone rutas bajo `/api`. La sesión usa cookie `gt_token` (`HttpOnly`, `SameSite=Lax`, `Secure` en producción). Las solicitudes con sesión deben enviar credenciales; no se devuelve el JWT en JSON.
 
-```json
-{
-  "success": true,
-  "data": { ... },
-  "message": "Operación exitosa"
-}
-```
-
-En caso de error:
+Respuestas habituales:
 
 ```json
-{
-  "success": false,
-  "error": {
-    "code": "BUSINESS_RULE_VIOLATION",
-    "message": "La fecha de reserva debe tener al menos 2 días de anticipación"
-  }
-}
+{"success":true,"data":{},"message":"Operación exitosa"}
 ```
 
----
+Errores:
 
-## 1. Módulo de Autenticación (`/api/auth`)
+```json
+{"success":false,"error":{"code":"FORBIDDEN","message":"No tienes permisos."}}
+```
 
-- `POST /api/auth/login`: Autentica al usuario y entrega token JWT + perfil.
-- `POST /api/auth/register`: Registro de estudiante con datos institucionales.
-- `POST /api/auth/refresh`: Renovación de token JWT.
-- `POST /api/auth/logout`: Invalidación de sesión.
+## Autenticación
 
----
+| Método | Ruta | Acceso |
+|---|---|---|
+| GET | `/api/health` | Público, estado del backend y la conexión a PostgreSQL |
+| POST | `/api/auth/login` | Público, con límite de intentos |
+| POST | `/api/auth/register` | Público; registro de estudiante, dominio institucional permitido, contraseña de 10–100 caracteres y confirmación |
+| POST | `/api/auth/register-teacher` | Administrador |
+| POST | `/api/admin/students` | Administrador; entrega contraseña temporal que se debe cambiar al ingresar |
+| POST | `/api/auth/change-password` | Sesión válida; exige confirmación |
+| GET | `/api/auth/me` | Sesión válida |
+| POST | `/api/auth/refresh` | Sesión válida |
+| POST | `/api/auth/logout` | Público; limpia cookie y revoca sesiones actuales |
+| POST | `/api/auth/forgot-password` | Público; respuesta genérica para no revelar cuentas |
+| POST | `/api/auth/reset-password` | Público con token aleatorio de un uso y expiración |
 
-## 2. Módulo de Usuarios (`/api/users`)
+## Tutorías
 
-- `GET /api/users/me`: Perfil del usuario autenticado.
-- `PATCH /api/users/me`: Actualización de datos de contacto y observaciones.
-- `GET /api/users`: Listado de usuarios con filtros por rol (Solo ADMIN).
-- `PATCH /api/users/:id/toggle-active`: Activar o desactivar cuenta de usuario (Solo ADMIN).
+| Método | Ruta | Acceso |
+|---|---|---|
+| GET | `/api/tutorings` | Sesión válida; admin ve todas, docente ve las asignadas, estudiante ve las propias/participadas y las aprobadas de su cohorte |
+| POST | `/api/tutorings` | Estudiante |
+| PATCH | `/api/tutorings/:id/approve` | Administrador o docente asignado |
+| PATCH | `/api/tutorings/:id/cancel` | Solicitante, administrador o docente asignado |
+| PATCH | `/api/tutorings/:id/start` | Docente asignado |
+| PATCH | `/api/tutorings/:id/stop` | Docente asignado |
+| POST | `/api/tutorings/:id/join` | Estudiante; tutoría grupal pendiente o aprobada sin iniciar |
+| DELETE | `/api/tutorings/:id/participants/me` | Estudiante inscrito; retirarse antes de que inicie la tutoría |
+| POST | `/api/tutorings/:id/assistance` | Docente asignado |
+| POST | `/api/tutorings/:id/rate` | Participante estudiante, tutoría finalizada |
 
----
+## Catálogos y disponibilidad
 
-## 3. Módulo de Asignaturas y Horarios (`/api/subjects`, `/api/schedules`)
+- `GET /api/subjects`, `GET /api/careers`, `GET /api/schedules`, `GET /api/sections`: lectura de catálogos.
+- `POST/PATCH/DELETE /api/subjects...` y `POST/PUT/PATCH/DELETE /api/careers...`: administrador.
+- `GET /api/availability`: sesión válida.
+- `POST /api/availability` y `/batch`: docente dueño de la disponibilidad.
+- `PATCH /api/availability/:id/toggle`, `DELETE /api/availability/:id`: docente dueño o administrador.
+- `GET /api/teachers/:id/subjects`: sesión válida; docente propio o administrador.
+- `PUT /api/teachers/:id/subjects`: docente propio o administrador.
 
-- `GET /api/subjects`: Listado de asignaturas activas.
-- `POST /api/subjects`: Creación de asignatura (Solo ADMIN).
-- `GET /api/schedules`: Franjas horarias del centro de estudio.
-- `GET /api/schedules/availability`: Disponibilidad de docentes por asignatura.
-- `POST /api/schedules/teacher-slot`: Asignación o activación de disponibilidad docente (TEACHER o ADMIN).
-- `GET /api/sections`: Listado de aulas y espacios físicos habilitados.
+## Usuarios, notificaciones y administración
 
----
+- `GET /api/users`: administrador recibe cuentas; docente recibe su perfil y estudiantes relacionados con tutorías; estudiante recibe su perfil y docentes activos.
+- `PUT /api/users/:id/profile`: usuario propio o administrador; solo foto de perfil y alias.
+- `PATCH /api/users/:id/toggle`, `DELETE /api/users/:id`: administrador.
+- `/api/notifications/:userId`: usuario dueño o administrador. Leer una notificación valida destinatario; marcar todas valida usuario dueño o administrador.
+- `GET /api/binnacle`, `GET /api/analytics`: administrador.
+- `GET /api/institution`: lectura pública; `PUT /api/institution`: administrador.
+- `GET /api/tests`: desarrollo; en producción solo administrador.
+- `GET /uploads/:filename`: usuario autenticado que sea administrador o participante de la tutoría correspondiente.
 
-## 4. Módulo de Tutorías (`/api/tutorings`)
-
-- `GET /api/tutorings`: Listado filtrado según el rol (Estudiante ve las suyas y próximas; Docente ve las asignadas; Admin ve todas).
-- `POST /api/tutorings`: Crear nueva solicitud de tutoría (Solo STUDENT).
-  - *Body:* `{ subject, details, reservDate, scheduleSlotId, subjectCourseId, teacherId, modality, attachmentName? }`
-- `GET /api/tutorings/:id`: Detalle completo de una tutoría y sus asistentes.
-- `POST /api/tutorings/:id/join`: Estudiante se une a la tutoría como invitado (Solo STUDENT).
-- `PATCH /api/tutorings/:id/approve`: Aprobar tutoría asignando aula o enlace virtual (Solo ADMIN).
-- `PATCH /api/tutorings/:id/cancel`: Cancelar tutoría especificando motivo (ADMIN o STUDENT).
-- `PATCH /api/tutorings/:id/start`: Iniciar tutoría (Solo TEACHER asignado).
-- `PATCH /api/tutorings/:id/stop`: Finalizar tutoría (Solo TEACHER asignado).
-- `POST /api/tutorings/:id/assistance`: Registrar asistencia de los estudiantes (Solo TEACHER).
-- `POST /api/tutorings/:id/rate`: Calificar tutoría finalizada (cualquier participante, una vez cada uno; `score` es el promedio).
-  - *Body:* `{ score: 1..5, comment: string }`
-
----
-
-## 5. Módulo de Notificaciones (`/api/notifications`)
-
-- `GET /api/notifications`: Obtener notificaciones del usuario en sesión.
-- `PATCH /api/notifications/:id/read`: Marcar notificación como leída.
-- `PATCH /api/notifications/read-all`: Marcar todas las notificaciones como leídas.
-
----
-
-## 6. Módulo de Analytics y Reportes (`/api/analytics`)
-
-- `GET /api/analytics/dashboard`: Métricas resumidas y datasets para gráficos según el rol:
-  - Frecuencia por asignatura.
-  - Frecuencia por período académico.
-  - Distribución de calificaciones (1 a 5 estrellas).
-  - Tasa de cumplimiento y cancelaciones.
+Todas las mutaciones validan la identidad desde la sesión del servidor; valores de identidad enviados por el cliente no otorgan permisos.

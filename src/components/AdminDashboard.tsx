@@ -9,6 +9,7 @@ import {
   Tutoring,
   TutoringModality,
   TutoringStatus,
+  TutoringType,
   User,
   UserRole
 } from '../core/types';
@@ -195,6 +196,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [approvingTutoring, setApprovingTutoring] = useState<Tutoring | null>(null);
   const [assignedSpace, setAssignedSpace] = useState<string>('');
   const [assignedBlock, setAssignedBlock] = useState<string>('');
+  const [confirmedCapacity, setConfirmedCapacity] = useState(10);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [approving, setApproving] = useState<boolean>(false);
 
@@ -277,7 +279,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setApprovalError(null);
     setApproving(true);
 
-    const res = await ApiClient.approveTutoring(approvingTutoring.id, assignedSpace, currentUser, assignedBlock);
+    const res = await ApiClient.approveTutoring(approvingTutoring.id, assignedSpace, currentUser, assignedBlock, confirmedCapacity);
     setApproving(false);
 
     if (res.success) {
@@ -1692,6 +1694,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   />
                 )}
               </div>
+
+              {approvingTutoring.type === TutoringType.GROUP && <div>
+                <label htmlFor="admin-group-capacity" className="block font-semibold text-slate-700 uppercase mb-1">Cupo máximo (incluye al solicitante)</label>
+                <input id="admin-group-capacity" type="number" min={Math.max(2, approvingTutoring.assistants.length)} max={approvingTutoring.modality === TutoringModality.VIRTUAL ? 30 : undefined} value={confirmedCapacity} onChange={(e) => setConfirmedCapacity(Number(e.target.value))} required className="w-full rounded-lg border border-slate-300 p-2 text-xs" />
+              </div>}
 
               {approvalError && (
                 <div role="alert" className="p-2.5 bg-danger-soft border border-danger-border text-danger rounded-lg text-xs">

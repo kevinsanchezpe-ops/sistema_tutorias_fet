@@ -1,43 +1,52 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: gt_postgres
-    restart: always
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: gt_user
-      POSTGRES_PASSWORD: gt_password
-      POSTGRES_DB: gt_db
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a long random POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-gt_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - gt_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: gt_app
-    restart: always
+    restart: unless-stopped
     environment:
       PORT: 3000
       NODE_ENV: production
-      DATABASE_URL: postgresql://gt_user:gt_password@postgres:5432/gt_db?schema=public
-      JWT_SECRET: super-secret-jwt-key-for-gt-system-development-only
-      JWT_REFRESH_SECRET: super-secret-jwt-refresh-key-for-gt-system
-      FRONTEND_URL: http://localhost:3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-gt_db}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?Set a random JWT_SECRET of at least 32 characters}
+      FRONTEND_URL: ${FRONTEND_URL:?Set the public HTTPS origin}
+      INSTITUTIONAL_EMAIL_DOMAINS: ${INSTITUTIONAL_EMAIL_DOMAINS:-fet.edu.co}
+      SMTP_HOST: ${SMTP_HOST:?Configure SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:?Configure SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS:?Configure SMTP_PASS}
+      SMTP_FROM: ${SMTP_FROM:-}
     ports:
       - "3000:3000"
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - gt_network
 
 volumes:
   postgres_data:
+  uploads_data:
 
 networks:
   gt_network:

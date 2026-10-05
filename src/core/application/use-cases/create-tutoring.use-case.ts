@@ -1,6 +1,6 @@
 import { BusinessRuleException, ScheduleConflictService } from '../../domain/services/schedule-conflict.service';
 import { db } from '../../infrastructure/database/database';
-import { Tutoring, TutoringModality, TutoringStatus, User, UserRole } from '../../types';
+import { Tutoring, TutoringModality, TutoringStatus, TutoringType, User, UserRole } from '../../types';
 
 export interface CreateTutoringDto {
   subject: string;
@@ -10,6 +10,7 @@ export interface CreateTutoringDto {
   subjectCourseId: string;
   teacherId: string;
   modality: TutoringModality;
+  type: TutoringType;
   attachmentName?: string | null;
   attachmentUrl?: string | null;
 }
@@ -26,6 +27,9 @@ export class CreateTutoringUseCase {
 
     if (!dto.details || dto.details.trim().length < 5) {
       throw new BusinessRuleException('El detalle o explicación es obligatorio.', 'INVALID_DETAILS');
+    }
+    if (dto.type !== TutoringType.INDIVIDUAL && dto.type !== TutoringType.GROUP) {
+      throw new BusinessRuleException('Debe elegir si la tutoría será individual o grupal.', 'INVALID_TUTORING_TYPE');
     }
 
     // 1. Regla de negocio original: Mínimo 2 días de anticipación
@@ -90,6 +94,8 @@ export class CreateTutoringUseCase {
       reservDate: dto.reservDate,
       requestDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
       modality: dto.modality,
+      type: dto.type,
+      maxParticipants: dto.type === TutoringType.GROUP ? null : 1,
       status: TutoringStatus.PENDING,
       space: dto.modality === TutoringModality.VIRTUAL ? 'Pendiente enlace virtual' : 'Pendiente aula',
       block: '',

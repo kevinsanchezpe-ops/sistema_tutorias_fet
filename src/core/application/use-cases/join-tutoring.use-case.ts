@@ -1,6 +1,6 @@
 import { BusinessRuleException } from '../../domain/services/schedule-conflict.service';
 import { db } from '../../infrastructure/database/database';
-import { Tutoring, TutoringAssistant, TutoringModality, TutoringStatus, User, UserRole } from '../../types';
+import { Tutoring, TutoringAssistant, TutoringModality, TutoringStatus, TutoringType, User, UserRole } from '../../types';
 
 export class JoinTutoringUseCase {
   public static execute(tutoringId: string, student: User): Tutoring {
@@ -12,6 +12,9 @@ export class JoinTutoringUseCase {
     if (!tutoring) {
       throw new BusinessRuleException('La tutoría no existe.', 'NOT_FOUND');
     }
+    if ((tutoring.type || TutoringType.GROUP) !== TutoringType.GROUP) {
+      throw new BusinessRuleException('Esta tutoría es individual y no admite participantes invitados.', 'INDIVIDUAL_TUTORING');
+    }
 
     if (tutoring.petitionerStudentId === student.id) {
       throw new BusinessRuleException('Usted es el creador de esta solicitud de tutoría.', 'ALREADY_OWNER');
@@ -19,7 +22,7 @@ export class JoinTutoringUseCase {
 
     if (tutoring.status !== TutoringStatus.PENDING && tutoring.status !== TutoringStatus.APPROVED) {
       throw new BusinessRuleException(
-        'Solo puede unirse a tutorías que se encuentren en estado Pendiente o Programadas.',
+        'Solo puede unirse a tutorías pendientes o aprobadas que no hayan iniciado.',
         'INVALID_STATUS_FOR_JOIN'
       );
     }
@@ -54,6 +57,9 @@ export class JoinTutoringUseCase {
           'CAPACITY_FULL'
         );
       }
+    }
+    if (tutoring.maxParticipants && tutoring.assistants.length >= tutoring.maxParticipants) {
+      throw new BusinessRuleException('El cupo confirmado para esta tutoría está completo.', 'CAPACITY_FULL');
     }
 
     const newAssistant: TutoringAssistant = {

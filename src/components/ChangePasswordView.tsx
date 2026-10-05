@@ -26,8 +26,8 @@ export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({
     setError(null);
     setSuccess(null);
 
-    if (newPassword.trim().length < 6) {
-      setError('La nueva contraseña debe tener al menos 6 caracteres.');
+    if (newPassword.trim().length < 10) {
+      setError('La nueva contraseña debe tener al menos 10 caracteres.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -96,7 +96,7 @@ export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="Nueva contraseña"
                 required
-                minLength={6}
+                minLength={10}
                 className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-10 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
               />
               <button
@@ -125,7 +125,7 @@ export const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Confirmar contraseña"
                 required
-                minLength={6}
+                minLength={10}
                 className="w-full text-sm rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
               />
             </div>

@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS users (
   observations TEXT DEFAULT '',
   is_active BOOLEAN DEFAULT TRUE,
   must_change_password BOOLEAN DEFAULT FALSE,
+  session_version INT NOT NULL DEFAULT 0,
   created_at VARCHAR(50) DEFAULT ''
 );
 
@@ -38,6 +39,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS semester INT DEFAULT 0;
 
 -- Soporte para bases de datos creadas antes del cambio obligatorio de contraseña
 ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INT NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS subjects (
   id VARCHAR(100) PRIMARY KEY,
@@ -90,6 +92,8 @@ CREATE TABLE IF NOT EXISTS tutorings (
   reserv_date VARCHAR(50) NOT NULL,
   request_date VARCHAR(50) NOT NULL,
   modality INT NOT NULL,
+  type VARCHAR(20) NOT NULL DEFAULT 'GROUP',
+  max_participants INT,
   status INT NOT NULL,
   space TEXT DEFAULT '',
   block TEXT DEFAULT '',
@@ -113,6 +117,9 @@ CREATE TABLE IF NOT EXISTS tutorings (
   attachment_url TEXT DEFAULT '',
   created_at VARCHAR(50) NOT NULL
 );
+
+ALTER TABLE tutorings ADD COLUMN IF NOT EXISTS type VARCHAR(20) NOT NULL DEFAULT 'GROUP';
+ALTER TABLE tutorings ADD COLUMN IF NOT EXISTS max_participants INT;
 
 CREATE TABLE IF NOT EXISTS tutoring_assistants (
   id VARCHAR(100) PRIMARY KEY,
@@ -184,3 +191,11 @@ CREATE TABLE IF NOT EXISTS teacher_subjects (
   PRIMARY KEY (teacher_id, subject_id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_tutorings_teacher_date_status ON tutorings (teacher_id, reserv_date, status);
+CREATE INDEX IF NOT EXISTS idx_tutorings_student_created ON tutorings (petitioner_student_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tutorings_subject_status ON tutorings (subject_course_id, status);
+CREATE INDEX IF NOT EXISTS idx_tutorings_attachment_url ON tutorings (attachment_url) WHERE attachment_url <> '';
+CREATE INDEX IF NOT EXISTS idx_tutoring_assistants_student ON tutoring_assistants (student_id, tutoring_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications (destination_user_id, is_read, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_teacher_availability_teacher ON teacher_availability (teacher_id, subject_course_id, schedule_slot_id);
+CREATE INDEX IF NOT EXISTS idx_password_reset_active_user ON password_reset_tokens (user_id, expires_at) WHERE used = false;

@@ -78,6 +78,57 @@ export class PgRepository {
     return res.rows;
   }
 
+  public async expireStaleTutorings(): Promise<number> {
+    const pool = await getPgPool();
+    const pendingHoursValue = Number.parseInt(process.env.PENDING_TUTORING_EXPIRY_HOURS || '48', 10);
+    const noShowHoursValue = Number.parseInt(process.env.APPROVED_TUTORING_NO_SHOW_GRACE_HOURS || '24', 10);
+    const pendingHours = Number.isFinite(pendingHoursValue) && pendingHoursValue > 0 ? pendingHoursValue : 48;
+    const noShowHours = Number.isFinite(noShowHoursValue) && noShowHoursValue > 0 ? noShowHoursValue : 24;
+    const client = await pool.connect();
+    let expired: Array<{ id: string; code: string; teacher_id: string; petitioner_student_id: string; cancel_reason: string }> = [];
+    try {
+      await client.query('BEGIN');
+      const pending = await client.query(
+        `UPDATE tutorings
+         SET status = $1, cancel_reason = 'Solicitud vencida: no fue atendida dentro del plazo establecido.'
+         WHERE status = $2 AND created_at::timestamp <= NOW() - ($3::int * INTERVAL '1 hour')
+         RETURNING id, code, teacher_id, petitioner_student_id, cancel_reason;`,
+        [TutoringStatus.CANCELLED, TutoringStatus.PENDING, pendingHours]
+      );
+      const missed = await client.query(
+        `UPDATE tutorings t
+         SET status = $1, cancel_reason = 'Tutoría no realizada: no se inició dentro del plazo de tolerancia.'
+         FROM schedule_slots s
+         WHERE t.schedule_slot_id = s.id
+           AND t.status = $2
+           AND (t.reserv_date::date + s.finish_time::time + ($3::int * INTERVAL '1 hour')) < NOW()
+         RETURNING t.id, t.code, t.teacher_id, t.petitioner_student_id, t.cancel_reason;`,
+        [TutoringStatus.CANCELLED, TutoringStatus.APPROVED, noShowHours]
+      );
+      expired = [...pending.rows, ...missed.rows];
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    for (const tutoring of expired) {
+      const recipients = new Set([tutoring.teacher_id, tutoring.petitioner_student_id]);
+      const assistants = await pool.query(
+        'SELECT student_id FROM tutoring_assistants WHERE tutoring_id = $1;',
+        [tutoring.id]
+      );
+      assistants.rows.forEach((assistant: { student_id: string }) => recipients.add(assistant.student_id));
+      await Promise.all([...recipients].map((userId) =>
+        this.addNotification(userId, 'Tutoría cerrada', `La tutoría ${tutoring.code} se cerró automáticamente. ${tutoring.cancel_reason}`, tutoring.id)
+      ));
+      await this.logBinnacle('Cierre automático de tutoría', `Tutoría ${tutoring.code} cerrada por vencimiento. ${tutoring.cancel_reason}`, 'sistema');
+    }
+    return expired.length;
+  }
+
   // --- NOTIFICACIONES ---
   public async addNotification(destinationUserId: string, subject: string, content: string, tutoringId?: string): Promise<void> {
     try {
@@ -107,9 +158,17 @@ export class PgRepository {
     return res.rows;
   }
 
-  public async markNotificationRead(id: string): Promise<void> {
+  public async markNotificationRead(id: string, userId: string, isAdmin = false): Promise<void> {
     const pool = await getPgPool();
-    await pool.query('UPDATE notifications SET is_read = true WHERE id = $1;', [id]);
+    if (isAdmin) {
+      await pool.query('UPDATE notifications SET is_read = true WHERE id = $1;', [id]);
+      return;
+    }
+    const result = await pool.query(
+      'UPDATE notifications SET is_read = true WHERE id = $1 AND destination_user_id = $2;',
+      [id, userId]
+    );
+    if (result.rowCount === 0) throw new Error('Notificación no encontrada.');
   }
 
   public async markAllNotificationsRead(userId: string): Promise<void> {
@@ -125,8 +184,35 @@ export class PgRepository {
               campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
               career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
               semester, photo_url as "photoUrl", observations, is_active as "isActive",
-              must_change_password as "mustChangePassword", created_at as "createdAt"
+               must_change_password as "mustChangePassword", created_at as "createdAt"
        FROM users ORDER BY full_name ASC;`
+    );
+    return res.rows;
+  }
+
+  public async getUsersForActor(actor: User): Promise<User[]> {
+    if (actor.role === UserRole.ADMIN) return this.getUsers();
+    const pool = await getPgPool();
+    const profileColumns = `u.id, u.username, u.full_name as "fullName", u.alias, u.email, u.role, u.account,
+      u.career_id as "careerId", u.career_name as "careerName", u.semester,
+      u.photo_url as "photoUrl", u.is_active as "isActive", u.created_at as "createdAt"`;
+    if (actor.role === UserRole.TEACHER) {
+      const res = await pool.query(
+        `SELECT DISTINCT ${profileColumns}
+         FROM users u
+         WHERE u.id = $1 OR u.id IN (
+           SELECT ta.student_id FROM tutoring_assistants ta
+           JOIN tutorings t ON t.id = ta.tutoring_id WHERE t.teacher_id = $1
+         ) ORDER BY "fullName" ASC;`,
+        [actor.id]
+      );
+      return res.rows;
+    }
+    const res = await pool.query(
+      `SELECT ${profileColumns} FROM users u
+       WHERE u.id = $1 OR (u.role = $2 AND u.is_active = true)
+       ORDER BY "fullName" ASC;`,
+      [actor.id, UserRole.TEACHER]
     );
     return res.rows;
   }
@@ -138,7 +224,7 @@ export class PgRepository {
               campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
               career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
               semester, photo_url as "photoUrl", observations, is_active as "isActive",
-              must_change_password as "mustChangePassword", created_at as "createdAt"
+              must_change_password as "mustChangePassword", session_version as "sessionVersion", created_at as "createdAt"
        FROM users WHERE id = $1;`,
       [id]
     );
@@ -163,9 +249,9 @@ export class PgRepository {
 
   public async createPasswordResetToken(userId: string): Promise<string> {
     const pool = await getPgPool();
-    // Código de 6 dígitos con RNG criptográfico (Math.random es predecible)
-    const { randomInt } = await import('crypto');
-    const resetToken = randomInt(100000, 1000000).toString();
+    const { createHash, randomBytes } = await import('crypto');
+    const resetToken = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(resetToken).digest('hex');
     const id = `rst-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const expiresAt = Date.now() + 30 * 60 * 1000; // 30 minutos de vigencia
     const createdAt = new Date().toISOString();
@@ -176,7 +262,7 @@ export class PgRepository {
     await pool.query(
       `INSERT INTO password_reset_tokens (id, user_id, token, expires_at, used, created_at)
        VALUES ($1, $2, $3, $4, false, $5);`,
-      [id, userId, resetToken, expiresAt, createdAt]
+      [id, userId, tokenHash, expiresAt, createdAt]
     );
 
     return resetToken;
@@ -184,36 +270,39 @@ export class PgRepository {
 
   public async resetPasswordWithToken(token: string, newPassword: string): Promise<{ success: boolean; message: string }> {
     const pool = await getPgPool();
-    const cleanToken = token.trim();
-
-    const res = await pool.query(
-      `SELECT id, user_id as "userId", expires_at as "expiresAt", used
-       FROM password_reset_tokens
-       WHERE token = $1 AND used = false;`,
-      [cleanToken]
-    );
-
-    if (res.rows.length === 0) {
-      return { success: false, message: 'El código de seguridad es inválido o ya ha sido utilizado.' };
+    const { createHash } = await import('crypto');
+    const tokenHash = createHash('sha256').update(token.trim()).digest('hex');
+    const client = await pool.connect();
+    let userId = '';
+    try {
+      await client.query('BEGIN');
+      const res = await client.query(
+        `SELECT id, user_id as "userId", expires_at as "expiresAt"
+         FROM password_reset_tokens WHERE token = $1 AND used = false FOR UPDATE;`,
+        [tokenHash]
+      );
+      if (res.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return { success: false, message: 'El código de seguridad es inválido o ya ha sido utilizado.' };
+      }
+      const record = res.rows[0];
+      if (Date.now() > Number(record.expiresAt)) {
+        await client.query('ROLLBACK');
+        return { success: false, message: 'El código de seguridad ha expirado. Por favor solicita uno nuevo.' };
+      }
+      userId = record.userId;
+      const hashedPassword = await hashPassword(newPassword);
+      await client.query('UPDATE users SET password_hash = $1, session_version = session_version + 1, must_change_password = FALSE WHERE id = $2;', [hashedPassword, userId]);
+      await client.query('UPDATE password_reset_tokens SET used = true WHERE user_id = $1;', [userId]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
 
-    const record = res.rows[0];
-    const now = Date.now();
-
-    if (now > Number(record.expiresAt)) {
-      return { success: false, message: 'El código de seguridad ha expirado. Por favor solicita uno nuevo.' };
-    }
-
-    // Hashear nueva contraseña con bcrypt
-    const hashedPassword = await hashPassword(newPassword);
-
-    // Actualizar usuario
-    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2;', [hashedPassword, record.userId]);
-
-    // Marcar token como utilizado
-    await pool.query('UPDATE password_reset_tokens SET used = true WHERE id = $1;', [record.id]);
-
-    const user = await this.getUserById(record.userId);
+    const user = await this.getUserById(userId);
     if (user) {
       await this.logBinnacle(
         'Restablecimiento de Contraseña',
@@ -230,7 +319,7 @@ export class PgRepository {
     const hashedPassword = await hashPassword(newPassword);
 
     await pool.query(
-      'UPDATE users SET password_hash = $1, must_change_password = FALSE WHERE id = $2;',
+      'UPDATE users SET password_hash = $1, must_change_password = FALSE, session_version = session_version + 1 WHERE id = $2;',
       [hashedPassword, userId]
     );
 
@@ -248,6 +337,11 @@ export class PgRepository {
     return user;
   }
 
+  public async revokeSessions(userId: string): Promise<void> {
+    const pool = await getPgPool();
+    await pool.query('UPDATE users SET session_version = session_version + 1 WHERE id = $1;', [userId]);
+  }
+
   public async login(identity: string, password?: string, role?: UserRole): Promise<User | null> {
     const pool = await getPgPool();
     const term = identity.toLowerCase().trim();
@@ -257,7 +351,7 @@ export class PgRepository {
              campus_id as "campusId", campus_name as "campusName", career_id as "careerId",
              career_name as "careerName", birth_date as "birthDate", admission_date as "admissionDate",
              semester, photo_url as "photoUrl", observations, is_active as "isActive",
-             must_change_password as "mustChangePassword", created_at as "createdAt"
+             must_change_password as "mustChangePassword", session_version as "sessionVersion", created_at as "createdAt"
       FROM users
       WHERE (LOWER(username) = $1 OR LOWER(email) = $1 OR (account != '' AND LOWER(account) = $1))
     `;
@@ -285,7 +379,7 @@ export class PgRepository {
     return userWithoutPassword as User;
   }
 
-  public async registerStudent(dto: RegisterStudentDto): Promise<User> {
+  public async registerStudent(dto: RegisterStudentDto, mustChangePassword = false): Promise<User> {
     const pool = await getPgPool();
 
     // Check existing
@@ -303,8 +397,8 @@ export class PgRepository {
     const nameParts = dto.fullName.trim().split(' ');
     const alias = (dto as any).alias || (nameParts.length >= 2 ? `${nameParts[0]} ${nameParts[1]}` : dto.fullName);
     const plainPass = ((dto as any).password || '').trim();
-    if (plainPass.length < 6) {
-      throw new Error('La contraseña del estudiante es obligatoria (mínimo 6 caracteres).');
+    if (plainPass.length < 10) {
+      throw new Error('La contraseña del estudiante es obligatoria (mínimo 10 caracteres).');
     }
     const hashedPass = await hashPassword(plainPass);
 
@@ -313,8 +407,8 @@ export class PgRepository {
     await pool.query(
       `INSERT INTO users (id, username, password_hash, full_name, alias, email, role, account,
                           campus_id, campus_name, career_id, career_name, birth_date, admission_date,
-                          semester, photo_url, observations, is_active, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, true, $18);`,
+                           semester, photo_url, observations, is_active, must_change_password, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, true, $18, $19);`,
       [
         id,
         dto.username,
@@ -333,6 +427,7 @@ export class PgRepository {
         dto.semester || 0,
         (dto as any).photoUrl || '',
         (dto as any).observations || '',
+        mustChangePassword,
         createdAt
       ]
     );
@@ -360,8 +455,8 @@ export class PgRepository {
     const nameParts = dto.fullName.trim().split(' ');
     const alias = (dto as any).alias || (nameParts.length >= 2 ? `${nameParts[0]} ${nameParts[1]}` : dto.fullName);
     const plainPass = ((dto as any).password || '').trim();
-    if (plainPass.length < 6) {
-      throw new Error('La contraseña inicial del docente es obligatoria (mínimo 6 caracteres).');
+    if (plainPass.length < 10) {
+      throw new Error('La contraseña inicial del docente es obligatoria (mínimo 10 caracteres).');
     }
     const hashedPass = await hashPassword(plainPass);
 
@@ -473,6 +568,21 @@ export class PgRepository {
       [teacherId]
     );
     return res.rows;
+  }
+
+  public async canAccessAttachment(filename: string, actor: User): Promise<boolean> {
+    if (actor.role === UserRole.ADMIN) return true;
+    const pool = await getPgPool();
+    const result = await pool.query(
+      `SELECT 1 FROM tutorings t
+       WHERE t.attachment_url = $1
+         AND (t.teacher_id = $2 OR t.petitioner_student_id = $2 OR EXISTS (
+           SELECT 1 FROM tutoring_assistants ta
+           WHERE ta.tutoring_id = t.id AND ta.student_id = $2
+         )) LIMIT 1;`,
+      [`/uploads/${filename}`, actor.id]
+    );
+    return result.rowCount > 0;
   }
 
   public async setTeacherSubjects(teacherId: string, subjectIds: string[], actor: User): Promise<SubjectCourse[]> {
@@ -774,10 +884,13 @@ export class PgRepository {
     return res.rows;
   }
 
-  public async toggleTeacherAvailability(id: string): Promise<TeacherAvailability> {
+  public async toggleTeacherAvailability(id: string, actor: User): Promise<TeacherAvailability> {
     const pool = await getPgPool();
-    const cur = await pool.query('SELECT is_available FROM teacher_availability WHERE id = $1', [id]);
+    const cur = await pool.query('SELECT is_available, teacher_id FROM teacher_availability WHERE id = $1', [id]);
     if (cur.rows.length === 0) throw new Error('Disponibilidad no encontrada.');
+    if (actor.role !== UserRole.ADMIN && (actor.role !== UserRole.TEACHER || cur.rows[0].teacher_id !== actor.id)) {
+      throw new Error('No tiene permisos para modificar esta disponibilidad.');
+    }
 
     const newActive = !cur.rows[0].is_available;
     await pool.query('UPDATE teacher_availability SET is_available = $1 WHERE id = $2', [newActive, id]);
@@ -798,6 +911,9 @@ export class PgRepository {
     subjectCourseId: string,
     scheduleSlotId: string
   ): Promise<TeacherAvailability> {
+    if (teacher.role !== UserRole.TEACHER) {
+      throw new Error('Solo un docente puede configurar su disponibilidad.');
+    }
     const pool = await getPgPool();
     const subjRes = await pool.query('SELECT name FROM subjects WHERE id = $1', [subjectCourseId]);
     const slotRes = await pool.query('SELECT label FROM schedule_slots WHERE id = $1', [scheduleSlotId]);
@@ -862,7 +978,13 @@ export class PgRepository {
 
   public async deleteTeacherAvailability(id: string, teacher: User): Promise<boolean> {
     const pool = await getPgPool();
-    await pool.query('DELETE FROM teacher_availability WHERE id = $1', [id]);
+    if (teacher.role !== UserRole.TEACHER && teacher.role !== UserRole.ADMIN) {
+      throw new Error('Solo un docente o administrador puede eliminar disponibilidades.');
+    }
+    const result = teacher.role === UserRole.ADMIN
+      ? await pool.query('DELETE FROM teacher_availability WHERE id = $1', [id])
+      : await pool.query('DELETE FROM teacher_availability WHERE id = $1 AND teacher_id = $2', [id, teacher.id]);
+    if (result.rowCount === 0) throw new Error('Disponibilidad no encontrada o sin permisos.');
     await this.logBinnacle('Disponibilidad Docente', `Franja ${id} eliminada por ${teacher.fullName}`, teacher.username);
     return true;
   }
@@ -881,11 +1003,24 @@ export class PgRepository {
   }
 
   // --- TUTORINGS ---
-  public async getTutorings(): Promise<Tutoring[]> {
+  public async getTutorings(actor?: User): Promise<Tutoring[]> {
     const pool = await getPgPool();
+    let where = '';
+    let values: unknown[] = [];
+    if (actor?.role === UserRole.TEACHER) {
+      where = 'WHERE teacher_id = $1';
+      values = [actor.id];
+    } else if (actor?.role === UserRole.STUDENT) {
+      where = `WHERE petitioner_student_id = $1
+        OR EXISTS (SELECT 1 FROM tutoring_assistants ta WHERE ta.tutoring_id = tutorings.id AND ta.student_id = $1)
+        OR (status = $2 AND subject_course_id IN (
+          SELECT id FROM subjects WHERE career_id = $3 AND ($4::int = 0 OR semester = $4)
+        ))`;
+      values = [actor.id, TutoringStatus.APPROVED, actor.careerId || '', actor.semester || 0];
+    }
     const tutRes = await pool.query(
       `SELECT id, code, subject, details, reserv_date as "reservDate", request_date as "requestDate",
-              modality, status, space, block, subject_course_id as "subjectCourseId",
+              modality, type, max_participants as "maxParticipants", status, space, block, subject_course_id as "subjectCourseId",
               subject_course_name as "subjectCourseName", teacher_id as "teacherId",
               teacher_name as "teacherName", petitioner_student_id as "petitionerStudentId",
               petitioner_student_name as "petitionerStudentName", schedule_slot_id as "scheduleSlotId",
@@ -894,9 +1029,13 @@ export class PgRepository {
               finish_time as "finishTime", score, student_comment as "studentComment",
               teacher_comment as "teacherComment", attachment_name as "attachmentName",
               attachment_url as "attachmentUrl", cancel_reason as "cancelReason", created_at as "createdAt"
-       FROM tutorings
-       ORDER BY created_at DESC;`
+        FROM tutorings ${where}
+        ORDER BY created_at DESC;`,
+      values
     );
+
+    const tutoringIds = tutRes.rows.map((t) => t.id);
+    if (tutoringIds.length === 0) return [];
 
     const asstRes = await pool.query(
       `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
@@ -904,7 +1043,8 @@ export class PgRepository {
               student_email as "studentEmail",
               is_petitioner as "isPetitioner", has_attended as "hasAttended",
               joined_at as "joinedAt"
-       FROM tutoring_assistants;`
+        FROM tutoring_assistants WHERE tutoring_id = ANY($1::varchar[]);`,
+      [tutoringIds]
     );
 
     const assistantsByTutoring: { [key: string]: TutoringAssistant[] } = {};
@@ -919,7 +1059,8 @@ export class PgRepository {
       `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
               student_name as "studentName", score,
               student_comment as "studentComment", created_at as "createdAt"
-       FROM tutoring_ratings;`
+        FROM tutoring_ratings WHERE tutoring_id = ANY($1::varchar[]);`,
+      [tutoringIds]
     );
     const ratingsByTutoring: { [key: string]: any[] } = {};
     for (const r of rateRes.rows) {
@@ -941,7 +1082,7 @@ export class PgRepository {
     const pool = await getPgPool();
     const tutRes = await pool.query(
       `SELECT id, code, subject, details, reserv_date as "reservDate", request_date as "requestDate",
-              modality, status, space, block, cancel_reason as "cancelReason", subject_course_id as "subjectCourseId",
+              modality, type, max_participants as "maxParticipants", status, space, block, cancel_reason as "cancelReason", subject_course_id as "subjectCourseId",
               subject_course_name as "subjectCourseName", teacher_id as "teacherId",
               teacher_name as "teacherName", petitioner_student_id as "petitionerStudentId",
               petitioner_student_name as "petitionerStudentName", schedule_slot_id as "scheduleSlotId",
@@ -979,6 +1120,9 @@ export class PgRepository {
   }
 
   public async createTutoring(dto: CreateTutoringDto, user: User): Promise<Tutoring> {
+    if (user.role !== UserRole.STUDENT) {
+      throw new Error('Solo los estudiantes pueden solicitar tutorías.');
+    }
     const pool = await getPgPool();
 
     // Verify minimum 2 days advance notice (Business Rule 1)
@@ -991,10 +1135,19 @@ export class PgRepository {
       throw new Error('La fecha de la tutoría debe programarse con al menos 2 días de anticipación.');
     }
 
-    // Verify teacher conflict (Business Rule 2)
-    const conflict = await pool.query(
+    const client = await pool.connect();
+
+    try {
+    await client.query('BEGIN');
+    // Serialize scheduling writes so two requests cannot both pass the same availability check.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      `tutoring-slot:${dto.teacherId}:${dto.reservDate}:${dto.scheduleSlotId}`
+    ]);
+
+    const conflict = await client.query(
       `SELECT id FROM tutorings
-       WHERE teacher_id = $1 AND reserv_date = $2 AND schedule_slot_id = $3 AND status != $4;`,
+       WHERE teacher_id = $1 AND reserv_date = $2 AND schedule_slot_id = $3 AND status != $4
+       FOR UPDATE;`,
       [dto.teacherId, dto.reservDate, dto.scheduleSlotId, TutoringStatus.CANCELLED]
     );
     if (conflict.rows.length > 0) {
@@ -1003,13 +1156,13 @@ export class PgRepository {
 
     // Verify teacher availability (Business Rule 4, conditional):
     // si el docente tiene disponibilidad registrada, la solicitud debe ajustarse a ella.
-    const availCountRes = await pool.query(
+    const availCountRes = await client.query(
       `SELECT COUNT(*) as count FROM teacher_availability WHERE teacher_id = $1;`,
       [dto.teacherId]
     );
     const teacherHasAvailability = parseInt(availCountRes.rows[0]?.count || '0', 10) > 0;
     if (teacherHasAvailability) {
-      const availMatch = await pool.query(
+      const availMatch = await client.query(
         `SELECT id FROM teacher_availability
          WHERE teacher_id = $1 AND schedule_slot_id = $2 AND subject_course_id = $3 AND is_available = TRUE;`,
         [dto.teacherId, dto.scheduleSlotId, dto.subjectCourseId]
@@ -1020,29 +1173,51 @@ export class PgRepository {
     }
 
     // Get subject and slot labels
-    const subjRes = await pool.query('SELECT name FROM subjects WHERE id = $1', [dto.subjectCourseId]);
-    const slotRes = await pool.query('SELECT label FROM schedule_slots WHERE id = $1', [dto.scheduleSlotId]);
-    const teacherRes = await pool.query('SELECT full_name FROM users WHERE id = $1', [dto.teacherId]);
+    const subjRes = await client.query(
+      'SELECT name, is_active as "isActive", career_id as "careerId", semester FROM subjects WHERE id = $1',
+      [dto.subjectCourseId]
+    );
+    const slotRes = await client.query('SELECT label FROM schedule_slots WHERE id = $1', [dto.scheduleSlotId]);
+    const teacherRes = await client.query('SELECT full_name, role, is_active as "isActive" FROM users WHERE id = $1', [dto.teacherId]);
+
+    if (!subjRes.rows[0]?.isActive) throw new Error('La asignatura seleccionada no está activa.');
+    if (subjRes.rows[0].careerId && user.careerId && subjRes.rows[0].careerId !== user.careerId) {
+      throw new Error('Solo puedes solicitar tutorías de asignaturas de tu carrera.');
+    }
+    if (Number(subjRes.rows[0].semester) > 0 && Number(user.semester) !== Number(subjRes.rows[0].semester)) {
+      throw new Error(`Esta asignatura corresponde al semestre ${subjRes.rows[0].semester}.`);
+    }
+    if (!slotRes.rows[0]) throw new Error('La franja horaria seleccionada no es válida.');
+    if (teacherRes.rows[0]?.role !== UserRole.TEACHER || !teacherRes.rows[0]?.isActive) {
+      throw new Error('El docente seleccionado no está disponible para recibir solicitudes.');
+    }
+    const assignment = await client.query(
+      'SELECT 1 FROM teacher_subjects WHERE teacher_id = $1 AND subject_id = $2;',
+      [dto.teacherId, dto.subjectCourseId]
+    );
+    if (assignment.rows.length === 0) throw new Error('El docente no tiene asignada esta asignatura.');
 
     const subjectName = subjRes.rows[0]?.name || 'Materia';
     const scheduleLabel = slotRes.rows[0]?.label || 'Horario';
     const teacherName = teacherRes.rows[0]?.full_name || 'Docente';
 
     // Código correlativo sin colisiones (MAX sufijo numérico + 1, no COUNT)
-    const maxRes = await pool.query(
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['tutoring-code-sequence']);
+    const maxRes = await client.query(
       `SELECT COALESCE(MAX(CAST(NULLIF(REGEXP_REPLACE(code, '[^0-9]', '', 'g'), '') AS INT)), 0) AS maxcode FROM tutorings;`
     );
     const nextCodeNum = parseInt(maxRes.rows[0]?.maxcode ?? '0', 10) + 1;
     const code = `#${nextCodeNum}`;
-    const id = `tut-${Date.now()}`;
+    const { randomUUID } = await import('crypto');
+    const id = `tut-${randomUUID()}`;
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
 
-    await pool.query(
-      `INSERT INTO tutorings (id, code, subject, details, reserv_date, request_date, modality, status, space,
+    await client.query(
+      `INSERT INTO tutorings (id, code, subject, details, reserv_date, request_date, modality, type, max_participants, status, space,
                               block, subject_course_id, subject_course_name, teacher_id, teacher_name,
                               petitioner_student_id, petitioner_student_name, schedule_slot_id, schedule_label,
                               attachment_name, attachment_url, score, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 0, $21);`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 0, $22);`,
       [
         id,
         code,
@@ -1051,6 +1226,8 @@ export class PgRepository {
         dto.reservDate,
         nowStr,
         dto.modality,
+        dto.type,
+        dto.type === 'INDIVIDUAL' ? 1 : null,
         TutoringStatus.PENDING,
         '',
         '',
@@ -1069,13 +1246,14 @@ export class PgRepository {
     );
 
     // Add petitioner as assistant
-    const asstId = `asst-${Date.now()}`;
-    await pool.query(
+    const asstId = `asst-${randomUUID()}`;
+    await client.query(
       `INSERT INTO tutoring_assistants (id, tutoring_id, student_id, student_name, student_account, student_email, is_petitioner, has_attended, joined_at)
        VALUES ($1, $2, $3, $4, $5, $6, true, false, $7);`,
       [asstId, id, user.id, user.fullName, user.account, user.email, nowStr]
     );
 
+    await client.query('COMMIT');
     await this.logBinnacle(
       'Solicitud de Tutoría',
       `Estudiante ${user.fullName} solicitó tutoría ${code} (${subjectName})`,
@@ -1091,9 +1269,15 @@ export class PgRepository {
     );
 
     return (await this.getTutoringById(id))!;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
-  public async approveTutoring(tutoringId: string, space: string, approver: User, block: string = ''): Promise<Tutoring> {
+  public async approveTutoring(tutoringId: string, space: string, approver: User, block: string = '', maxParticipants?: number): Promise<Tutoring> {
     const pool = await getPgPool();
     const tut = await this.getTutoringById(tutoringId);
     if (!tut) throw new Error('Tutoría no encontrada.');
@@ -1103,6 +1287,13 @@ export class PgRepository {
     }
 
     const cleanBlock = (block || '').trim();
+    const isGroup = tut.type === 'GROUP';
+    const virtualLimit = Number.parseInt(process.env.MAX_VIRTUAL_TUTORING_PARTICIPANTS || '30', 10) || 30;
+    const roomRes = tut.modality === TutoringModality.PRESENCIAL ? await pool.query('SELECT capacity FROM sections WHERE name = $1;', [space]) : { rows: [] as any[] };
+    const roomLimit = Number.parseInt(roomRes.rows[0]?.capacity ?? '0', 10);
+    const capacityLimit = tut.modality === TutoringModality.PRESENCIAL ? roomLimit : virtualLimit;
+    if (isGroup && (!Number.isInteger(maxParticipants) || Number(maxParticipants) < 2)) throw new Error('Indique un cupo grupal de al menos 2 participantes.');
+    if (isGroup && capacityLimit > 0 && Number(maxParticipants) > capacityLimit) throw new Error(`El cupo no puede superar la capacidad disponible (${capacityLimit}).`);
     if (tut.modality === 0 && cleanBlock.length === 0) {
       throw new Error('Debe ingresar el bloque/edificio del aula para la tutoría presencial.');
     }
@@ -1138,10 +1329,12 @@ export class PgRepository {
     }
 
     const placeLabel = tut.modality === 0 && cleanBlock ? `${space} (Bloque ${cleanBlock})` : space;
-    await pool.query(
-      `UPDATE tutorings SET status = $1, space = $2, block = $3, approved_by_id = $4, approved_by_name = $5 WHERE id = $6;`,
-      [TutoringStatus.APPROVED, space, tut.modality === 0 ? cleanBlock : '', approver.id, approver.fullName, tutoringId]
+    const approved = await pool.query(
+      `UPDATE tutorings SET status = $1, space = $2, block = $3, max_participants = $4, approved_by_id = $5, approved_by_name = $6
+       WHERE id = $7 AND status = $8;`,
+      [TutoringStatus.APPROVED, space, tut.modality === 0 ? cleanBlock : '', isGroup ? Number(maxParticipants) : 1, approver.id, approver.fullName, tutoringId, TutoringStatus.PENDING]
     );
+    if (approved.rowCount !== 1) throw new Error('La solicitud cambió mientras se procesaba. Actualiza la lista e inténtalo de nuevo.');
 
     await this.logBinnacle(
       'Aprobación de Tutoría',
@@ -1174,7 +1367,6 @@ export class PgRepository {
     const pool = await getPgPool();
     const tut = await this.getTutoringById(tutoringId);
     if (!tut) throw new Error('Tutoría no encontrada.');
-
     const isPetitioner = user.id === tut.petitionerStudentId;
     const isAdmin = user.role === UserRole.ADMIN;
     const isAssignedTeacher = user.role === UserRole.TEACHER && user.id === tut.teacherId;
@@ -1187,15 +1379,29 @@ export class PgRepository {
       throw new Error('Debe indicar un motivo de cancelación detallado.');
     }
 
+    if (isPetitioner && tut.status === TutoringStatus.APPROVED) {
+      const noticeValue = Number.parseInt(process.env.CANCELLATION_MIN_NOTICE_HOURS || '24', 10);
+      const noticeHours = Number.isFinite(noticeValue) && noticeValue >= 0 ? noticeValue : 24;
+      const timing = await pool.query(
+        `SELECT ($1::date + s.start_time::time) <= NOW() + ($3::int * INTERVAL '1 hour') AS inside_notice
+         FROM schedule_slots s WHERE s.id = $2;`,
+        [tut.reservDate, tut.scheduleSlotId, noticeHours]
+      );
+      if (timing.rows[0]?.inside_notice) {
+        throw new Error(`Las cancelaciones del estudiante deben hacerse con al menos ${noticeHours} horas de anticipación. Contacta al docente o administrador para informar una emergencia.`);
+      }
+    }
+
     // Máquina de estados: solo PENDING/APPROVED pueden cancelarse
     if (tut.status !== TutoringStatus.PENDING && tut.status !== TutoringStatus.APPROVED) {
       throw new Error('Solo se pueden cancelar tutorías pendientes o programadas.');
     }
 
-    await pool.query(
-      `UPDATE tutorings SET status = $1, cancel_reason = $2 WHERE id = $3;`,
-      [TutoringStatus.CANCELLED, reason.trim(), tutoringId]
+    const cancelled = await pool.query(
+      `UPDATE tutorings SET status = $1, cancel_reason = $2 WHERE id = $3 AND status IN ($4, $5);`,
+      [TutoringStatus.CANCELLED, reason.trim(), tutoringId, TutoringStatus.PENDING, TutoringStatus.APPROVED]
     );
+    if (cancelled.rowCount !== 1) throw new Error('La tutoría cambió mientras se procesaba y ya no se puede cancelar. Actualiza la lista.');
 
     await this.logBinnacle(
       'Cancelación de Tutoría',
@@ -1223,6 +1429,21 @@ export class PgRepository {
       );
     }
 
+    // Los estudiantes inscritos también deben enterarse de la cancelación.
+    const participants = await pool.query(
+      `SELECT student_id FROM tutoring_assistants
+       WHERE tutoring_id = $1 AND student_id <> $2 AND student_id <> $3;`,
+      [tutoringId, tut.petitionerStudentId, tut.teacherId]
+    );
+    await Promise.all(participants.rows.map((participant: { student_id: string }) =>
+      this.addNotification(
+        participant.student_id,
+        'Tutoría cancelada',
+        `La tutoría ${tut.code} fue cancelada por ${user.fullName}. Motivo: ${reason.trim()}`,
+        tutoringId
+      )
+    ));
+
     return (await this.getTutoringById(tutoringId))!;
   }
 
@@ -1242,10 +1463,11 @@ export class PgRepository {
     }
 
     const startTime = new Date().toISOString().replace('T', ' ').substring(0, 16);
-    await pool.query(
-      `UPDATE tutorings SET status = $1, start_time = $2 WHERE id = $3;`,
-      [TutoringStatus.IN_PROGRESS, startTime, tutoringId]
+    const started = await pool.query(
+      `UPDATE tutorings SET status = $1, start_time = $2 WHERE id = $3 AND status = $4;`,
+      [TutoringStatus.IN_PROGRESS, startTime, tutoringId, TutoringStatus.APPROVED]
     );
+    if (started.rowCount !== 1) throw new Error('La tutoría cambió mientras se intentaba iniciar. Actualiza la lista.');
 
     await this.logBinnacle(
       'Inicio de Tutoría',
@@ -1272,10 +1494,11 @@ export class PgRepository {
     }
 
     const finishTime = new Date().toISOString().replace('T', ' ').substring(0, 16);
-    await pool.query(
-      `UPDATE tutorings SET status = $1, finish_time = $2, teacher_comment = $3 WHERE id = $4;`,
-      [TutoringStatus.COMPLETED, finishTime, teacherComment || null, tutoringId]
+    const finished = await pool.query(
+      `UPDATE tutorings SET status = $1, finish_time = $2, teacher_comment = $3 WHERE id = $4 AND status = $5;`,
+      [TutoringStatus.COMPLETED, finishTime, teacherComment || null, tutoringId, TutoringStatus.IN_PROGRESS]
     );
+    if (finished.rowCount !== 1) throw new Error('La tutoría cambió mientras se intentaba finalizar. Actualiza la lista.');
 
     await this.logBinnacle(
       'Finalización de Tutoría',
@@ -1294,9 +1517,16 @@ export class PgRepository {
   }
 
   public async joinTutoring(tutoringId: string, student: User): Promise<Tutoring> {
+    if (student.role !== UserRole.STUDENT) {
+      throw new Error('Solo los estudiantes pueden unirse a tutorías.');
+    }
     const pool = await getPgPool();
     const tut = await this.getTutoringById(tutoringId);
     if (!tut) throw new Error('Tutoría no encontrada.');
+    if (tut.type !== 'GROUP') throw new Error('Esta tutoría es individual y no admite participantes invitados.');
+    if (tut.status !== TutoringStatus.APPROVED && tut.status !== TutoringStatus.PENDING) {
+      throw new Error('Solo puedes unirte a tutorías pendientes o aprobadas que no hayan iniciado.');
+    }
 
     // Regla grupal: solo estudiantes de la misma carrera y semestre de la materia.
     const subjRes = await pool.query(
@@ -1315,7 +1545,15 @@ export class PgRepository {
       throw new Error(`Solo pueden unirse estudiantes del semestre ${subj.semester} de la materia.`);
     }
 
-    const existing = await pool.query(
+    const client = await pool.connect();
+    try {
+    await client.query('BEGIN');
+    const lockedTutoring = await client.query(
+      'SELECT id FROM tutorings WHERE id = $1 AND status IN ($2, $3) FOR UPDATE;',
+      [tutoringId, TutoringStatus.PENDING, TutoringStatus.APPROVED]
+    );
+    if (lockedTutoring.rowCount !== 1) throw new Error('La tutoría dejó de estar disponible. Actualiza la lista.');
+    const existing = await client.query(
       'SELECT id FROM tutoring_assistants WHERE tutoring_id = $1 AND student_id = $2;',
       [tutoringId, student.id]
     );
@@ -1323,30 +1561,42 @@ export class PgRepository {
       throw new Error('Ya estás registrado en esta tutoría.');
     }
 
-    // Business Rule 5: no superar el cupo (capacidad del aula) en tutorías presenciales.
+    // Se aplica el menor límite entre el cupo confirmado por el docente y el aforo físico/virtual.
+    let capacity = 0;
     if (tut.modality === TutoringModality.PRESENCIAL && tut.space) {
       const sectionRes = await pool.query('SELECT capacity FROM sections WHERE name = $1;', [tut.space]);
-      const capacity = parseInt(sectionRes.rows[0]?.capacity ?? '0', 10);
-      if (capacity > 0) {
-        const countRes = await pool.query(
-          'SELECT COUNT(*) as count FROM tutoring_assistants WHERE tutoring_id = $1;',
-          [tutoringId]
-        );
-        const current = parseInt(countRes.rows[0]?.count ?? '0', 10);
-        if (current >= capacity) {
-          throw new Error(`El cupo de esta tutoría está completo (máximo ${capacity} participantes).`);
-        }
+      capacity = parseInt(sectionRes.rows[0]?.capacity ?? '0', 10);
+    } else {
+      const configuredCapacity = Number.parseInt(process.env.MAX_VIRTUAL_TUTORING_PARTICIPANTS || '30', 10);
+      capacity = Number.isFinite(configuredCapacity) && configuredCapacity > 0 ? configuredCapacity : 30;
+    }
+    if (tut.maxParticipants && (!capacity || tut.maxParticipants < capacity)) capacity = tut.maxParticipants;
+    if (capacity > 0) {
+      const countRes = await client.query(
+        'SELECT COUNT(*) as count FROM tutoring_assistants WHERE tutoring_id = $1;',
+        [tutoringId]
+      );
+      const current = parseInt(countRes.rows[0]?.count ?? '0', 10);
+      if (current >= capacity) {
+        throw new Error(`El cupo de esta tutoría está completo (máximo ${capacity} participantes).`);
       }
     }
 
     const asstId = `asst-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
 
-    await pool.query(
+    await client.query(
       `INSERT INTO tutoring_assistants (id, tutoring_id, student_id, student_name, student_account, student_email, is_petitioner, has_attended, joined_at)
        VALUES ($1, $2, $3, $4, $5, $6, false, false, $7);`,
       [asstId, tutoringId, student.id, student.fullName, student.account, student.email, nowStr]
     );
+    await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
 
     await this.logBinnacle(
       'Inscripción a Tutoría',
@@ -1354,6 +1604,42 @@ export class PgRepository {
       student.username
     );
 
+    return (await this.getTutoringById(tutoringId))!;
+  }
+
+  public async withdrawFromTutoring(tutoringId: string, student: User): Promise<Tutoring> {
+    if (student.role !== UserRole.STUDENT) throw new Error('Solo los estudiantes pueden retirarse de una tutoría.');
+    const pool = await getPgPool();
+    const client = await pool.connect();
+    let tutoringCode = '';
+    let tutoringSubject = '';
+    let teacherId = '';
+    try {
+      await client.query('BEGIN');
+      const locked = await client.query('SELECT status, type, teacher_id as "teacherId", code, subject FROM tutorings WHERE id = $1 FOR UPDATE;', [tutoringId]);
+      const tut = locked.rows[0];
+      if (!tut) throw new Error('Tutoría no encontrada.');
+      if (tut.type !== 'GROUP') throw new Error('Solo es posible retirarse de una tutoría grupal.');
+      if (tut.status !== TutoringStatus.PENDING && tut.status !== TutoringStatus.APPROVED) {
+        throw new Error('Solo puedes retirarte antes de que el docente inicie la tutoría.');
+      }
+      const deleted = await client.query(
+        'DELETE FROM tutoring_assistants WHERE tutoring_id = $1 AND student_id = $2 AND is_petitioner = FALSE RETURNING id;',
+        [tutoringId, student.id]
+      );
+      if (deleted.rowCount !== 1) throw new Error('No tienes una inscripción activa en esta tutoría.');
+      tutoringCode = tut.code;
+      tutoringSubject = tut.subject;
+      teacherId = tut.teacherId;
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+    await this.logBinnacle('Retiro de tutoría grupal', `${student.fullName} se retiró de la tutoría ${tutoringCode} (${tutoringSubject})`, student.username);
+    await this.addNotification(teacherId, 'Participante retirado', `${student.fullName} se retiró de la tutoría grupal ${tutoringCode}.`, tutoringId);
     return (await this.getTutoringById(tutoringId))!;
   }
 
@@ -1396,11 +1682,11 @@ export class PgRepository {
     }
     // Regla grupal: cualquier participante (solicitante o invitado) puede evaluar
     const partRes = await pool.query(
-      'SELECT 1 FROM tutoring_assistants WHERE tutoring_id = $1 AND student_id = $2;',
+      'SELECT 1 FROM tutoring_assistants WHERE tutoring_id = $1 AND student_id = $2 AND has_attended = TRUE;',
       [dto.tutoringId, student.id]
     );
     if (partRes.rows.length === 0) {
-      throw new Error('Solo los participantes de esta tutoría pueden evaluarla.');
+      throw new Error('Solo los estudiantes cuya asistencia fue confirmada pueden evaluar esta tutoría.');
     }
     if (tut.status !== TutoringStatus.COMPLETED) {
       throw new Error('Solo se pueden calificar tutorías que hayan finalizado.');

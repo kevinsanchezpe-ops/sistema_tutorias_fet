@@ -72,6 +72,17 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [forgotError, setForgotError] = useState<string | null>(null);
   const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const token = params.get('token') || '';
+    if (params.get('action') === 'reset-password' && /^[a-f0-9]{64}$/i.test(token)) {
+      setResetToken(token);
+      setForgotStep('reset');
+      setShowForgotModal(true);
+      window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`);
+    }
+  }, []);
+
   const handleRequestReset = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotError(null);
@@ -101,12 +112,12 @@ export const AuthView: React.FC<AuthViewProps> = ({
     setForgotError(null);
     setForgotSuccess(null);
 
-    if (!resetToken.trim()) {
-      setForgotError('Ingresa el código de 6 dígitos que recibiste.');
+    if (resetToken.trim().length !== 64) {
+      setForgotError('Ingresa el código completo que recibiste por correo.');
       return;
     }
-    if (newPassword.length < 6) {
-      setForgotError('La nueva contraseña debe tener al menos 6 caracteres.');
+    if (newPassword.length < 10) {
+      setForgotError('La nueva contraseña debe tener al menos 10 caracteres.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -167,6 +178,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
       setRegError('Ingresa un correo institucional válido.');
       return;
     }
+    if (password.length < 10) {
+      setRegError('La contraseña debe tener al menos 10 caracteres.');
+      return;
+    }
     if (password !== confirmRegPassword) {
       setRegError('Las contraseñas no coinciden.');
       return;
@@ -185,6 +200,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
       username: email.trim().toLowerCase(),
       email: email.trim().toLowerCase(),
       password: password,
+      confirmPassword: confirmRegPassword,
       birthDate: '',
       admissionDate: new Date().toISOString().split('T')[0],
       careerId,
@@ -582,7 +598,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="Contraseña"
                         required
-                        minLength={6}
+                        minLength={10}
                         className="w-full min-w-0 text-sm rounded-lg border border-slate-300 pl-9 pr-9 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-600"
                       />
                       <button
@@ -615,7 +631,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                         onChange={(e) => setConfirmRegPassword(e.target.value)}
                         placeholder="Confirmar contraseña"
                         required
-                        minLength={6}
+                        minLength={10}
                         aria-invalid={confirmRegPassword.length > 0 && password !== confirmRegPassword}
                         className="w-full min-w-0 text-sm rounded-lg border border-slate-300 pl-9 pr-9 py-2 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-600"
                       />
@@ -746,7 +762,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
               <form onSubmit={handleConfirmReset} className="space-y-3.5">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Código de Seguridad (6 dígitos)
+                    Código de recuperación
                   </label>
                   <input
                     type="text"
@@ -755,9 +771,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     spellCheck={false}
                     value={resetToken}
                     onChange={(e) => setResetToken(e.target.value)}
-                    placeholder="Código de 6 dígitos"
+                    placeholder="Pega el código recibido por correo"
                     required
-                    maxLength={6}
+                    minLength={64}
+                    maxLength={64}
                     className="w-full text-center tracking-widest font-mono text-base font-bold rounded-lg border border-slate-300 py-2 text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-brand-600 focus:border-brand-600"
                   />
                 </div>

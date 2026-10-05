@@ -83,10 +83,12 @@ Una tutoría transita exclusivamente por los siguientes estados:
 
 ## 4. Participación de Estudiantes Invitados (`join`)
 
-1. Los estudiantes pertenecientes a la misma carrera o asignaturas comunes pueden ver tutorías de otros compañeros en estado Pendiente (`-1`) o Aprobada (`1`) en la sección **Próximas Tutorías**.
-2. Un estudiante no puede unirse como invitado a su propia tutoría solicitada.
-3. El estudiante no puede unirse dos veces a la misma tutoría.
-4. Al unirse, se crea un registro en `members_assistance` con `assistance = 0` (pendiente de ser validado por el docente).
+1. Al crear una solicitud, el estudiante elige si será individual o grupal. Las individuales no admiten invitados; las grupales aparecen en **Tutorías disponibles**.
+2. Al aprobar una tutoría grupal, el docente o administrador confirma el cupo máximo, incluyendo al solicitante. El cupo no puede exceder la capacidad del aula o el límite virtual configurado.
+3. Solo estudiantes que cumplan los requisitos de carrera y semestre pueden unirse a tutorías grupales aprobadas mientras haya cupo.
+4. Un estudiante no puede unirse como invitado a su propia tutoría ni inscribirse dos veces.
+5. Un participante invitado puede retirarse mientras la tutoría esté pendiente o aprobada, siempre antes de que el docente la inicie. El retiro no cancela la sesión y queda registrado en la bitácora; el docente recibe una notificación.
+6. Al unirse, se crea un registro en `tutoring_assistants` con asistencia pendiente.
 
 ---
 

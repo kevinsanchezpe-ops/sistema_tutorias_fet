@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
 import { UserRole } from '../../types';
 
-const SALT_ROUNDS = 10;
+const SALT_ROUNDS = 12;
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET no está definido. Configúralo en tu archivo .env antes de iniciar el servidor.');
@@ -19,6 +19,7 @@ export interface AuthTokenPayload {
   role: UserRole;
   fullName: string;
   mustChangePassword?: boolean;
+  sessionVersion?: number;
 }
 
 // Extender interfaz Request de Express

@@ -34,8 +34,14 @@ async function startServer() {
     if (jwt.length < 32 || /secret|change|example|test/i.test(jwt)) {
       throw new Error('JWT_SECRET inseguro o ausente en producción. Genera uno de 32+ caracteres.');
     }
-    if (!db || /TU_PASSWORD_AQUI|localhost/.test(db)) {
-      console.warn('⚠️ [Config] DATABASE_URL parece de desarrollo. Usa una URL gestionada con SSL en producción.');
+    if (!db) throw new Error('DATABASE_URL es obligatoria en producción.');
+    const dbUrl = new URL(db);
+    if (['localhost', '127.0.0.1'].includes(dbUrl.hostname)) throw new Error('DATABASE_URL no puede apuntar a localhost en producción.');
+    if (dbUrl.hostname !== 'postgres' && dbUrl.searchParams.get('sslmode') !== 'verify-full') {
+      throw new Error('La conexión PostgreSQL remota debe usar sslmode=verify-full.');
+    }
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      throw new Error('SMTP_HOST, SMTP_USER y SMTP_PASS son obligatorios en producción para recuperación y notificaciones.');
     }
   }
 
@@ -47,7 +53,6 @@ async function startServer() {
   try {
     fs.mkdirSync(uploadsDir, { recursive: true });
   } catch {}
-  app.use('/uploads', express.static(uploadsDir, { maxAge: '7d', dotfiles: 'deny' }));
   const saveAttachmentToDisk = (originalName: string, dataUrl: string): string => {
     const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
     const buf = Buffer.from(base64, 'base64');
@@ -81,7 +86,8 @@ async function startServer() {
   );
 
   // 2. CORS restringido por origen + cookies
-  const allowedOrigins = [process.env.FRONTEND_URL, 'http://localhost:3000', 'http://localhost:5173'].filter(Boolean) as string[];
+  const allowedOrigins = [process.env.FRONTEND_URL].filter(Boolean) as string[];
+  if (process.env.NODE_ENV !== 'production') allowedOrigins.push('http://localhost:3000', 'http://localhost:5173');
   app.use(
     cors({
       origin: (origin, cb) => {
@@ -145,6 +151,12 @@ async function startServer() {
     typeof v === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim()) && v.trim().length <= 160;
   const cleanStr = (v: unknown, max = 500): string =>
     typeof v === 'string' ? v.trim().slice(0, max) : '';
+  const publicError = (err: any): string => {
+    if (typeof err?.code === 'string' && /^[0-9A-Z]{5}$/.test(err.code)) {
+      return 'No se pudo completar la operación. Verifica los datos e inténtalo de nuevo.';
+    }
+    return typeof err?.message === 'string' ? err.message : 'Error interno del servidor.';
+  };
   const ALLOWED_ATTACHMENT_MIMES = [
     'application/pdf',
     'application/msword',
@@ -191,6 +203,25 @@ async function startServer() {
     console.warn('💡 Asegúrate de configurar tu contraseña en el archivo .env (PGPASSWORD o DATABASE_URL).');
   }
 
+  if (isDbConnected) {
+    let expiryJobRunning = false;
+    const expireStaleTutorings = async () => {
+      if (expiryJobRunning) return;
+      expiryJobRunning = true;
+      try {
+        const expiredCount = await pgRepo.expireStaleTutorings();
+        if (expiredCount > 0) console.info(`[Tutorías] ${expiredCount} tutoría(s) cerrada(s) por vencimiento.`);
+      } catch (error: any) {
+        console.error('[Tutorías] No se pudieron revisar vencimientos:', error?.message || error);
+      } finally {
+        expiryJobRunning = false;
+      }
+    };
+    void expireStaleTutorings();
+    const expiryTimer = setInterval(() => void expireStaleTutorings(), 15 * 60 * 1000);
+    expiryTimer.unref();
+  }
+
   // Middleware to check DB connection for data routes
   const requireDb = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (!isDbConnected) {
@@ -206,6 +237,23 @@ async function startServer() {
     next();
   };
 
+  // Revalida cuenta y rol en cada petición autenticada para revocar acceso al desactivar/cambiar rol.
+  app.use((req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) => {
+    if (!req.user || !isDbConnected) return next();
+    pgRepo.getUserById(req.user.userId).then((user) => {
+      if (!user || !user.isActive || Number(user.sessionVersion || 0) !== Number(req.user!.sessionVersion || 0)) {
+        clearAuthCookie(res);
+        return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'La sesión ya no es válida.' } });
+      }
+      req.user = {
+        ...req.user!, username: user.username, email: user.email, fullName: user.fullName,
+        role: user.role, mustChangePassword: user.mustChangePassword === true,
+        sessionVersion: Number(user.sessionVersion || 0)
+      };
+      next();
+    }).catch(next);
+  });
+
   // Wrapper para manejar errores en handlers async (Express 4 no captura rechazos async)
   const asyncHandler =
     (fn: (req: express.Request, res: express.Response, next: express.NextFunction) => Promise<unknown>) =>
@@ -219,9 +267,30 @@ async function startServer() {
       status: isDbConnected ? 'ok' : 'db_disconnected',
       service: 'Agendamientos Tutorias FET',
       database: isDbConnected ? 'PostgreSQL (Activo)' : 'Desconectado',
-      error: dbInitError || null,
+      error: dbInitError ? 'No fue posible establecer conexión con PostgreSQL.' : null,
       timestamp: new Date().toISOString()
     });
+  });
+
+  // Los documentos de tutoría nunca se publican estáticamente: cada descarga valida al participante.
+  app.get('/uploads/:filename', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const filename = req.params.filename;
+      if (!filename || path.basename(filename) !== filename || filename.includes('..')) {
+        return res.status(400).json({ success: false, error: { code: 'INVALID_FILE', message: 'Archivo inválido.' } });
+      }
+      const actor = await pgRepo.getUserById(req.user!.userId);
+      if (!actor || !(await pgRepo.canAccessAttachment(filename, actor))) {
+        return res.status(404).json({ success: false, error: { code: 'FILE_NOT_FOUND', message: 'Archivo no encontrado.' } });
+      }
+      const filePath = path.join(uploadsDir, filename);
+      if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: { code: 'FILE_NOT_FOUND', message: 'Archivo no encontrado.' } });
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.sendFile(filePath, { headers: { 'Content-Disposition': `inline; filename="${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}"` } });
+    } catch {
+      res.status(500).json({ success: false, error: { code: 'FILE_ERROR', message: 'No se pudo obtener el archivo.' } });
+    }
   });
 
   // --- AUTH ---
@@ -255,7 +324,8 @@ async function startServer() {
         email: user.email,
         role: user.role,
         fullName: user.fullName,
-        mustChangePassword: user.mustChangePassword === true
+        mustChangePassword: user.mustChangePassword === true,
+        sessionVersion: Number(user.sessionVersion || 0)
       });
 
       await pgRepo.logBinnacle('Inicio de Sesión', `Usuario ${user.fullName} (${user.role}) inició sesión con JWT`, user.username);
@@ -267,7 +337,7 @@ async function startServer() {
         message: `Bienvenido de vuelta, ${user.fullName}`
       });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: { code: 'LOGIN_ERROR', message: err.message } });
+      res.status(500).json({ success: false, error: { code: 'LOGIN_ERROR', message: publicError(err) } });
     }
   });
 
@@ -283,8 +353,16 @@ async function startServer() {
       if (typeof b.fullName !== 'string' || b.fullName.trim().length < 5 || b.fullName.trim().length > 120) {
         return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Nombre completo inválido.' } });
       }
-      if (typeof b.password !== 'string' || b.password.length < 6 || b.password.length > 100) {
-        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'La contraseña debe tener entre 6 y 100 caracteres.' } });
+      const allowedDomains = (process.env.INSTITUTIONAL_EMAIL_DOMAINS || 'fet.edu.co')
+        .split(',').map((domain) => domain.trim().toLowerCase()).filter(Boolean);
+      if (!allowedDomains.includes(b.email.trim().toLowerCase().split('@').pop() || '')) {
+        return res.status(400).json({ success: false, error: { code: 'INSTITUTIONAL_EMAIL_REQUIRED', message: 'Debes registrarte con un correo institucional autorizado.' } });
+      }
+      if (typeof b.password !== 'string' || b.password.length < 10 || b.password.length > 100) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'La contraseña debe tener entre 10 y 100 caracteres.' } });
+      }
+      if (b.confirmPassword !== b.password) {
+        return res.status(400).json({ success: false, error: { code: 'PASSWORD_MISMATCH', message: 'Las contraseñas no coinciden.' } });
       }
       const user = await pgRepo.registerStudent(req.body);
       const token = generateAuthToken({
@@ -292,7 +370,8 @@ async function startServer() {
         username: user.username,
         email: user.email,
         role: user.role,
-        fullName: user.fullName
+        fullName: user.fullName,
+        sessionVersion: Number(user.sessionVersion || 0)
       });
       setAuthCookie(res, token);
       // Sesión solo-cookie: el token ya no se expone en el cuerpo JSON
@@ -302,7 +381,7 @@ async function startServer() {
         message: 'Estudiante registrado exitosamente con credenciales seguras.'
       });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'REGISTRATION_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'REGISTRATION_ERROR', message: publicError(err) } });
     }
   });
 
@@ -320,7 +399,7 @@ async function startServer() {
         );
       }
 
-      const temporaryPassword = `Gt-${crypto.randomBytes(4).toString('hex')}`;
+      const temporaryPassword = `Gt-${crypto.randomBytes(12).toString('hex')}`;
       const user = await pgRepo.registerTeacher({ ...body, password: temporaryPassword, initialAvailability });
       res.json({
         success: true,
@@ -331,7 +410,38 @@ async function startServer() {
         message: 'Docente registrado. Comparta la contraseña temporal; el docente deberá cambiarla en su primer ingreso.'
       });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'REGISTRATION_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'REGISTRATION_ERROR', message: publicError(err) } });
+    }
+  });
+
+  app.post('/api/admin/students', requireDb, requireRole(UserRole.ADMIN), async (req, res) => {
+    try {
+      const body = req.body || {};
+      const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+      const allowedDomains = (process.env.INSTITUTIONAL_EMAIL_DOMAINS || 'fet.edu.co')
+        .split(',').map((domain) => domain.trim().toLowerCase()).filter(Boolean);
+      if (!isValidEmail(email) || !allowedDomains.includes(email.split('@').pop() || '')) {
+        return res.status(400).json({ success: false, error: { code: 'INSTITUTIONAL_EMAIL_REQUIRED', message: 'Debes usar un correo institucional autorizado.' } });
+      }
+      const fullName = cleanStr(body.fullName, 120);
+      const account = cleanStr(body.account, 50);
+      const semester = Number(body.semester);
+      if (fullName.length < 10 || account.length < 6 || !body.careerId || !Number.isInteger(semester) || semester < 1 || semester > 20) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Verifica nombre, carnet, carrera y semestre.' } });
+      }
+      const temporaryPassword = crypto.randomBytes(12).toString('base64url');
+      const user = await pgRepo.registerStudent({
+        fullName, email, account, username: email, careerId: cleanStr(body.careerId, 100), semester,
+        birthDate: cleanStr(body.birthDate, 20), admissionDate: cleanStr(body.admissionDate, 20),
+        password: temporaryPassword
+      }, true);
+      res.status(201).json({
+        success: true,
+        data: { ...user, temporaryPassword },
+        message: 'Cuenta creada. El estudiante deberá cambiar la contraseña al iniciar sesión.'
+      });
+    } catch {
+      res.status(400).json({ success: false, error: { code: 'STUDENT_REGISTRATION_ERROR', message: 'No se pudo registrar el estudiante. Revisa que el correo y el carnet no estén registrados.' } });
     }
   });
 
@@ -342,10 +452,10 @@ async function startServer() {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Se requiere inicio de sesión.' } });
       }
       const { newPassword, confirmPassword } = req.body || {};
-      if (!newPassword || String(newPassword).trim().length < 6) {
-        return res.status(400).json({ success: false, error: { code: 'PASSWORD_TOO_SHORT', message: 'La nueva contraseña debe tener al menos 6 caracteres.' } });
+      if (typeof newPassword !== 'string' || newPassword.trim().length < 10 || newPassword.length > 100) {
+        return res.status(400).json({ success: false, error: { code: 'PASSWORD_TOO_SHORT', message: 'La nueva contraseña debe tener entre 10 y 100 caracteres.' } });
       }
-      if (confirmPassword !== undefined && newPassword !== confirmPassword) {
+      if (newPassword !== confirmPassword) {
         return res.status(400).json({ success: false, error: { code: 'PASSWORD_MISMATCH', message: 'Las contraseñas no coinciden.' } });
       }
 
@@ -356,7 +466,8 @@ async function startServer() {
         email: user.email,
         role: user.role,
         fullName: user.fullName,
-        mustChangePassword: false
+        mustChangePassword: false,
+        sessionVersion: Number(user.sessionVersion || 0)
       });
       setAuthCookie(res, token);
       // Sesión solo-cookie: el token ya no se expone en el cuerpo JSON
@@ -366,7 +477,7 @@ async function startServer() {
         message: 'Contraseña actualizada correctamente.'
       });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: { code: 'CHANGE_PASSWORD_ERROR', message: err.message } });
+      res.status(500).json({ success: false, error: { code: 'CHANGE_PASSWORD_ERROR', message: publicError(err) } });
     }
   });
 
@@ -381,11 +492,16 @@ async function startServer() {
       }
       res.json({ success: true, data: user });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: { code: 'AUTH_ERROR', message: err.message } });
+      res.status(500).json({ success: false, error: { code: 'AUTH_ERROR', message: publicError(err) } });
     }
   });
 
-  app.post('/api/auth/logout', (req, res) => {
+  app.post('/api/auth/logout', async (req: AuthenticatedRequest, res) => {
+    if (req.user && isDbConnected) {
+      try { await pgRepo.revokeSessions(req.user.userId); } catch (err: any) {
+        console.error('[Auth] No se pudieron revocar las sesiones:', err?.message || err);
+      }
+    }
     clearAuthCookie(res);
     res.json({ success: true, message: 'Sesión cerrada.' });
   });
@@ -404,12 +520,13 @@ async function startServer() {
         email: user.email,
         role: user.role,
         fullName: user.fullName,
-        mustChangePassword: user.mustChangePassword === true
+        mustChangePassword: user.mustChangePassword === true,
+        sessionVersion: Number(user.sessionVersion || 0)
       });
       setAuthCookie(res, token);
       res.json({ success: true, data: user, message: 'Sesión renovada.' });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: { code: 'REFRESH_ERROR', message: err.message } });
+      res.status(500).json({ success: false, error: { code: 'REFRESH_ERROR', message: publicError(err) } });
     }
   });
 
@@ -422,7 +539,7 @@ async function startServer() {
       }
 
       const user = await pgRepo.getUserByEmailOrUsername(identity.trim());
-      if (!user) {
+      if (!user || !user.isActive) {
         // Por seguridad, retornamos éxito genérico para no filtrar si el usuario existe o no
         return res.json({
           success: true,
@@ -435,12 +552,12 @@ async function startServer() {
 
       res.json({
         success: true,
-        message: `Se ha enviado un código de recuperación a ${user.email}. Por favor revisa tu bandeja de entrada o spam.`,
+        message: 'Si el correo o usuario corresponde a una cuenta activa, se enviarán instrucciones de recuperación.',
         // En entorno local de desarrollo exponemos una pista para facilitar pruebas si no hay SMTP activo
         debugToken: process.env.NODE_ENV !== 'production' ? resetToken : undefined
       });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: { code: 'FORGOT_PASSWORD_ERROR', message: err.message } });
+      res.status(500).json({ success: false, error: { code: 'FORGOT_PASSWORD_ERROR', message: publicError(err) } });
     }
   });
 
@@ -453,11 +570,11 @@ async function startServer() {
       if (attempt && attempt.until > Date.now()) {
         return res.status(429).json({ success: false, error: { code: 'RESET_LOCKED', message: 'Demasiados intentos fallidos. Intenta de nuevo en 15 minutos.' } });
       }
-      if (!token || !token.trim()) {
+      if (typeof token !== 'string' || !/^[a-f0-9]{64}$/i.test(token.trim())) {
         return res.status(400).json({ success: false, error: { code: 'TOKEN_REQUIRED', message: 'El código de seguridad es requerido.' } });
       }
-      if (!newPassword || newPassword.trim().length < 6) {
-        return res.status(400).json({ success: false, error: { code: 'PASSWORD_TOO_SHORT', message: 'La nueva contraseña debe tener al menos 6 caracteres.' } });
+      if (typeof newPassword !== 'string' || newPassword.trim().length < 10 || newPassword.length > 100) {
+        return res.status(400).json({ success: false, error: { code: 'PASSWORD_TOO_SHORT', message: 'La nueva contraseña debe tener entre 10 y 100 caracteres.' } });
       }
 
       const result = await pgRepo.resetPasswordWithToken(token.trim(), newPassword.trim());
@@ -473,17 +590,34 @@ async function startServer() {
       resetAttempts.delete(ipKey);
       res.json({ success: true, message: result.message });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: { code: 'RESET_PASSWORD_ERROR', message: err.message } });
+      res.status(500).json({ success: false, error: { code: 'RESET_PASSWORD_ERROR', message: publicError(err) } });
     }
   });
 
   // --- TUTORINGS ---
   app.get('/api/tutorings', requireDb, requireAuth, async (req, res) => {
     try {
-      const tutorings = await pgRepo.getTutorings();
+      const actor = await pgRepo.getUserById((req as AuthenticatedRequest).user!.userId);
+      if (!actor) return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario no encontrado.' } });
+      const tutorings = await pgRepo.getTutorings(actor);
+      if (actor.role === UserRole.STUDENT) {
+        for (const tutoring of tutorings) {
+          const isParticipant = tutoring.petitionerStudentId === actor.id || tutoring.assistants?.some((a) => a.studentId === actor.id);
+          if (!isParticipant) {
+            tutoring.petitionerStudentId = '';
+            tutoring.petitionerStudentName = 'Estudiante FET';
+            tutoring.assistants = [];
+            tutoring.ratings = [];
+            tutoring.attachmentName = '';
+            tutoring.attachmentUrl = '';
+            tutoring.studentComment = '';
+            tutoring.teacherComment = '';
+          }
+        }
+      }
       res.json({ success: true, data: tutorings });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: { code: 'GET_TUTORINGS_ERROR', message: err.message } });
+      res.status(500).json({ success: false, error: { code: 'GET_TUTORINGS_ERROR', message: publicError(err) } });
     }
   });
 
@@ -492,6 +626,9 @@ async function startServer() {
       let dto = req.body;
       const subject = cleanStr(dto?.subject, 70);
       const details = cleanStr(dto?.details, 2000);
+      if (!['INDIVIDUAL', 'GROUP'].includes(dto?.type)) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Debe elegir tutoría individual o grupal.' } });
+      }
       if (subject.length < 3) {
         return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Tema o asunto inválido.' } });
       }
@@ -511,19 +648,19 @@ async function startServer() {
         }
       }
       const user = await pgRepo.getUserById(req.user!.userId);
-      if (!user) {
+      if (!user || user.role !== UserRole.STUDENT) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario estudiante requerido.' } });
       }
       const tutoring = await pgRepo.createTutoring(dto, user);
       res.json({ success: true, data: tutoring, message: 'Solicitud de tutoría creada con éxito.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'CREATE_TUTORING_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'CREATE_TUTORING_ERROR', message: publicError(err) } });
     }
   });
 
   app.patch('/api/tutorings/:id/approve', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { space, block } = req.body;
+      const { space, block, maxParticipants } = req.body;
       const cleanSpace = cleanStr(space, 200);
       const cleanBlock = cleanStr(block, 50);
       if (!cleanSpace) {
@@ -533,10 +670,10 @@ async function startServer() {
       if (!approver || (approver.role !== UserRole.ADMIN && approver.role !== UserRole.TEACHER)) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Permiso de administrador o docente requerido.' } });
       }
-      const tutoring = await pgRepo.approveTutoring(req.params.id, cleanSpace, approver, cleanBlock);
+      const tutoring = await pgRepo.approveTutoring(req.params.id, cleanSpace, approver, cleanBlock, Number(maxParticipants));
       res.json({ success: true, data: tutoring, message: 'Tutoría aprobada y programada correctamente.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'APPROVE_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'APPROVE_ERROR', message: publicError(err) } });
     }
   });
 
@@ -553,7 +690,7 @@ async function startServer() {
       const tutoring = await pgRepo.cancelTutoring(req.params.id, reason, user);
       res.json({ success: true, data: tutoring, message: 'Tutoría cancelada correctamente.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'CANCEL_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'CANCEL_ERROR', message: publicError(err) } });
     }
   });
 
@@ -566,7 +703,7 @@ async function startServer() {
       const tutoring = await pgRepo.startTutoring(req.params.id, teacher);
       res.json({ success: true, data: tutoring, message: 'Tutoría iniciada. Sesión en progreso.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'START_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'START_ERROR', message: publicError(err) } });
     }
   });
 
@@ -580,7 +717,7 @@ async function startServer() {
       const tutoring = await pgRepo.finishTutoring(req.params.id, teacher, teacherComment);
       res.json({ success: true, data: tutoring, message: 'Tutoría finalizada exitosamente.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'FINISH_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'FINISH_ERROR', message: publicError(err) } });
     }
   });
 
@@ -593,7 +730,20 @@ async function startServer() {
       const tutoring = await pgRepo.joinTutoring(req.params.id, student);
       res.json({ success: true, data: tutoring, message: 'Te has unido exitosamente a la tutoría.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'JOIN_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'JOIN_ERROR', message: publicError(err) } });
+    }
+  });
+
+  app.delete('/api/tutorings/:id/participants/me', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const student = await pgRepo.getUserById(req.user!.userId);
+      if (!student || student.role !== UserRole.STUDENT) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Solo el estudiante inscrito puede retirarse.' } });
+      }
+      const tutoring = await pgRepo.withdrawFromTutoring(req.params.id, student);
+      res.json({ success: true, data: tutoring, message: 'Te retiraste de la tutoría grupal.' });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: { code: 'WITHDRAW_ERROR', message: publicError(err) } });
     }
   });
 
@@ -607,7 +757,7 @@ async function startServer() {
       const tutoring = await pgRepo.recordAssistance(req.params.id, records, teacher);
       res.json({ success: true, data: tutoring, message: 'Asistencia actualizada correctamente.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'ASSISTANCE_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'ASSISTANCE_ERROR', message: publicError(err) } });
     }
   });
 
@@ -627,7 +777,7 @@ async function startServer() {
       const tutoring = await pgRepo.rateTutoring({ tutoringId: req.params.id, score, studentComment }, student);
       res.json({ success: true, data: tutoring, message: 'Gracias por calificar la tutoría.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'RATE_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'RATE_ERROR', message: publicError(err) } });
     }
   });
 
@@ -646,7 +796,7 @@ async function startServer() {
       const subject = await pgRepo.createSubject(dto, admin);
       res.json({ success: true, data: subject, message: `Asignatura "${subject.name}" creada con éxito.` });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'CREATE_SUBJECT_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'CREATE_SUBJECT_ERROR', message: publicError(err) } });
     }
   });
 
@@ -660,7 +810,7 @@ async function startServer() {
       const subject = await pgRepo.toggleSubjectActive(req.params.id, admin);
       res.json({ success: true, data: subject, message: `Asignatura ${subject.isActive ? 'activada' : 'inhabilitada'}.` });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'TOGGLE_SUBJECT_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'TOGGLE_SUBJECT_ERROR', message: publicError(err) } });
     }
   });
 
@@ -674,7 +824,7 @@ async function startServer() {
       const subject = await pgRepo.deleteSubject(req.params.id, admin);
       res.json({ success: true, data: subject, message: `Asignatura "${subject.name}" eliminada permanentemente.` });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'DELETE_SUBJECT_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'DELETE_SUBJECT_ERROR', message: publicError(err) } });
     }
   });
 
@@ -693,7 +843,7 @@ async function startServer() {
       const career = await pgRepo.createCareer(dto, admin);
       res.json({ success: true, data: career, message: `Carrera "${career.name}" creada con éxito.` });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'CREATE_CAREER_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'CREATE_CAREER_ERROR', message: publicError(err) } });
     }
   });
 
@@ -707,7 +857,7 @@ async function startServer() {
       const career = await pgRepo.updateCareer(req.params.id, dto, admin);
       res.json({ success: true, data: career, message: `Carrera "${career.name}" actualizada con éxito.` });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'UPDATE_CAREER_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'UPDATE_CAREER_ERROR', message: publicError(err) } });
     }
   });
 
@@ -721,7 +871,7 @@ async function startServer() {
       const career = await pgRepo.toggleCareerActive(req.params.id, admin);
       res.json({ success: true, data: career, message: `Carrera ${career.isActive ? 'activada' : 'inhabilitada'}.` });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'TOGGLE_CAREER_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'TOGGLE_CAREER_ERROR', message: publicError(err) } });
     }
   });
 
@@ -735,7 +885,7 @@ async function startServer() {
       const career = await pgRepo.deleteCareer(req.params.id, admin);
       res.json({ success: true, data: career, message: `Carrera "${career.name}" eliminada permanentemente.` });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'DELETE_CAREER_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'DELETE_CAREER_ERROR', message: publicError(err) } });
     }
   });
 
@@ -747,16 +897,18 @@ async function startServer() {
     res.json({ success: true, data: await pgRepo.getSections() });
   }));
 
-  app.get('/api/availability', requireDb, asyncHandler(async (req, res) => {
+  app.get('/api/availability', requireDb, requireAuth, asyncHandler(async (req, res) => {
     res.json({ success: true, data: await pgRepo.getTeacherAvailability() });
   }));
 
-  app.patch('/api/availability/:id/toggle', requireDb, requireAuth, async (req, res) => {
+  app.patch('/api/availability/:id/toggle', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const item = await pgRepo.toggleTeacherAvailability(req.params.id);
+      const actor = await pgRepo.getUserById(req.user!.userId);
+      if (!actor) return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario requerido.' } });
+      const item = await pgRepo.toggleTeacherAvailability(req.params.id, actor);
       res.json({ success: true, data: item, message: `Disponibilidad ${item.isAvailable ? 'activada' : 'desactivada'}.` });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'AVAILABILITY_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'AVAILABILITY_ERROR', message: publicError(err) } });
     }
   });
 
@@ -764,26 +916,26 @@ async function startServer() {
     try {
       const { subjectCourseId, scheduleSlotId } = req.body;
       const teacher = await pgRepo.getUserById(req.user!.userId);
-      if (!teacher) {
+      if (!teacher || teacher.role !== UserRole.TEACHER) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Docente requerido.' } });
       }
       const item = await pgRepo.addTeacherAvailability(teacher, subjectCourseId, scheduleSlotId);
       res.json({ success: true, data: item, message: 'Disponibilidad agregada exitosamente.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'AVAILABILITY_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'AVAILABILITY_ERROR', message: publicError(err) } });
     }
   });
 
   app.delete('/api/availability/:id', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const teacher = await pgRepo.getUserById(req.user!.userId);
-      if (!teacher) {
+      if (!teacher || (teacher.role !== UserRole.TEACHER && teacher.role !== UserRole.ADMIN)) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario requerido.' } });
       }
       await pgRepo.deleteTeacherAvailability(req.params.id, teacher);
       res.json({ success: true, data: true, message: 'Franja eliminada.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'AVAILABILITY_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'AVAILABILITY_ERROR', message: publicError(err) } });
     }
   });
 
@@ -791,23 +943,23 @@ async function startServer() {
     try {
       const { subjectCourseId, scheduleSlotIds } = req.body;
       const teacher = await pgRepo.getUserById(req.user!.userId);
-      if (!teacher) {
+      if (!teacher || teacher.role !== UserRole.TEACHER) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Docente requerido.' } });
       }
       const items = await pgRepo.setTeacherAvailabilityBatch(teacher, subjectCourseId, scheduleSlotIds);
       res.json({ success: true, data: items, message: 'Disponibilidad configurada exitosamente.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'AVAILABILITY_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'AVAILABILITY_ERROR', message: publicError(err) } });
     }
   });
 
   // --- TEACHER SUBJECTS (catálogo por docente) ---
-  app.get('/api/teachers/:id/subjects', requireDb, async (req, res) => {
+  app.get('/api/teachers/:id/subjects', requireDb, requireAuth, async (req, res) => {
     try {
       const subjects = await pgRepo.getTeacherSubjects(req.params.id);
       res.json({ success: true, data: subjects });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'TEACHER_SUBJECTS_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'TEACHER_SUBJECTS_ERROR', message: publicError(err) } });
     }
   });
 
@@ -820,7 +972,7 @@ async function startServer() {
       }
       const isAdmin = actor.role === UserRole.ADMIN;
       const isSelf = actor.id === req.params.id;
-      if (!isAdmin && !isSelf) {
+      if (!isAdmin && !(isSelf && actor.role === UserRole.TEACHER)) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Permiso insuficiente.' } });
       }
       if (!Array.isArray(subjectIds)) {
@@ -829,7 +981,7 @@ async function startServer() {
       const subjects = await pgRepo.setTeacherSubjects(req.params.id, subjectIds, actor);
       res.json({ success: true, data: subjects, message: 'Asignaturas del docente actualizadas correctamente.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'TEACHER_SUBJECTS_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'TEACHER_SUBJECTS_ERROR', message: publicError(err) } });
     }
   });
 
@@ -846,18 +998,28 @@ async function startServer() {
       }
       res.json({ success: true, data: user, message: 'Docente actualizado correctamente.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'UPDATE_TEACHER_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'UPDATE_TEACHER_ERROR', message: publicError(err) } });
     }
   });
 
   // --- USERS ---
   app.get('/api/users', requireDb, requireAuth, asyncHandler(async (req, res) => {
-    res.json({ success: true, data: await pgRepo.getUsers() });
+    const actor = await pgRepo.getUserById((req as AuthenticatedRequest).user!.userId);
+    if (!actor) return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario no encontrado.' } });
+    res.json({ success: true, data: await pgRepo.getUsersForActor(actor) });
   }));
 
   app.put('/api/users/:id/profile', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const { photoUrl, alias } = req.body;
+      if (photoUrl !== undefined && photoUrl !== null && photoUrl !== '') {
+        if (typeof photoUrl !== 'string' || photoUrl.length > 1_500_000 || !/^data:image\/(jpeg|png|webp);base64,[a-z0-9+/=]+$/i.test(photoUrl)) {
+          return res.status(400).json({ success: false, error: { code: 'INVALID_PHOTO', message: 'La foto debe ser JPG, PNG o WebP y no superar 1 MB.' } });
+        }
+      }
+      if (alias !== undefined && (typeof alias !== 'string' || alias.length > 100)) {
+        return res.status(400).json({ success: false, error: { code: 'INVALID_PROFILE', message: 'El nombre de perfil no es válido.' } });
+      }
       const actor = await pgRepo.getUserById(req.user!.userId);
       if (!actor) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario no autenticado.' } });
@@ -865,7 +1027,7 @@ async function startServer() {
       const updatedUser = await pgRepo.updateUserProfile(req.params.id, { photoUrl, alias }, actor);
       res.json({ success: true, data: updatedUser, message: 'Perfil y foto actualizados exitosamente.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'UPDATE_PROFILE_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'UPDATE_PROFILE_ERROR', message: publicError(err) } });
     }
   });
 
@@ -879,7 +1041,7 @@ async function startServer() {
       const user = await pgRepo.toggleUserActive(req.params.id, admin);
       res.json({ success: true, data: user, message: `Usuario ${user.isActive ? 'activado' : 'desactivado'}.` });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'TOGGLE_USER_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'TOGGLE_USER_ERROR', message: publicError(err) } });
     }
   });
 
@@ -893,7 +1055,7 @@ async function startServer() {
       const user = await pgRepo.deleteUser(req.params.id, admin);
       res.json({ success: true, data: user, message: `Usuario "${user.fullName}" eliminado permanentemente.` });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'DELETE_USER_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'DELETE_USER_ERROR', message: publicError(err) } });
     }
   });
 
@@ -906,16 +1068,18 @@ async function startServer() {
       const list = await pgRepo.getNotifications(req.params.userId);
       res.json({ success: true, data: list });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: { code: 'NOTIFICATIONS_ERROR', message: err.message } });
+      res.status(500).json({ success: false, error: { code: 'NOTIFICATIONS_ERROR', message: publicError(err) } });
     }
   });
 
   app.patch('/api/notifications/:id/read', requireDb, requireAuth, async (req, res) => {
     try {
-      await pgRepo.markNotificationRead(req.params.id);
+      const actor = await pgRepo.getUserById((req as AuthenticatedRequest).user!.userId);
+      if (!actor) return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario requerido.' } });
+      await pgRepo.markNotificationRead(req.params.id, actor.id, actor.role === UserRole.ADMIN);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: { code: 'NOTIFICATIONS_ERROR', message: err.message } });
+      res.status(500).json({ success: false, error: { code: 'NOTIFICATIONS_ERROR', message: publicError(err) } });
     }
   });
 
@@ -927,12 +1091,12 @@ async function startServer() {
       await pgRepo.markAllNotificationsRead(req.params.userId);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: { code: 'NOTIFICATIONS_ERROR', message: err.message } });
+      res.status(500).json({ success: false, error: { code: 'NOTIFICATIONS_ERROR', message: publicError(err) } });
     }
   });
 
   // --- BINNACLE ---
-  app.get('/api/binnacle', requireDb, requireAuth, asyncHandler(async (req, res) => {
+  app.get('/api/binnacle', requireDb, requireRole(UserRole.ADMIN), asyncHandler(async (req, res) => {
     res.json({ success: true, data: await pgRepo.getBinnacle() });
   }));
 
@@ -951,17 +1115,17 @@ async function startServer() {
       const updated = await pgRepo.updateInstitution(info, admin);
       res.json({ success: true, data: updated, message: 'Datos institucionales actualizados.' });
     } catch (err: any) {
-      res.status(400).json({ success: false, error: { code: 'INSTITUTION_ERROR', message: err.message } });
+      res.status(400).json({ success: false, error: { code: 'INSTITUTION_ERROR', message: publicError(err) } });
     }
   });
 
   // --- ANALYTICS ---
-  app.get('/api/analytics', requireDb, requireAuth, async (req, res) => {
+  app.get('/api/analytics', requireDb, requireRole(UserRole.ADMIN), async (req, res) => {
     try {
       const data = await pgRepo.getAnalytics();
       res.json({ success: true, data });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: { code: 'ANALYTICS_ERROR', message: err.message } });
+      res.status(500).json({ success: false, error: { code: 'ANALYTICS_ERROR', message: publicError(err) } });
     }
   });
 
@@ -1005,7 +1169,7 @@ async function startServer() {
     console.error(`[GT-API] Error en ${req.method} ${req.originalUrl}:`, err?.message || err);
     res.status(500).json({
       success: false,
-      error: { code: 'INTERNAL_ERROR', message: err?.message || 'Error interno del servidor.' }
+      error: { code: 'INTERNAL_ERROR', message: 'Error interno del servidor.' }
     });
   });
 

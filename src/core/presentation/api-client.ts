@@ -108,6 +108,17 @@ export class ApiClient {
     return res;
   }
 
+  public static async registerStudentByAdmin(
+    dto: Omit<RegisterStudentDto, 'password' | 'confirmPassword'>
+  ): Promise<ApiResponse<User & { temporaryPassword: string }>> {
+    const res = await request<User & { temporaryPassword: string }>('/admin/students', {
+      method: 'POST',
+      body: JSON.stringify(dto)
+    });
+    if (res.success) ApiClient.notifyListeners();
+    return res;
+  }
+
   public static async registerTeacher(
     dto: RegisterTeacherDto
   ): Promise<ApiResponse<User & { temporaryPassword?: string }>> {
@@ -195,10 +206,10 @@ export class ApiClient {
     return res;
   }
 
-  public static async approveTutoring(tutoringId: string, space: string, approver: User, block: string = ''): Promise<ApiResponse<Tutoring>> {
+  public static async approveTutoring(tutoringId: string, space: string, approver: User, block: string = '', maxParticipants?: number): Promise<ApiResponse<Tutoring>> {
     const res = await request<Tutoring>(`/tutorings/${tutoringId}/approve`, {
       method: 'PATCH',
-      body: JSON.stringify({ space, block, approverId: approver.id })
+      body: JSON.stringify({ space, block, maxParticipants, approverId: approver.id })
     });
     if (res.success) {
       ApiClient.notifyListeners();
@@ -247,6 +258,15 @@ export class ApiClient {
     if (res.success) {
       ApiClient.notifyListeners();
     }
+    return res;
+  }
+
+  public static async withdrawFromTutoring(tutoringId: string, student: User): Promise<ApiResponse<Tutoring>> {
+    const res = await request<Tutoring>(`/tutorings/${tutoringId}/participants/me`, {
+      method: 'DELETE',
+      body: JSON.stringify({})
+    });
+    if (res.success) ApiClient.notifyListeners();
     return res;
   }
 
@@ -494,22 +514,6 @@ export class ApiClient {
         }
       } catch {}
       ApiClient.notifyListeners();
-    } else if (!res.success) {
-      // Offline / in-memory fallback
-      try {
-        const updated = db.updateUserProfile(userId, data as Partial<User>);
-        const stored = localStorage.getItem('gt_auth_user');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed && parsed.id === userId) {
-            localStorage.setItem('gt_auth_user', JSON.stringify(updated));
-          }
-        }
-        ApiClient.notifyListeners();
-        return { success: true, data: updated, message: 'Perfil actualizado exitosamente.' };
-      } catch (e: any) {
-        return res;
-      }
     }
     return res;
   }
