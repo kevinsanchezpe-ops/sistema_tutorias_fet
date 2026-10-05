@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { Navbar } from './components/Navbar';
 const StudentDashboard = lazy(() => import('./components/StudentDashboard').then((module) => ({ default: module.StudentDashboard })));
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard').then((module) => ({ default: module.TeacherDashboard })));
@@ -40,6 +40,8 @@ export default function App() {
   });
 
   const [dbHealth, setDbHealth] = useState<{ status: string; database: string; error?: string } | null>(null);
+  const [apiRequestActive, setApiRequestActive] = useState(false);
+  const [apiBusy, setApiBusy] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [allUsers, setAllUsers] = useState<User[]>(() => [...db.users]);
   const [tutorings, setTutorings] = useState<Tutoring[]>(() => [...db.tutorings]);
@@ -52,6 +54,17 @@ export default function App() {
   const [binnacle, setBinnacle] = useState<BinnacleEntry[]>([]);
   const [institution, setInstitution] = useState<InstitutionInfo>(() => ({ ...db.institution }));
   const [analytics, setAnalytics] = useState<any>(null);
+  const refreshTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const handleApiActivity = (event: Event) => {
+      const detail = (event as CustomEvent<{ active: boolean; busy: boolean }>).detail;
+      setApiRequestActive(Boolean(detail?.active));
+      setApiBusy(Boolean(detail?.busy));
+    };
+    window.addEventListener('gt:api-activity', handleApiActivity);
+    return () => window.removeEventListener('gt:api-activity', handleApiActivity);
+  }, []);
 
   // Modals state
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -61,11 +74,6 @@ export default function App() {
 
   // Refresh all state from reactive database
   const refreshData = async () => {
-    try {
-      const health = await ApiClient.getHealth();
-      setDbHealth(health);
-    } catch (e) {}
-
     // Catálogos públicos siempre; datos sensibles solo con sesión (evita 401s en login)
     const hasSession = (() => {
       try {
@@ -74,19 +82,23 @@ export default function App() {
         return false;
       }
     })();
-    const [uRes, tRes, sRes, schRes, secRes, avRes, bRes, instRes, anRes, cRes] = await Promise.all([
+    const isAdmin = currentUser?.role === UserRole.ADMIN;
+    const [health, uRes, tRes, sRes, schRes, secRes, avRes, bRes, instRes, anRes, cRes, nRes] = await Promise.all([
+      ApiClient.getHealth(),
       hasSession ? ApiClient.getUsers() : Promise.resolve({ success: false as const, data: undefined }),
       hasSession ? ApiClient.getTutorings() : Promise.resolve({ success: false as const, data: undefined }),
       ApiClient.getSubjects(),
       ApiClient.getScheduleSlots(),
       ApiClient.getSections(),
       ApiClient.getTeacherAvailability(),
-      hasSession ? ApiClient.getBinnacle() : Promise.resolve({ success: false as const, data: undefined }),
+      isAdmin ? ApiClient.getBinnacle() : Promise.resolve({ success: false as const, data: undefined }),
       ApiClient.getInstitution(),
-      hasSession ? ApiClient.getAnalytics() : Promise.resolve({ success: false as const, data: undefined }),
-      ApiClient.getCareers()
+      isAdmin ? ApiClient.getAnalytics() : Promise.resolve({ success: false as const, data: undefined }),
+      ApiClient.getCareers(),
+      currentUser ? ApiClient.getNotifications(currentUser.id) : Promise.resolve({ success: false as const, data: undefined })
     ]);
 
+    setDbHealth(health);
     if (uRes.data) {
       setAllUsers(uRes.data);
       // Sync in-memory db so components reading db.users directly get fresh data (e.g. photoUrl)
@@ -103,7 +115,6 @@ export default function App() {
     if (cRes.data) setCareers(cRes.data);
 
     if (currentUser) {
-      const nRes = await ApiClient.getNotifications(currentUser.id);
       if (nRes.data) setNotifications(nRes.data);
 
       // Keep current user updated if changed in DB and session is still valid
@@ -120,13 +131,46 @@ export default function App() {
     }
   };
 
+  const scheduleRefreshData = () => {
+    if (refreshTimerRef.current !== null) window.clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = window.setTimeout(() => {
+      refreshTimerRef.current = null;
+      void refreshData();
+    }, 0);
+  };
+
+  const updateTutoring = (updated: Tutoring) => {
+    setTutorings((current) => {
+      const existing = current.some((tutoring) => tutoring.id === updated.id);
+      return existing
+        ? current.map((tutoring) => tutoring.id === updated.id ? updated : tutoring)
+        : [updated, ...current];
+    });
+    if (currentUser) {
+      void ApiClient.getNotifications(currentUser.id).then((result) => {
+        if (result.data) setNotifications(result.data);
+      });
+      if (currentUser.role === UserRole.ADMIN) {
+        void ApiClient.getAnalytics().then((result) => {
+          if (result.data) setAnalytics(result.data);
+        });
+      }
+    }
+  };
+
+  const removeTutoringParticipant = (tutoringId: string, studentId: string) => {
+    setTutorings((current) => current.map((tutoring) => tutoring.id === tutoringId
+      ? { ...tutoring, assistants: tutoring.assistants.filter((assistant) => assistant.studentId !== studentId) }
+      : tutoring));
+  };
+
   // Subscribe to DB notifications
   useEffect(() => {
     refreshData();
     const unsubscribe = db.subscribe(() => {
       // If user logged out (no storage), do not trigger state refresh that could re-bind
       if (!localStorage.getItem('gt_auth_user')) return;
-      refreshData();
+      scheduleRefreshData();
     });
     return () => unsubscribe();
   }, [currentUser?.id]);
@@ -253,6 +297,11 @@ export default function App() {
       >
         Saltar al contenido principal
       </a>
+      {apiRequestActive && (
+        <div role="progressbar" aria-label="Procesando acción" className="pointer-events-none fixed inset-x-0 top-0 z-[80] h-0.5 bg-brand-100">
+          <div aria-hidden="true" className="h-full w-full animate-pulse bg-brand-600" />
+        </div>
+      )}
       {renderDbBanner()}
       {/* Top Navbar */}
       <Navbar
@@ -271,10 +320,16 @@ export default function App() {
           setAuthMode(mode || 'login');
           setCurrentUser(null);
         }}
-      />
+        />
 
       {/* Main Content Area */}
       <main id="main-content" className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {apiBusy && (
+          <div role="status" aria-live="polite" className="mb-4 flex items-center gap-2 rounded-lg border border-brand-200 bg-white px-3 py-2 text-xs font-medium text-brand-800 shadow-xs">
+            <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
+            Procesando tu solicitud…
+          </div>
+        )}
         {currentUser.role === UserRole.STUDENT && (
           <Suspense fallback={<div className="rounded-xl border border-stone-200 bg-white px-4 py-6 text-sm text-stone-500">Cargando panel estudiantil…</div>}>
             <StudentDashboard
@@ -283,7 +338,9 @@ export default function App() {
             subjects={subjects}
             schedules={schedules}
             availabilities={availabilities}
-            onRefresh={refreshData}
+            onRefresh={scheduleRefreshData}
+            onTutoringUpdated={updateTutoring}
+            onParticipantWithdrawn={removeTutoringParticipant}
             onOpenEvaluation={(tut) => setEvaluatingTutoring(tut)}
             />
           </Suspense>
@@ -298,7 +355,8 @@ export default function App() {
             schedules={schedules}
             subjects={subjects}
             sections={sections}
-            onRefresh={refreshData}
+            onRefresh={scheduleRefreshData}
+            onTutoringUpdated={updateTutoring}
             />
           </Suspense>
         )}
@@ -314,7 +372,8 @@ export default function App() {
             binnacle={binnacle}
             schedules={schedules}
             sections={sections}
-            onRefresh={refreshData}
+            onRefresh={scheduleRefreshData}
+            onTutoringUpdated={updateTutoring}
             analytics={analytics}
             onOpenRegister={() => setShowRegisterModal(true)}
             onOpenTests={() => setShowTests(true)}
@@ -396,7 +455,7 @@ export default function App() {
           <RegisterModal
             careers={careers}
             onClose={() => setShowRegisterModal(false)}
-            onSuccess={() => refreshData()}
+            onSuccess={scheduleRefreshData}
           />
         </Suspense>
       )}
@@ -409,7 +468,7 @@ export default function App() {
             tutoring={evaluatingTutoring}
             currentUser={currentUser}
             onClose={() => setEvaluatingTutoring(null)}
-            onSuccess={() => refreshData()}
+            onSuccess={updateTutoring}
           />
         </Suspense>
       )}

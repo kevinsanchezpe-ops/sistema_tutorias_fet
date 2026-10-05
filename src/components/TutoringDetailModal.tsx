@@ -112,13 +112,15 @@ export const TutoringDetailModal: React.FC<TutoringDetailModalProps> = ({
               <h4 className="text-xs font-semibold text-slate-800">Participantes</h4>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {(() => {
-                  const petitionerUser = db.users.find((u) => u.id === tutoring.petitionerStudentId || u.fullName === tutoring.petitionerStudentName);
+                  const creatorName = tutoring.createdByName || tutoring.petitionerStudentName;
+                  const teacherCreator = (tutoring.createdByRole || tutoring.creatorRole) === UserRole.TEACHER || tutoring.petitionerStudentId === tutoring.teacherId;
+                  const petitionerUser = db.users.find((u) => u.id === (tutoring.createdByUserId || tutoring.petitionerStudentId) || u.fullName === creatorName);
                   const teacherUser = db.users.find((u) => u.id === tutoring.teacherId || u.fullName === tutoring.teacherName);
                   return (
                     <>
                       <div className="flex min-w-0 items-center gap-2.5 rounded-lg bg-stone-50 px-3 py-2.5">
-                        <UserAvatar user={petitionerUser} name={tutoring.petitionerStudentName} photoUrl={petitionerUser?.photoUrl} role={UserRole.STUDENT} size="sm" />
-                        <div className="min-w-0"><p className="text-[10px] text-stone-500">Estudiante</p><p className="truncate text-xs font-medium text-slate-800">{tutoring.petitionerStudentName}</p>{petitionerUser?.account && <p className="mt-0.5 text-[10px] text-stone-500">Carnet {petitionerUser.account}</p>}</div>
+                        <UserAvatar user={petitionerUser} name={creatorName} photoUrl={petitionerUser?.photoUrl} role={teacherCreator ? UserRole.TEACHER : UserRole.STUDENT} size="sm" />
+                        <div className="min-w-0"><p className="text-[10px] text-stone-500">{teacherCreator ? 'Convocada por el docente' : 'Estudiante solicitante'}</p><p className="truncate text-xs font-medium text-slate-800">{creatorName}</p>{!teacherCreator && petitionerUser?.account && <p className="mt-0.5 text-[10px] text-stone-500">Carnet {petitionerUser.account}</p>}</div>
                       </div>
                       <div className="flex min-w-0 items-center gap-2.5 rounded-lg bg-stone-50 px-3 py-2.5">
                         <UserAvatar user={teacherUser} name={tutoring.teacherName} photoUrl={teacherUser?.photoUrl} role={UserRole.TEACHER} size="sm" />
@@ -290,9 +292,11 @@ export const TutoringDetailModal: React.FC<TutoringDetailModalProps> = ({
           {/* Personas involucradas */}
           <div className="p-4 bg-white border border-stone-200 rounded-xl space-y-3">
             {(() => {
+              const creatorName = tutoring.createdByName || tutoring.petitionerStudentName;
               const petitionerUser = db.users.find(
-                (u) => u.id === tutoring.petitionerStudentId || u.fullName === tutoring.petitionerStudentName
+                (u) => u.id === (tutoring.createdByUserId || tutoring.petitionerStudentId) || u.fullName === creatorName
               );
+              const teacherCreator = (tutoring.createdByRole || tutoring.creatorRole) === UserRole.TEACHER || tutoring.petitionerStudentId === tutoring.teacherId;
               const teacherUser = db.users.find(
                 (u) => u.id === tutoring.teacherId || u.fullName === tutoring.teacherName
               );
@@ -303,15 +307,15 @@ export const TutoringDetailModal: React.FC<TutoringDetailModalProps> = ({
                     <div className="flex items-center gap-3">
                       <UserAvatar
                         user={petitionerUser}
-                        name={tutoring.petitionerStudentName}
+                        name={creatorName}
                         photoUrl={petitionerUser?.photoUrl}
-                        role={UserRole.STUDENT}
+                        role={teacherCreator ? UserRole.TEACHER : UserRole.STUDENT}
                         size="md"
                         className="border border-brand-200/60 shadow-2xs"
                       />
                       <div>
-                        <span className="text-[10px] text-stone-400 uppercase font-bold block">Estudiante Solicitante</span>
-                        <span className="font-bold text-slate-900 text-xs">{tutoring.petitionerStudentName}</span>
+                        <span className="text-[10px] text-stone-400 uppercase font-bold block">{teacherCreator ? 'Convocada por el docente' : 'Estudiante Solicitante'}</span>
+                        <span className="font-bold text-slate-900 text-xs">{creatorName}</span>
                         {petitionerUser?.careerName && (
                           <span className="text-[10px] text-stone-500 block truncate">
                             {petitionerUser.careerName} {petitionerUser.semester ? `• Sem. ${petitionerUser.semester}` : ''}

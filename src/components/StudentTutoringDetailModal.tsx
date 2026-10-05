@@ -33,12 +33,14 @@ export const StudentTutoringDetailModal: React.FC<StudentTutoringDetailModalProp
   onOpenEvaluation
 }) => {
   const [viewingAttachment, setViewingAttachment] = React.useState<{ fileName: string; fileUrl: string } | null>(null);
-  const petitioner = db.users.find((user) => user.id === tutoring.petitionerStudentId || user.fullName === tutoring.petitionerStudentName);
+  const creatorName = tutoring.createdByName || tutoring.petitionerStudentName;
+  const petitioner = db.users.find((user) => user.id === (tutoring.createdByUserId || tutoring.petitionerStudentId) || user.fullName === creatorName);
+  const teacherCreator = (tutoring.createdByRole || tutoring.creatorRole) === UserRole.TEACHER || tutoring.petitionerStudentId === tutoring.teacherId;
   const teacher = db.users.find((user) => user.id === tutoring.teacherId || user.fullName === tutoring.teacherName);
   const participantRatings = tutoring.ratings?.length
     ? tutoring.ratings
     : tutoring.score > 0 && tutoring.studentComment
-      ? [{ studentName: tutoring.petitionerStudentName, score: tutoring.score, studentComment: tutoring.studentComment }]
+      ? [{ studentName: creatorName, score: tutoring.score, studentComment: tutoring.studentComment }]
       : [];
 
   let displayDate = 'Fecha pendiente';
@@ -118,8 +120,8 @@ export const StudentTutoringDetailModal: React.FC<StudentTutoringDetailModalProp
             <h3 className="mb-3 text-xs font-semibold text-slate-900">Personas</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="flex min-w-0 items-center gap-3">
-                <UserAvatar user={petitioner} name={tutoring.petitionerStudentName} photoUrl={petitioner?.photoUrl} role={UserRole.STUDENT} size="sm" className="shrink-0 border border-stone-200" />
-                <div className="min-w-0"><p className="text-[10px] text-stone-500">Estudiante solicitante</p><p className="truncate text-sm font-medium text-slate-800">{tutoring.petitionerStudentName}</p></div>
+                <UserAvatar user={petitioner} name={creatorName} photoUrl={petitioner?.photoUrl} role={teacherCreator ? UserRole.TEACHER : UserRole.STUDENT} size="sm" className="shrink-0 border border-stone-200" />
+                <div className="min-w-0"><p className="text-[10px] text-stone-500">{teacherCreator ? 'Convocada por el docente' : 'Estudiante solicitante'}</p><p className="truncate text-sm font-medium text-slate-800">{creatorName}</p></div>
               </div>
               <div className="flex min-w-0 items-center gap-3">
                 <UserAvatar user={teacher} name={tutoring.teacherName} photoUrl={teacher?.photoUrl} role={UserRole.TEACHER} size="sm" className="shrink-0 border border-stone-200" />

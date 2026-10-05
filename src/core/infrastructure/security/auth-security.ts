@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
-import { UserRole } from '../../types';
+import { User, UserRole } from '../../types';
 
 const SALT_ROUNDS = 12;
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -25,6 +25,15 @@ export interface AuthTokenPayload {
 // Extender interfaz Request de Express
 export interface AuthenticatedRequest extends Request {
   user?: AuthTokenPayload;
+  actor?: User;
+}
+
+declare global {
+  namespace Express {
+    interface Request {
+      actor?: User;
+    }
+  }
 }
 
 /**

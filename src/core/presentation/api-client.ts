@@ -22,6 +22,18 @@ import { db } from '../infrastructure/database/database';
 import { runBusinessRulesTests } from '../tests/business-rules.test';
 
 const BASE_URL = '/api';
+let activeApiRequests = 0;
+let slowApiRequests = 0;
+
+function emitApiActivity() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('gt:api-activity', {
+    detail: {
+      active: activeApiRequests > 0,
+      busy: activeApiRequests > 0 && slowApiRequests > 0
+    }
+  }));
+}
 
 function getStoredToken(): string | null {
   try {
@@ -32,6 +44,18 @@ function getStoredToken(): string | null {
 }
 
 async function request<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
+  const tracksActivity = (options?.method || 'GET').toUpperCase() !== 'GET';
+  let isSlowRequest = false;
+  let slowTimer: number | undefined;
+  if (tracksActivity) {
+    activeApiRequests += 1;
+    slowTimer = window.setTimeout(() => {
+      isSlowRequest = true;
+      slowApiRequests += 1;
+      emitApiActivity();
+    }, 300);
+    emitApiActivity();
+  }
   try {
     const token = getStoredToken();
     const authHeaders: Record<string, string> = {};
@@ -60,6 +84,13 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<ApiR
         message: err.message || 'Error al comunicarse con el servidor backend.'
       }
     };
+  } finally {
+    if (tracksActivity) {
+      if (slowTimer !== undefined) window.clearTimeout(slowTimer);
+      activeApiRequests = Math.max(0, activeApiRequests - 1);
+      if (isSlowRequest) slowApiRequests = Math.max(0, slowApiRequests - 1);
+      emitApiActivity();
+    }
   }
 }
 
@@ -196,78 +227,52 @@ export class ApiClient {
   }
 
   public static async createTutoring(dto: CreateTutoringDto, user: User): Promise<ApiResponse<Tutoring>> {
-    const res = await request<Tutoring>('/tutorings', {
+    return request<Tutoring>('/tutorings', {
       method: 'POST',
       body: JSON.stringify({ ...dto, petitionerId: user.id })
     });
-    if (res.success) {
-      ApiClient.notifyListeners();
-    }
-    return res;
   }
 
   public static async approveTutoring(tutoringId: string, space: string, approver: User, block: string = '', maxParticipants?: number): Promise<ApiResponse<Tutoring>> {
-    const res = await request<Tutoring>(`/tutorings/${tutoringId}/approve`, {
+    return request<Tutoring>(`/tutorings/${tutoringId}/approve`, {
       method: 'PATCH',
       body: JSON.stringify({ space, block, maxParticipants, approverId: approver.id })
     });
-    if (res.success) {
-      ApiClient.notifyListeners();
-    }
-    return res;
   }
 
   public static async cancelTutoring(tutoringId: string, reason: string, user: User): Promise<ApiResponse<Tutoring>> {
-    const res = await request<Tutoring>(`/tutorings/${tutoringId}/cancel`, {
+    return request<Tutoring>(`/tutorings/${tutoringId}/cancel`, {
       method: 'PATCH',
       body: JSON.stringify({ reason, userId: user.id })
     });
-    if (res.success) {
-      ApiClient.notifyListeners();
-    }
-    return res;
   }
 
   public static async startTutoring(tutoringId: string, teacher: User): Promise<ApiResponse<Tutoring>> {
-    const res = await request<Tutoring>(`/tutorings/${tutoringId}/start`, {
+    return request<Tutoring>(`/tutorings/${tutoringId}/start`, {
       method: 'PATCH',
       body: JSON.stringify({ teacherId: teacher.id })
     });
-    if (res.success) {
-      ApiClient.notifyListeners();
-    }
-    return res;
   }
 
-  public static async finishTutoring(tutoringId: string, teacher: User, teacherComment?: string): Promise<ApiResponse<Tutoring>> {
-    const res = await request<Tutoring>(`/tutorings/${tutoringId}/stop`, {
+  public static async finishTutoring(tutoringId: string, teacher: User, teacherComment?: string, records?: AssistanceRecordItem[]): Promise<ApiResponse<Tutoring>> {
+    return request<Tutoring>(`/tutorings/${tutoringId}/stop`, {
       method: 'PATCH',
-      body: JSON.stringify({ teacherId: teacher.id, teacherComment })
+      body: JSON.stringify({ teacherId: teacher.id, teacherComment, records })
     });
-    if (res.success) {
-      ApiClient.notifyListeners();
-    }
-    return res;
   }
 
   public static async joinTutoring(tutoringId: string, student: User): Promise<ApiResponse<Tutoring>> {
-    const res = await request<Tutoring>(`/tutorings/${tutoringId}/join`, {
+    return request<Tutoring>(`/tutorings/${tutoringId}/join`, {
       method: 'POST',
       body: JSON.stringify({ studentId: student.id })
     });
-    if (res.success) {
-      ApiClient.notifyListeners();
-    }
-    return res;
   }
 
-  public static async withdrawFromTutoring(tutoringId: string, student: User): Promise<ApiResponse<Tutoring>> {
-    const res = await request<Tutoring>(`/tutorings/${tutoringId}/participants/me`, {
+  public static async withdrawFromTutoring(tutoringId: string): Promise<ApiResponse<{ id: string }>> {
+    return request<{ id: string }>(`/tutorings/${tutoringId}/participants/me`, {
       method: 'DELETE',
       body: JSON.stringify({})
     });
-    if (res.success) ApiClient.notifyListeners();
-    return res;
   }
 
   public static async recordAssistance(
@@ -275,25 +280,17 @@ export class ApiClient {
     records: AssistanceRecordItem[],
     teacher: User
   ): Promise<ApiResponse<Tutoring>> {
-    const res = await request<Tutoring>(`/tutorings/${tutoringId}/assistance`, {
+    return request<Tutoring>(`/tutorings/${tutoringId}/assistance`, {
       method: 'POST',
       body: JSON.stringify({ records, teacherId: teacher.id })
     });
-    if (res.success) {
-      ApiClient.notifyListeners();
-    }
-    return res;
   }
 
   public static async rateTutoring(dto: RateTutoringDto, student: User): Promise<ApiResponse<Tutoring>> {
-    const res = await request<Tutoring>(`/tutorings/${dto.tutoringId}/rate`, {
+    return request<Tutoring>(`/tutorings/${dto.tutoringId}/rate`, {
       method: 'POST',
       body: JSON.stringify({ score: dto.score, studentComment: dto.studentComment, studentId: student.id })
     });
-    if (res.success) {
-      ApiClient.notifyListeners();
-    }
-    return res;
   }
 
   // --- CATALOGS ---

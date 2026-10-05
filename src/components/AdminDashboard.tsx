@@ -115,6 +115,7 @@ interface AdminDashboardProps {
     timeline?: { date: string; count: number }[];
   } | null;
   onRefresh: () => void;
+  onTutoringUpdated: (tutoring: Tutoring) => void;
   onOpenRegister: () => void;
   onOpenTests: () => void;
 }
@@ -131,6 +132,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   binnacle,
   analytics,
   onRefresh,
+  onTutoringUpdated,
   onOpenRegister,
   onOpenTests
 }) => {
@@ -286,7 +288,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setApprovingTutoring(null);
       setAssignedSpace('');
       setAssignedBlock('');
-      onRefresh();
+      if (res.data) onTutoringUpdated(res.data);
     } else {
       setApprovalError(res.error?.message || 'Error al aprobar la tutoría.');
     }
@@ -305,7 +307,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (res.success) {
       setCancellingTutoring(null);
       setCancelReason('');
-      onRefresh();
+      if (res.data) onTutoringUpdated(res.data);
     } else {
       setCancelError(res.error?.message || 'Error al cancelar la tutoría.');
     }

@@ -104,6 +104,9 @@ CREATE TABLE IF NOT EXISTS tutorings (
   teacher_name VARCHAR(150) NOT NULL,
   petitioner_student_id VARCHAR(100) NOT NULL,
   petitioner_student_name VARCHAR(150) NOT NULL,
+  created_by_user_id VARCHAR(100) REFERENCES users(id) ON DELETE SET NULL,
+  created_by_name VARCHAR(150),
+  created_by_role VARCHAR(20),
   schedule_slot_id VARCHAR(100) NOT NULL,
   schedule_label VARCHAR(50) NOT NULL,
   approved_by_id VARCHAR(100),
@@ -120,6 +123,14 @@ CREATE TABLE IF NOT EXISTS tutorings (
 
 ALTER TABLE tutorings ADD COLUMN IF NOT EXISTS type VARCHAR(20) NOT NULL DEFAULT 'GROUP';
 ALTER TABLE tutorings ADD COLUMN IF NOT EXISTS max_participants INT;
+ALTER TABLE tutorings ADD COLUMN IF NOT EXISTS created_by_user_id VARCHAR(100) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE tutorings ADD COLUMN IF NOT EXISTS created_by_name VARCHAR(150);
+ALTER TABLE tutorings ADD COLUMN IF NOT EXISTS created_by_role VARCHAR(20);
+UPDATE tutorings
+SET created_by_user_id = petitioner_student_id,
+    created_by_name = petitioner_student_name,
+    created_by_role = CASE WHEN petitioner_student_id = teacher_id THEN 'TEACHER' ELSE 'STUDENT' END
+WHERE created_by_user_id IS NULL OR created_by_name IS NULL OR created_by_role IS NULL;
 
 CREATE TABLE IF NOT EXISTS tutoring_assistants (
   id VARCHAR(100) PRIMARY KEY,

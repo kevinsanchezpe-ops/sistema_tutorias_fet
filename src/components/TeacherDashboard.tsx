@@ -7,6 +7,7 @@ import {
   Tutoring,
   TutoringModality,
   TutoringStatus,
+  TutoringType,
   User,
   UserRole
 } from '../core/types';
@@ -41,7 +42,8 @@ import {
   List,
   Search,
   ExternalLink,
-  History
+  History,
+  PlusCircle
 } from 'lucide-react';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
 import { TutoringCalendarView } from './TutoringCalendarView';
@@ -60,6 +62,7 @@ interface TeacherDashboardProps {
   subjects?: SubjectCourse[];
   sections?: Section[];
   onRefresh: () => void;
+  onTutoringUpdated: (tutoring: Tutoring) => void;
 }
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
@@ -69,10 +72,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   schedules,
   subjects = [],
   sections = [],
-  onRefresh
+  onRefresh,
+  onTutoringUpdated
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'tutorings' | 'availability' | 'subjects' | 'evaluations' | 'profile'
+    'tutorings' | 'convocations' | 'availability' | 'subjects' | 'evaluations' | 'profile'
   >('tutorings');
 
   const [selectedTutoringId, setSelectedTutoringId] = useState<string | null>(null);
@@ -161,6 +165,17 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [approving, setApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [approvalSuccess, setApprovalSuccess] = useState<string | null>(null);
+  const [convocationAvailabilityId, setConvocationAvailabilityId] = useState('');
+  const [convocationModality, setConvocationModality] = useState<TutoringModality | ''>('');
+  const [convocationTopic, setConvocationTopic] = useState('');
+  const [convocationDetails, setConvocationDetails] = useState('');
+  const [convocationDate, setConvocationDate] = useState('');
+  const [convocationSpace, setConvocationSpace] = useState('');
+  const [convocationBlock, setConvocationBlock] = useState('');
+  const [convocationCapacity, setConvocationCapacity] = useState(10);
+  const [convocationError, setConvocationError] = useState<string | null>(null);
+  const [convocationSuccess, setConvocationSuccess] = useState<string | null>(null);
+  const [creatingConvocation, setCreatingConvocation] = useState(false);
 
   const openApproveModal = (tut: Tutoring) => {
     setApprovingTutoring(tut);
@@ -188,10 +203,48 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       setApprovingTutoring(null);
       setApprovalSuccess(`¡Tutoría ${approvingTutoring.code} aprobada con éxito!`);
       setTimeout(() => setApprovalSuccess(null), 4000);
-      onRefresh();
+      if (res.data) onTutoringUpdated(res.data);
     } else {
       setApprovalError(res.error?.message || 'Error al aprobar la tutoría.');
     }
+  };
+
+  const handleCreateConvocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setConvocationError(null);
+    const availability = availabilities.find((item) => item.id === convocationAvailabilityId && item.teacherId === currentUser.id && item.isAvailable);
+    if (!availability) {
+      setConvocationError('Selecciona una franja activa de tu disponibilidad.');
+      return;
+    }
+    if (!convocationModality) {
+      setConvocationError('Selecciona la modalidad de la tutoría.');
+      return;
+    }
+    setCreatingConvocation(true);
+    const result = await ApiClient.createTutoring({
+      subject: convocationTopic,
+      details: convocationDetails,
+      reservDate: convocationDate,
+      scheduleSlotId: availability.scheduleSlotId,
+      subjectCourseId: availability.subjectCourseId,
+      teacherId: currentUser.id,
+      modality: convocationModality,
+      type: TutoringType.GROUP,
+      space: convocationSpace,
+      block: convocationBlock,
+      maxParticipants: convocationCapacity
+    }, currentUser);
+    setCreatingConvocation(false);
+    if (!result.success) {
+      setConvocationError(result.error?.message || 'No fue posible crear la convocatoria.');
+      return;
+    }
+    setConvocationSuccess('Tutoría grupal aprobada y publicada. Los estudiantes elegibles ya pueden inscribirse.');
+    setConvocationTopic('');
+    setConvocationDetails('');
+    setConvocationDate('');
+    if (result.data) onTutoringUpdated(result.data);
   };
 
   // Cancel/reject state for teachers
@@ -224,7 +277,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       setCancellingTutoring(null);
       setCancelSuccess(`Tutoría ${cancellingTutoring.code} rechazada.`);
       setTimeout(() => setCancelSuccess(null), 4000);
-      onRefresh();
+      if (res.data) onTutoringUpdated(res.data);
     } else {
       setCancelError(res.error?.message || 'Error al rechazar la tutoría.');
     }
@@ -252,6 +305,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [attendanceMap, setAttendanceMap] = useState<Record<string, boolean>>({});
   const [teacherComment, setTeacherComment] = useState('');
   const [savingAttendance, setSavingAttendance] = useState(false);
+  const [startingTutoringId, setStartingTutoringId] = useState<string | null>(null);
+  const [finishingTutoringId, setFinishingTutoringId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   React.useEffect(() => {
@@ -267,31 +322,37 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   }, [activeTutoring?.id]);
 
   const handleStart = async (tutoringId: string) => {
+    if (startingTutoringId || finishingTutoringId) return;
+    setStartingTutoringId(tutoringId);
     setActionError(null);
-    const res = await ApiClient.startTutoring(tutoringId, currentUser);
-    if (res.success) {
-      onRefresh();
-    } else {
-      setActionError(res.error?.message || 'Error al iniciar tutoría');
+    try {
+      const res = await ApiClient.startTutoring(tutoringId, currentUser);
+      if (res.success && res.data) onTutoringUpdated(res.data);
+      else setActionError(res.error?.message || 'Error al iniciar tutoría');
+    } finally {
+      setStartingTutoringId(null);
     }
   };
 
   const handleFinish = async (tutoringId: string) => {
+    if (startingTutoringId || finishingTutoringId) return;
+    setFinishingTutoringId(tutoringId);
     setActionError(null);
     try {
       const records = Object.entries(attendanceMap).map(([astId, hasAttended]) => ({
         assistantId: astId,
         hasAttended: Boolean(hasAttended)
       }));
-      await ApiClient.recordAssistance(tutoringId, records, currentUser);
-      const res = await ApiClient.finishTutoring(tutoringId, currentUser, teacherComment);
+      const res = await ApiClient.finishTutoring(tutoringId, currentUser, teacherComment, records);
       if (res.success) {
-        onRefresh();
+        if (res.data) onTutoringUpdated(res.data);
       } else {
         setActionError(res.error?.message || 'Error al finalizar tutoría');
       }
     } catch (err: any) {
       setActionError(err.message || 'Error al finalizar tutoría');
+    } finally {
+      setFinishingTutoringId(null);
     }
   };
 
@@ -306,7 +367,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       }));
       const res = await ApiClient.recordAssistance(activeTutoring.id, records, currentUser);
       if (res.success) {
-        onRefresh();
+        if (res.data) onTutoringUpdated(res.data);
       } else {
         setActionError(res.error?.message || 'Error al guardar asistencia');
       }
@@ -449,22 +510,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     setAvailabilitySuccessMsg(null);
 
     try {
-      const selectedSubject = teacherCatalog.find((s) => s.id === newSubjectId) || allAvailableSubjects.find((s) => s.id === newSubjectId);
-
-      for (const slotId of selectedSlotIds) {
-        const slot = schedules.find((s) => s.id === slotId);
-        if (!slot) continue;
-
-        const exists = myAvailabilities.some(
-          (a) => a.subjectCourseId === newSubjectId && a.scheduleSlotId === slotId
-        );
-        if (exists) continue;
-
-        await ApiClient.addTeacherAvailability(
-          currentUser,
-          newSubjectId,
-          slot.id
-        );
+      const newSlotIds = selectedSlotIds.filter((slotId) =>
+        schedules.some((slot) => slot.id === slotId) &&
+        !myAvailabilities.some((availability) => availability.subjectCourseId === newSubjectId && availability.scheduleSlotId === slotId)
+      );
+      if (newSlotIds.length > 0) {
+        const result = await ApiClient.setTeacherAvailabilityBatch(currentUser, newSubjectId, newSlotIds);
+        if (!result.success) throw new Error(result.error?.message || 'Error al registrar franjas.');
       }
 
       setAvailabilitySuccessMsg('¡Franjas horarias registradas exitosamente!');
@@ -633,6 +685,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               >
                 {activeTutorings.length}
               </span>
+            </button>
+
+            <button
+              id="tab-teacher-convocations"
+              onClick={() => setActiveTab('convocations')}
+              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${activeTab === 'convocations' ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200' : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'}`}
+            >
+              <div className="flex items-center gap-3"><Users aria-hidden="true" className="w-4 h-4 shrink-0" /><span>Convocar grupal</span></div>
             </button>
 
             <button
@@ -864,7 +924,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                   {filteredMyTutorings.map((tut) => {
                     const dt = formatTutoringDateTime(tut.reservDate, tut.scheduleLabel, tut.reservTime);
-                    const studentUser = db.users.find((user) => user.id === tut.petitionerStudentId || user.fullName === tut.petitionerStudentName);
+                    const creatorName = tut.createdByName || tut.petitionerStudentName;
+                    const teacherCreator = (tut.createdByRole || tut.creatorRole) === UserRole.TEACHER || tut.petitionerStudentId === tut.teacherId;
+                    const studentUser = db.users.find((user) => user.id === (tut.createdByUserId || tut.petitionerStudentId) || user.fullName === creatorName);
                     const participantCount = (tut.assistants || []).length;
 
                     return (
@@ -873,15 +935,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           <div className="flex min-w-0 items-center gap-3">
                             <UserAvatar
                               user={studentUser}
-                              name={tut.petitionerStudentName}
+                              name={creatorName}
                               photoUrl={studentUser?.photoUrl}
-                              role={UserRole.STUDENT}
+                              role={teacherCreator ? UserRole.TEACHER : UserRole.STUDENT}
                               size="md"
                               className="shrink-0 border border-stone-200"
                             />
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-slate-900">{tut.petitionerStudentName}</p>
-                              <p className="mt-0.5 text-xs text-stone-500">{participantCount} {participantCount === 1 ? 'estudiante' : 'estudiantes'}</p>
+                              <p className="truncate text-sm font-semibold text-slate-900">{creatorName}</p>
+                              <p className="mt-0.5 text-[10px] text-stone-500">{teacherCreator ? 'Convocada por el docente' : 'Estudiante solicitante'}</p>
+                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5"><span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${tut.type === TutoringType.INDIVIDUAL ? 'bg-slate-100 text-slate-700' : 'bg-violet-50 text-violet-700'}`}>{tut.type === TutoringType.INDIVIDUAL ? 'Individual' : 'Grupal'}</span><span className="text-[11px] text-stone-500">{participantCount} {participantCount === 1 ? 'participante' : 'participantes'}{tut.type !== TutoringType.INDIVIDUAL && ` / ${tut.maxParticipants ?? 'cupo por confirmar'}`}</span></div>
                             </div>
                           </div>
                           <StatusBadge status={tut.status} size="sm" />
@@ -1149,11 +1212,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           type="button"
                           id={`btn-start-tutoring-${activeTutoring.id}`}
                           onClick={() => handleStart(activeTutoring.id)}
-                          className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white transition-colors hover:bg-brand-800"
+                          disabled={startingTutoringId !== null || finishingTutoringId !== null}
+                          className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white transition-colors hover:bg-brand-800 disabled:cursor-wait disabled:opacity-60"
                           title="Iniciar la tutoría"
                         >
-                          <Play aria-hidden="true" className="h-3.5 w-3.5 fill-white" />
-                          <span>Iniciar Tutoría</span>
+                          {startingTutoringId === activeTutoring.id ? <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Play aria-hidden="true" className="h-3.5 w-3.5 fill-white" />}
+                          <span>{startingTutoringId === activeTutoring.id ? 'Iniciando…' : 'Iniciar Tutoría'}</span>
                         </button>
                       )}
 
@@ -1162,11 +1226,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           type="button"
                           id={`btn-finish-tutoring-${activeTutoring.id}`}
                           onClick={() => handleFinish(activeTutoring.id)}
-                          className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white transition-colors hover:bg-brand-800"
+                          disabled={startingTutoringId !== null || finishingTutoringId !== null}
+                          className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white transition-colors hover:bg-brand-800 disabled:cursor-wait disabled:opacity-60"
                           title="Concluir la sesión"
                         >
-                          <Square aria-hidden="true" className="h-3.5 w-3.5 fill-white" />
-                          <span>Finalizar Tutoría</span>
+                          {finishingTutoringId === activeTutoring.id ? <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Square aria-hidden="true" className="h-3.5 w-3.5 fill-white" />}
+                          <span>{finishingTutoringId === activeTutoring.id ? 'Finalizando…' : 'Finalizar Tutoría'}</span>
                         </button>
                       )}
 
@@ -1186,6 +1251,54 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         )}
 
         {/* TAB HISTORY: HISTORIAL TUTORÍAS */}
+        {activeTab === 'convocations' && (
+          <section className="max-w-3xl space-y-4 animate-in fade-in duration-200">
+            <header>
+              <p className="text-xs font-medium text-brand-700">Nueva convocatoria</p>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Convocar tutoría grupal</h2>
+              <p className="mt-1 text-sm text-stone-500">Elige una materia y franja activa. La tutoría se aprobará y publicará al crearla si el espacio, el cupo y el horario son válidos.</p>
+            </header>
+            {convocationSuccess && <div role="status" className="rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm font-medium text-brand-800">{convocationSuccess}</div>}
+            <form onSubmit={handleCreateConvocation} className="space-y-5 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6">
+              <div className="space-y-1.5">
+                <label htmlFor="teacher-convocation-availability" className="block text-xs font-semibold text-slate-700">Materia y franja disponible</label>
+                <select id="teacher-convocation-availability" value={convocationAvailabilityId} onChange={(e) => setConvocationAvailabilityId(e.target.value)} required className="h-11 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm text-slate-800">
+                  <option value="">Selecciona una materia y horario</option>
+                  {myAvailabilities.filter((item) => item.isAvailable).map((item) => <option key={item.id} value={item.id}>{item.subjectCourseName} · {item.scheduleLabel}</option>)}
+                </select>
+                {myAvailabilities.filter((item) => item.isAvailable).length === 0 && <p className="text-xs text-amber-700">Primero configura una franja activa en Mi Disponibilidad.</p>}
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label htmlFor="teacher-convocation-date" className="block text-xs font-semibold text-slate-700">Fecha</label>
+                  <input id="teacher-convocation-date" type="date" min={(() => { const d = new Date(); d.setDate(d.getDate() + 2); return d.toISOString().slice(0, 10); })()} value={convocationDate} onChange={(e) => setConvocationDate(e.target.value)} required className="h-11 w-full rounded-lg border border-stone-200 px-3 text-sm" />
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="teacher-convocation-modality" className="block text-xs font-semibold text-slate-700">Modalidad</label>
+                  <select id="teacher-convocation-modality" value={convocationModality} onChange={(e) => setConvocationModality(e.target.value === '' ? '' : Number(e.target.value) as TutoringModality)} required className="h-11 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm">
+                    <option value="">Selecciona modalidad</option><option value={TutoringModality.PRESENCIAL}>Presencial</option><option value={TutoringModality.VIRTUAL}>Virtual</option>
+                  </select>
+                </div>
+              </div>
+              {convocationModality === TutoringModality.PRESENCIAL ? <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5"><label htmlFor="teacher-convocation-room" className="block text-xs font-semibold text-slate-700">Aula disponible</label><select id="teacher-convocation-room" value={convocationSpace} onChange={(e) => setConvocationSpace(e.target.value)} required className="h-11 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm"><option value="">Selecciona aula</option>{sections.filter((section) => section.isAvailable).map((section) => <option key={section.id} value={section.name}>{section.name} · aforo {section.capacity || 'sin límite'}</option>)}</select></div>
+                <div className="space-y-1.5"><label htmlFor="teacher-convocation-block" className="block text-xs font-semibold text-slate-700">Bloque / edificio</label><input id="teacher-convocation-block" value={convocationBlock} onChange={(e) => setConvocationBlock(e.target.value)} required maxLength={50} className="h-11 w-full rounded-lg border border-stone-200 px-3 text-sm" /></div>
+              </div> : convocationModality === TutoringModality.VIRTUAL ? <div className="space-y-1.5"><label htmlFor="teacher-convocation-link" className="block text-xs font-semibold text-slate-700">Enlace de reunión</label><input id="teacher-convocation-link" type="url" value={convocationSpace} onChange={(e) => setConvocationSpace(e.target.value)} required placeholder="https://..." className="h-11 w-full rounded-lg border border-stone-200 px-3 text-sm" /></div> : null}
+              <div className="space-y-1.5"><label htmlFor="teacher-convocation-capacity" className="block text-xs font-semibold text-slate-700">Cupo de estudiantes</label><input id="teacher-convocation-capacity" type="number" min={2} max={convocationModality === TutoringModality.VIRTUAL ? 30 : sections.find((section) => section.name === convocationSpace)?.capacity || undefined} value={convocationCapacity} onChange={(e) => setConvocationCapacity(Number(e.target.value))} required className="h-11 w-full rounded-lg border border-stone-200 px-3 text-sm" /><p className="text-xs text-stone-500">El cupo incluye solo estudiantes; tú apareces como docente convocante.</p></div>
+              <div className="space-y-1.5">
+                <label htmlFor="teacher-convocation-topic" className="block text-xs font-semibold text-slate-700">Tema de la convocatoria</label>
+                <input id="teacher-convocation-topic" value={convocationTopic} onChange={(e) => setConvocationTopic(e.target.value)} maxLength={70} minLength={3} required placeholder="Ej.: Repaso de derivadas" className="h-11 w-full rounded-lg border border-stone-200 px-3 text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="teacher-convocation-details" className="block text-xs font-semibold text-slate-700">Descripción y objetivos</label>
+                <textarea id="teacher-convocation-details" value={convocationDetails} onChange={(e) => setConvocationDetails(e.target.value)} minLength={5} maxLength={2000} required rows={4} placeholder="Indica qué se trabajará y qué deben preparar los estudiantes." className="w-full rounded-lg border border-stone-200 p-3 text-sm" />
+              </div>
+              {convocationError && <div role="alert" className="rounded-lg border border-danger-border bg-danger-soft p-3 text-sm text-danger">{convocationError}</div>}
+              <button type="submit" disabled={creatingConvocation || myAvailabilities.every((item) => !item.isAvailable)} className="inline-flex h-11 items-center gap-2 rounded-lg bg-brand-700 px-4 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-50"><PlusCircle aria-hidden="true" className="h-4 w-4" />{creatingConvocation ? 'Enviando…' : 'Enviar convocatoria'}</button>
+            </form>
+          </section>
+        )}
+
         {activeTab === 'history' && (
           <section aria-labelledby="teacher-history-title" className="space-y-4 animate-in fade-in duration-200">
             <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -1237,7 +1350,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     .sort((a, b) => new Date(b.reservDate).getTime() - new Date(a.reservDate).getTime())
                     .map((tut) => {
                       const dt = formatTutoringDateTime(tut.reservDate, tut.scheduleLabel, tut.reservTime);
-                      const studentUser = db.users.find((user) => user.id === tut.petitionerStudentId || user.fullName === tut.petitionerStudentName);
+                      const creatorName = tut.createdByName || tut.petitionerStudentName;
+                      const teacherCreator = (tut.createdByRole || tut.creatorRole) === UserRole.TEACHER || tut.petitionerStudentId === tut.teacherId;
+                      const studentUser = db.users.find((user) => user.id === (tut.createdByUserId || tut.petitionerStudentId) || user.fullName === creatorName);
                       const participantCount = (tut.assistants || []).length;
                       return (
                         <article key={tut.id} className="grid grid-cols-1 gap-3 px-4 py-4 transition-colors hover:bg-stone-50/60 lg:grid-cols-[minmax(130px,0.8fr)_minmax(190px,1.2fr)_minmax(160px,1fr)_minmax(180px,1.2fr)_auto] lg:items-center lg:gap-4">
@@ -1258,10 +1373,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           </div>
 
                           <div className="flex items-center gap-2.5">
-                            <UserAvatar user={studentUser} name={tut.petitionerStudentName} photoUrl={studentUser?.photoUrl} role={UserRole.STUDENT} size="sm" className="shrink-0 border border-stone-200" />
+                            <UserAvatar user={studentUser} name={creatorName} photoUrl={studentUser?.photoUrl} role={teacherCreator ? UserRole.TEACHER : UserRole.STUDENT} size="sm" className="shrink-0 border border-stone-200" />
                             <div className="min-w-0">
-                              <p className="truncate text-xs font-medium text-slate-800">{tut.petitionerStudentName}</p>
-                              <p className="mt-0.5 text-[11px] text-stone-500">{participantCount} {participantCount === 1 ? 'participante' : 'participantes'}</p>
+                              <p className="truncate text-xs font-medium text-slate-800">{creatorName}</p>
+                              <p className="text-[10px] text-stone-500">{teacherCreator ? 'Convocada por el docente' : 'Estudiante solicitante'}</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5"><span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${tut.type === TutoringType.INDIVIDUAL ? 'bg-slate-100 text-slate-700' : 'bg-violet-50 text-violet-700'}`}>{tut.type === TutoringType.INDIVIDUAL ? 'Individual' : 'Grupal'}</span><span className="text-[11px] text-stone-500">{participantCount} {participantCount === 1 ? 'participante' : 'participantes'}{tut.type !== TutoringType.INDIVIDUAL && ` / ${tut.maxParticipants ?? 'cupo por confirmar'}`}</span></div>
                             </div>
                           </div>
 

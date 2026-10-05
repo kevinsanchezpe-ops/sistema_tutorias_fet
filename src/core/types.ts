@@ -151,8 +151,12 @@ export interface Tutoring {
   subjectCourseName: string;
   teacherId: string;
   teacherName: string;
+  createdByUserId?: string;
+  createdByName?: string;
+  createdByRole?: UserRole;
   petitionerStudentId: string;
   petitionerStudentName: string;
+  creatorRole?: UserRole;
   scheduleSlotId: string;
   scheduleLabel: string; // e.g. "14:00 - 15:00"
   approvedById?: string;

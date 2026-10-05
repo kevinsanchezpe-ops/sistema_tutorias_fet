@@ -11,6 +11,9 @@ export interface CreateTutoringDto {
   teacherId: string;
   modality: TutoringModality;
   type: TutoringType;
+  space?: string;
+  block?: string;
+  maxParticipants?: number;
   attachmentName?: string | null;
   attachmentUrl?: string | null;
 }

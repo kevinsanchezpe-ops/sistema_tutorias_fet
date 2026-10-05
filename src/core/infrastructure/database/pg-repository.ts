@@ -1013,10 +1013,12 @@ export class PgRepository {
     } else if (actor?.role === UserRole.STUDENT) {
       where = `WHERE petitioner_student_id = $1
         OR EXISTS (SELECT 1 FROM tutoring_assistants ta WHERE ta.tutoring_id = tutorings.id AND ta.student_id = $1)
-        OR (status = $2 AND subject_course_id IN (
-          SELECT id FROM subjects WHERE career_id = $3 AND ($4::int = 0 OR semester = $4)
+        OR (type = 'GROUP' AND status IN ($2, $3) AND subject_course_id IN (
+          SELECT id FROM subjects
+          WHERE (career_id = $4 OR career_id IS NULL OR career_id = '')
+            AND ($5::int = 0 OR semester = $5 OR semester IS NULL OR semester = 0)
         ))`;
-      values = [actor.id, TutoringStatus.APPROVED, actor.careerId || '', actor.semester || 0];
+      values = [actor.id, TutoringStatus.PENDING, TutoringStatus.APPROVED, actor.careerId || '', actor.semester || 0];
     }
     const tutRes = await pool.query(
       `SELECT id, code, subject, details, reserv_date as "reservDate", request_date as "requestDate",
@@ -1024,6 +1026,7 @@ export class PgRepository {
               subject_course_name as "subjectCourseName", teacher_id as "teacherId",
               teacher_name as "teacherName", petitioner_student_id as "petitionerStudentId",
               petitioner_student_name as "petitionerStudentName", schedule_slot_id as "scheduleSlotId",
+              created_by_user_id as "createdByUserId", created_by_name as "createdByName", created_by_role as "createdByRole",
               schedule_label as "scheduleLabel", approved_by_id as "approvedById",
               approved_by_name as "approvedByName", start_time as "startTime",
               finish_time as "finishTime", score, student_comment as "studentComment",
@@ -1037,15 +1040,24 @@ export class PgRepository {
     const tutoringIds = tutRes.rows.map((t) => t.id);
     if (tutoringIds.length === 0) return [];
 
-    const asstRes = await pool.query(
-      `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
+    const [asstRes, rateRes] = await Promise.all([
+      pool.query(
+        `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
               student_name as "studentName", student_account as "studentAccount",
               student_email as "studentEmail",
               is_petitioner as "isPetitioner", has_attended as "hasAttended",
               joined_at as "joinedAt"
-        FROM tutoring_assistants WHERE tutoring_id = ANY($1::varchar[]);`,
-      [tutoringIds]
-    );
+          FROM tutoring_assistants WHERE tutoring_id = ANY($1::varchar[]);`,
+        [tutoringIds]
+      ),
+      pool.query(
+        `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
+                student_name as "studentName", score,
+                student_comment as "studentComment", created_at as "createdAt"
+          FROM tutoring_ratings WHERE tutoring_id = ANY($1::varchar[]);`,
+        [tutoringIds]
+      )
+    ]);
 
     const assistantsByTutoring: { [key: string]: TutoringAssistant[] } = {};
     for (const a of asstRes.rows) {
@@ -1055,13 +1067,6 @@ export class PgRepository {
       assistantsByTutoring[a.tutoringId].push(a);
     }
 
-    const rateRes = await pool.query(
-      `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
-              student_name as "studentName", score,
-              student_comment as "studentComment", created_at as "createdAt"
-        FROM tutoring_ratings WHERE tutoring_id = ANY($1::varchar[]);`,
-      [tutoringIds]
-    );
     const ratingsByTutoring: { [key: string]: any[] } = {};
     for (const r of rateRes.rows) {
       if (!ratingsByTutoring[r.tutoringId]) {
@@ -1072,6 +1077,10 @@ export class PgRepository {
 
     return tutRes.rows.map((t) => ({
       ...t,
+      createdByUserId: t.createdByUserId || t.petitionerStudentId,
+      createdByName: t.createdByName || t.petitionerStudentName,
+      createdByRole: t.createdByRole || (t.petitionerStudentId === t.teacherId ? UserRole.TEACHER : UserRole.STUDENT),
+      creatorRole: t.createdByRole || (t.petitionerStudentId === t.teacherId ? UserRole.TEACHER : UserRole.STUDENT),
       score: Number(t.score || 0),
       assistants: assistantsByTutoring[t.id] || [],
       ratings: ratingsByTutoring[t.id] || []
@@ -1086,6 +1095,7 @@ export class PgRepository {
               subject_course_name as "subjectCourseName", teacher_id as "teacherId",
               teacher_name as "teacherName", petitioner_student_id as "petitionerStudentId",
               petitioner_student_name as "petitionerStudentName", schedule_slot_id as "scheduleSlotId",
+              created_by_user_id as "createdByUserId", created_by_name as "createdByName", created_by_role as "createdByRole",
               schedule_label as "scheduleLabel", approved_by_id as "approvedById",
               approved_by_name as "approvedByName", start_time as "startTime",
               finish_time as "finishTime", score, student_comment as "studentComment",
@@ -1095,24 +1105,30 @@ export class PgRepository {
       [id]
     );
     if (tutRes.rows.length === 0) return null;
-    const asstRes = await pool.query(
-      `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
+    const [asstRes, oneRateRes] = await Promise.all([
+      pool.query(
+        `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
               student_name as "studentName", student_account as "studentAccount",
               student_email as "studentEmail",
               is_petitioner as "isPetitioner", has_attended as "hasAttended",
               joined_at as "joinedAt"
-       FROM tutoring_assistants WHERE tutoring_id = $1;`,
-      [id]
-    );
-    const oneRateRes = await pool.query(
-      `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
+          FROM tutoring_assistants WHERE tutoring_id = $1;`,
+        [id]
+      ),
+      pool.query(
+        `SELECT id, tutoring_id as "tutoringId", student_id as "studentId",
               student_name as "studentName", score,
               student_comment as "studentComment", created_at as "createdAt"
-       FROM tutoring_ratings WHERE tutoring_id = $1 ORDER BY created_at ASC;`,
-      [id]
-    );
+          FROM tutoring_ratings WHERE tutoring_id = $1 ORDER BY created_at ASC;`,
+        [id]
+      )
+    ]);
     return {
       ...tutRes.rows[0],
+      createdByUserId: tutRes.rows[0].createdByUserId || tutRes.rows[0].petitionerStudentId,
+      createdByName: tutRes.rows[0].createdByName || tutRes.rows[0].petitionerStudentName,
+      createdByRole: tutRes.rows[0].createdByRole || (tutRes.rows[0].petitionerStudentId === tutRes.rows[0].teacherId ? UserRole.TEACHER : UserRole.STUDENT),
+      creatorRole: tutRes.rows[0].createdByRole || (tutRes.rows[0].petitionerStudentId === tutRes.rows[0].teacherId ? UserRole.TEACHER : UserRole.STUDENT),
       score: Number(tutRes.rows[0].score || 0),
       assistants: asstRes.rows,
       ratings: (oneRateRes.rows || []).map((r) => ({ ...r, score: Number(r.score || 0) }))
@@ -1120,9 +1136,12 @@ export class PgRepository {
   }
 
   public async createTutoring(dto: CreateTutoringDto, user: User): Promise<Tutoring> {
-    if (user.role !== UserRole.STUDENT) {
-      throw new Error('Solo los estudiantes pueden solicitar tutorías.');
+    if (user.role !== UserRole.STUDENT && user.role !== UserRole.TEACHER) {
+      throw new Error('Solo estudiantes y docentes pueden crear tutorías.');
     }
+    if (user.role === UserRole.TEACHER && dto.type !== 'GROUP') throw new Error('Los docentes solo pueden convocar tutorías grupales.');
+    if (dto.type !== 'GROUP' && dto.type !== 'INDIVIDUAL') throw new Error('Tipo de tutoría inválido.');
+    const teacherId = user.role === UserRole.TEACHER ? user.id : dto.teacherId;
     const pool = await getPgPool();
 
     // Verify minimum 2 days advance notice (Business Rule 1)
@@ -1141,14 +1160,14 @@ export class PgRepository {
     await client.query('BEGIN');
     // Serialize scheduling writes so two requests cannot both pass the same availability check.
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
-      `tutoring-slot:${dto.teacherId}:${dto.reservDate}:${dto.scheduleSlotId}`
+      `tutoring-slot:${teacherId}:${dto.reservDate}:${dto.scheduleSlotId}`
     ]);
 
     const conflict = await client.query(
       `SELECT id FROM tutorings
        WHERE teacher_id = $1 AND reserv_date = $2 AND schedule_slot_id = $3 AND status != $4
        FOR UPDATE;`,
-      [dto.teacherId, dto.reservDate, dto.scheduleSlotId, TutoringStatus.CANCELLED]
+      [teacherId, dto.reservDate, dto.scheduleSlotId, TutoringStatus.CANCELLED]
     );
     if (conflict.rows.length > 0) {
       throw new Error('El docente seleccionado ya tiene una tutoría programada en esa fecha y horario.');
@@ -1158,14 +1177,14 @@ export class PgRepository {
     // si el docente tiene disponibilidad registrada, la solicitud debe ajustarse a ella.
     const availCountRes = await client.query(
       `SELECT COUNT(*) as count FROM teacher_availability WHERE teacher_id = $1;`,
-      [dto.teacherId]
+      [teacherId]
     );
     const teacherHasAvailability = parseInt(availCountRes.rows[0]?.count || '0', 10) > 0;
-    if (teacherHasAvailability) {
+    if (teacherHasAvailability || user.role === UserRole.TEACHER) {
       const availMatch = await client.query(
         `SELECT id FROM teacher_availability
          WHERE teacher_id = $1 AND schedule_slot_id = $2 AND subject_course_id = $3 AND is_available = TRUE;`,
-        [dto.teacherId, dto.scheduleSlotId, dto.subjectCourseId]
+        [teacherId, dto.scheduleSlotId, dto.subjectCourseId]
       );
       if (availMatch.rows.length === 0) {
         throw new Error('El docente seleccionado no tiene disponibilidad activa para esa franja horaria y asignatura.');
@@ -1178,13 +1197,13 @@ export class PgRepository {
       [dto.subjectCourseId]
     );
     const slotRes = await client.query('SELECT label FROM schedule_slots WHERE id = $1', [dto.scheduleSlotId]);
-    const teacherRes = await client.query('SELECT full_name, role, is_active as "isActive" FROM users WHERE id = $1', [dto.teacherId]);
+    const teacherRes = await client.query('SELECT full_name, role, is_active as "isActive" FROM users WHERE id = $1', [teacherId]);
 
     if (!subjRes.rows[0]?.isActive) throw new Error('La asignatura seleccionada no está activa.');
-    if (subjRes.rows[0].careerId && user.careerId && subjRes.rows[0].careerId !== user.careerId) {
+    if (user.role === UserRole.STUDENT && subjRes.rows[0].careerId && user.careerId && subjRes.rows[0].careerId !== user.careerId) {
       throw new Error('Solo puedes solicitar tutorías de asignaturas de tu carrera.');
     }
-    if (Number(subjRes.rows[0].semester) > 0 && Number(user.semester) !== Number(subjRes.rows[0].semester)) {
+    if (user.role === UserRole.STUDENT && Number(subjRes.rows[0].semester) > 0 && Number(user.semester) !== Number(subjRes.rows[0].semester)) {
       throw new Error(`Esta asignatura corresponde al semestre ${subjRes.rows[0].semester}.`);
     }
     if (!slotRes.rows[0]) throw new Error('La franja horaria seleccionada no es válida.');
@@ -1193,13 +1212,58 @@ export class PgRepository {
     }
     const assignment = await client.query(
       'SELECT 1 FROM teacher_subjects WHERE teacher_id = $1 AND subject_id = $2;',
-      [dto.teacherId, dto.subjectCourseId]
+      [teacherId, dto.subjectCourseId]
     );
     if (assignment.rows.length === 0) throw new Error('El docente no tiene asignada esta asignatura.');
 
     const subjectName = subjRes.rows[0]?.name || 'Materia';
     const scheduleLabel = slotRes.rows[0]?.label || 'Horario';
     const teacherName = teacherRes.rows[0]?.full_name || 'Docente';
+    let tutoringStatus = TutoringStatus.PENDING;
+    let tutoringSpace = '';
+    let tutoringBlock = '';
+    let maxParticipants: number | null = dto.type === 'INDIVIDUAL' ? 1 : null;
+    let approvedById: string | null = null;
+    let approvedByName: string | null = null;
+
+    if (user.role === UserRole.TEACHER) {
+      if (!Number.isInteger(dto.maxParticipants) || Number(dto.maxParticipants) < 2) {
+        throw new Error('Indica un cupo de al menos 2 estudiantes.');
+      }
+      maxParticipants = Number(dto.maxParticipants);
+      tutoringSpace = (dto.space || '').trim();
+      if (!tutoringSpace) throw new Error('Asigna el aula o enlace antes de publicar la convocatoria.');
+      if (dto.modality === TutoringModality.PRESENCIAL) {
+        tutoringBlock = (dto.block || '').trim();
+        if (!tutoringBlock) throw new Error('Indica el bloque o edificio del aula.');
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+          `tutoring-room:${dto.reservDate}:${dto.scheduleSlotId}:${tutoringSpace.toLocaleLowerCase()}:${tutoringBlock.toLocaleLowerCase()}`
+        ]);
+        const sectionRes = await client.query('SELECT capacity, is_available as "isAvailable" FROM sections WHERE LOWER(name) = LOWER($1) FOR UPDATE;', [tutoringSpace]);
+        const section = sectionRes.rows[0];
+        if (!section?.isAvailable) throw new Error('Selecciona un aula disponible del catálogo institucional.');
+        const roomCapacity = Number.parseInt(section.capacity ?? '0', 10);
+        if (roomCapacity > 0 && maxParticipants > roomCapacity) throw new Error(`El cupo no puede superar el aforo del aula (${roomCapacity}).`);
+        const roomConflict = await client.query(
+          `SELECT id FROM tutorings WHERE reserv_date = $1 AND schedule_slot_id = $2
+             AND LOWER(space) = LOWER($3) AND LOWER(COALESCE(block, '')) = LOWER($4)
+             AND status IN ($5, $6) FOR UPDATE;`,
+          [dto.reservDate, dto.scheduleSlotId, tutoringSpace, tutoringBlock, TutoringStatus.APPROVED, TutoringStatus.IN_PROGRESS]
+        );
+        if (roomConflict.rowCount) throw new Error('El aula y bloque ya están ocupados en esa fecha y franja.');
+      } else if (dto.modality === TutoringModality.VIRTUAL) {
+        let meetingUrl: URL;
+        try { meetingUrl = new URL(tutoringSpace); } catch { throw new Error('Ingresa un enlace virtual válido.'); }
+        if (meetingUrl.protocol !== 'https:' && meetingUrl.protocol !== 'http:') throw new Error('El enlace virtual debe comenzar con http:// o https://.');
+        const virtualLimit = Number.parseInt(process.env.MAX_VIRTUAL_TUTORING_PARTICIPANTS || '30', 10) || 30;
+        if (maxParticipants > virtualLimit) throw new Error(`El cupo no puede superar el límite virtual configurado (${virtualLimit}).`);
+      } else {
+        throw new Error('Modalidad de tutoría inválida.');
+      }
+      tutoringStatus = TutoringStatus.APPROVED;
+      approvedById = user.id;
+      approvedByName = user.alias || user.fullName;
+    }
 
     // Código correlativo sin colisiones (MAX sufijo numérico + 1, no COUNT)
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['tutoring-code-sequence']);
@@ -1215,9 +1279,9 @@ export class PgRepository {
     await client.query(
       `INSERT INTO tutorings (id, code, subject, details, reserv_date, request_date, modality, type, max_participants, status, space,
                               block, subject_course_id, subject_course_name, teacher_id, teacher_name,
-                              petitioner_student_id, petitioner_student_name, schedule_slot_id, schedule_label,
-                              attachment_name, attachment_url, score, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 0, $22);`,
+                              petitioner_student_id, petitioner_student_name, created_by_user_id, created_by_name, created_by_role, schedule_slot_id, schedule_label,
+                              approved_by_id, approved_by_name, attachment_name, attachment_url, score, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, 0, $28);`,
       [
         id,
         code,
@@ -1227,46 +1291,52 @@ export class PgRepository {
         nowStr,
         dto.modality,
         dto.type,
-        dto.type === 'INDIVIDUAL' ? 1 : null,
-        TutoringStatus.PENDING,
-        '',
-        '',
+        maxParticipants,
+        tutoringStatus,
+        tutoringSpace,
+        tutoringBlock,
         dto.subjectCourseId,
         subjectName,
-        dto.teacherId,
+        teacherId,
         teacherName,
         user.id,
         user.fullName,
+        user.id,
+        user.fullName,
+        user.role,
         dto.scheduleSlotId,
         scheduleLabel,
+        approvedById,
+        approvedByName,
         dto.attachmentName || null,
         dto.attachmentUrl || null,
         nowStr
       ]
     );
 
-    // Add petitioner as assistant
-    const asstId = `asst-${randomUUID()}`;
-    await client.query(
-      `INSERT INTO tutoring_assistants (id, tutoring_id, student_id, student_name, student_account, student_email, is_petitioner, has_attended, joined_at)
-       VALUES ($1, $2, $3, $4, $5, $6, true, false, $7);`,
-      [asstId, id, user.id, user.fullName, user.account, user.email, nowStr]
-    );
+    // Student requesters join as participants; teacher convocations keep the teacher as organizer only.
+    if (user.role === UserRole.STUDENT) {
+      const asstId = `asst-${randomUUID()}`;
+      await client.query(
+        `INSERT INTO tutoring_assistants (id, tutoring_id, student_id, student_name, student_account, student_email, is_petitioner, has_attended, joined_at)
+         VALUES ($1, $2, $3, $4, $5, $6, true, false, $7);`,
+        [asstId, id, user.id, user.fullName, user.account, user.email, nowStr]
+      );
+    }
 
     await client.query('COMMIT');
     await this.logBinnacle(
-      'Solicitud de Tutoría',
-      `Estudiante ${user.fullName} solicitó tutoría ${code} (${subjectName})`,
+      user.role === UserRole.TEACHER ? 'Convocatoria de Tutoría' : 'Solicitud de Tutoría',
+      `${user.role === UserRole.TEACHER ? 'Docente' : 'Estudiante'} ${user.fullName} ${user.role === UserRole.TEACHER ? 'convocó' : 'solicitó'} tutoría ${code} (${subjectName})`,
       user.username
     );
 
-    // Notify teachers/admin
-    await this.addNotification(
-      dto.teacherId,
-      'Nueva Solicitud de Tutoría',
-      `El estudiante ${user.fullName} ha solicitado una tutoría para la asignatura ${subjectName} en la fecha ${dto.reservDate}.`,
-      id
-    );
+    if (user.role === UserRole.STUDENT) {
+      await this.addNotification(teacherId, 'Nueva Solicitud de Tutoría', `El estudiante ${user.fullName} ha solicitado una tutoría para la asignatura ${subjectName} en la fecha ${dto.reservDate}.`, id);
+    } else {
+      const admins = await pool.query('SELECT id FROM users WHERE role = $1 AND is_active = TRUE;', [UserRole.ADMIN]);
+      await Promise.all(admins.rows.map((admin: { id: string }) => this.addNotification(admin.id, 'Nueva Convocatoria Docente', `${user.fullName} convocó una tutoría grupal de ${subjectName} para el ${dto.reservDate}.`, id)));
+    }
 
     return (await this.getTutoringById(id))!;
     } catch (error) {
@@ -1286,55 +1356,65 @@ export class PgRepository {
       throw new Error('Un docente solo puede aprobar las tutorías que le han sido asignadas.');
     }
 
+    const cleanSpace = (space || '').trim();
     const cleanBlock = (block || '').trim();
     const isGroup = tut.type === 'GROUP';
     const virtualLimit = Number.parseInt(process.env.MAX_VIRTUAL_TUTORING_PARTICIPANTS || '30', 10) || 30;
-    const roomRes = tut.modality === TutoringModality.PRESENCIAL ? await pool.query('SELECT capacity FROM sections WHERE name = $1;', [space]) : { rows: [] as any[] };
-    const roomLimit = Number.parseInt(roomRes.rows[0]?.capacity ?? '0', 10);
-    const capacityLimit = tut.modality === TutoringModality.PRESENCIAL ? roomLimit : virtualLimit;
+    if (!cleanSpace) throw new Error('Asigna un aula o enlace antes de aprobar.');
     if (isGroup && (!Number.isInteger(maxParticipants) || Number(maxParticipants) < 2)) throw new Error('Indique un cupo grupal de al menos 2 participantes.');
-    if (isGroup && capacityLimit > 0 && Number(maxParticipants) > capacityLimit) throw new Error(`El cupo no puede superar la capacidad disponible (${capacityLimit}).`);
-    if (tut.modality === 0 && cleanBlock.length === 0) {
-      throw new Error('Debe ingresar el bloque/edificio del aula para la tutoría presencial.');
+    if (tut.modality === TutoringModality.PRESENCIAL && !cleanBlock) throw new Error('Debe ingresar el bloque/edificio del aula para la tutoría presencial.');
+    if (tut.modality === TutoringModality.VIRTUAL) {
+      let meetingUrl: URL;
+      try { meetingUrl = new URL(cleanSpace); } catch { throw new Error('Ingresa un enlace virtual válido.'); }
+      if (!['http:', 'https:'].includes(meetingUrl.protocol)) throw new Error('El enlace virtual debe comenzar con http:// o https://.');
+      if (isGroup && Number(maxParticipants) > virtualLimit) throw new Error(`El cupo no puede superar el límite virtual configurado (${virtualLimit}).`);
     }
 
-    // Presencial conflict validation (Business Rule 3): mismo salón + bloque, fecha y franja
-    if (tut.modality === 0) {
-      const conflictRes = await pool.query(
-        `SELECT id, code, teacher_name FROM tutorings
-         WHERE reserv_date = $1
-           AND schedule_slot_id = $2
-           AND LOWER(space) = LOWER($3)
-           AND COALESCE(LOWER(block), '') = LOWER($4)
-           AND id != $5
-           AND status IN ($6, $7);`,
-        [tut.reservDate, tut.scheduleSlotId, space, cleanBlock, tutoringId, TutoringStatus.APPROVED, TutoringStatus.IN_PROGRESS]
-      );
-      if (conflictRes.rows.length > 0) {
-        throw new Error(`Conflicto de Aula: El espacio "${space}" (Bloque ${cleanBlock}) ya está reservado para esa franja horaria.`);
-      }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const locked = await client.query('SELECT status FROM tutorings WHERE id = $1 FOR UPDATE;', [tutoringId]);
+      if (locked.rows[0]?.status !== TutoringStatus.PENDING) throw new Error('La solicitud cambió mientras se procesaba. Actualiza la lista e inténtalo de nuevo.');
 
-      const sectionRes = await pool.query('SELECT capacity FROM sections WHERE name = $1;', [space]);
-      const capacity = parseInt(sectionRes.rows[0]?.capacity ?? '0', 10);
-      if (capacity > 0) {
-        const countRes = await pool.query(
-          'SELECT COUNT(*) as count FROM tutoring_assistants WHERE tutoring_id = $1;',
-          [tutoringId]
+      let capacityLimit = virtualLimit;
+      if (tut.modality === TutoringModality.PRESENCIAL) {
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+          `tutoring-room:${tut.reservDate}:${tut.scheduleSlotId}:${cleanSpace.toLocaleLowerCase()}:${cleanBlock.toLocaleLowerCase()}`
+        ]);
+        const roomRes = await client.query('SELECT capacity FROM sections WHERE LOWER(name) = LOWER($1) AND is_available = TRUE FOR UPDATE;', [cleanSpace]);
+        if (!roomRes.rows[0]) throw new Error('Selecciona un aula disponible del catálogo institucional.');
+        capacityLimit = Number.parseInt(roomRes.rows[0].capacity ?? '0', 10);
+        const conflictRes = await client.query(
+          `SELECT id FROM tutorings
+           WHERE reserv_date = $1 AND schedule_slot_id = $2
+             AND LOWER(space) = LOWER($3) AND COALESCE(LOWER(block), '') = LOWER($4)
+             AND id <> $5 AND status IN ($6, $7)
+           LIMIT 1;`,
+          [tut.reservDate, tut.scheduleSlotId, cleanSpace, cleanBlock, tutoringId, TutoringStatus.APPROVED, TutoringStatus.IN_PROGRESS]
         );
-        const current = parseInt(countRes.rows[0]?.count ?? '0', 10);
-        if (current > capacity) {
-          throw new Error(`El cupo de "${space}" es de ${capacity} participantes y esta tutoría ya cuenta con ${current}.`);
-        }
+        if (conflictRes.rowCount) throw new Error(`Conflicto de Aula: el espacio "${cleanSpace}" (Bloque ${cleanBlock}) ya está reservado para esa franja horaria.`);
       }
+      if (isGroup && capacityLimit > 0 && Number(maxParticipants) > capacityLimit) throw new Error(`El cupo no puede superar la capacidad disponible (${capacityLimit}).`);
+      const countRes = await client.query('SELECT COUNT(*) AS count FROM tutoring_assistants WHERE tutoring_id = $1;', [tutoringId]);
+      const current = Number.parseInt(countRes.rows[0]?.count ?? '0', 10);
+      const effectiveLimit = isGroup ? Number(maxParticipants) : 1;
+      if (current > effectiveLimit) throw new Error(`El cupo confirmado (${effectiveLimit}) no puede ser menor que los ${current} participantes ya inscritos.`);
+
+      const approved = await client.query(
+        `UPDATE tutorings SET status = $1, space = $2, block = $3, max_participants = $4, approved_by_id = $5, approved_by_name = $6
+         WHERE id = $7 AND status = $8;`,
+        [TutoringStatus.APPROVED, cleanSpace, tut.modality === TutoringModality.PRESENCIAL ? cleanBlock : '', effectiveLimit, approver.id, approver.fullName, tutoringId, TutoringStatus.PENDING]
+      );
+      if (approved.rowCount !== 1) throw new Error('La solicitud cambió mientras se procesaba. Actualiza la lista e inténtalo de nuevo.');
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
 
-    const placeLabel = tut.modality === 0 && cleanBlock ? `${space} (Bloque ${cleanBlock})` : space;
-    const approved = await pool.query(
-      `UPDATE tutorings SET status = $1, space = $2, block = $3, max_participants = $4, approved_by_id = $5, approved_by_name = $6
-       WHERE id = $7 AND status = $8;`,
-      [TutoringStatus.APPROVED, space, tut.modality === 0 ? cleanBlock : '', isGroup ? Number(maxParticipants) : 1, approver.id, approver.fullName, tutoringId, TutoringStatus.PENDING]
-    );
-    if (approved.rowCount !== 1) throw new Error('La solicitud cambió mientras se procesaba. Actualiza la lista e inténtalo de nuevo.');
+    const placeLabel = tut.modality === TutoringModality.PRESENCIAL ? `${cleanSpace} (Bloque ${cleanBlock})` : cleanSpace;
 
     await this.logBinnacle(
       'Aprobación de Tutoría',
@@ -1367,7 +1447,7 @@ export class PgRepository {
     const pool = await getPgPool();
     const tut = await this.getTutoringById(tutoringId);
     if (!tut) throw new Error('Tutoría no encontrada.');
-    const isPetitioner = user.id === tut.petitionerStudentId;
+    const isPetitioner = user.role === UserRole.STUDENT && user.id === tut.petitionerStudentId;
     const isAdmin = user.role === UserRole.ADMIN;
     const isAssignedTeacher = user.role === UserRole.TEACHER && user.id === tut.teacherId;
 
@@ -1521,76 +1601,77 @@ export class PgRepository {
       throw new Error('Solo los estudiantes pueden unirse a tutorías.');
     }
     const pool = await getPgPool();
-    const tut = await this.getTutoringById(tutoringId);
-    if (!tut) throw new Error('Tutoría no encontrada.');
-    if (tut.type !== 'GROUP') throw new Error('Esta tutoría es individual y no admite participantes invitados.');
-    if (tut.status !== TutoringStatus.APPROVED && tut.status !== TutoringStatus.PENDING) {
-      throw new Error('Solo puedes unirte a tutorías pendientes o aprobadas que no hayan iniciado.');
-    }
-
-    // Regla grupal: solo estudiantes de la misma carrera y semestre de la materia.
-    const subjRes = await pool.query(
-      'SELECT career_id as "careerId", semester FROM subjects WHERE id = $1;',
-      [tut.subjectCourseId]
-    );
-    const subj = subjRes.rows[0];
-    if (subj?.careerId && student.careerId && subj.careerId !== student.careerId) {
-      throw new Error('Solo pueden unirse estudiantes de la misma carrera de la materia.');
-    }
-    if (
-      subj?.semester &&
-      student.semester &&
-      Number(subj.semester) !== Number(student.semester)
-    ) {
-      throw new Error(`Solo pueden unirse estudiantes del semestre ${subj.semester} de la materia.`);
-    }
-
     const client = await pool.connect();
+    let tut: any;
+    let assistants: TutoringAssistant[] = [];
+    let joinedAssistant: TutoringAssistant;
     try {
-    await client.query('BEGIN');
-    const lockedTutoring = await client.query(
-      'SELECT id FROM tutorings WHERE id = $1 AND status IN ($2, $3) FOR UPDATE;',
-      [tutoringId, TutoringStatus.PENDING, TutoringStatus.APPROVED]
-    );
-    if (lockedTutoring.rowCount !== 1) throw new Error('La tutoría dejó de estar disponible. Actualiza la lista.');
-    const existing = await client.query(
-      'SELECT id FROM tutoring_assistants WHERE tutoring_id = $1 AND student_id = $2;',
-      [tutoringId, student.id]
-    );
-    if (existing.rows.length > 0) {
-      throw new Error('Ya estás registrado en esta tutoría.');
-    }
+      await client.query('BEGIN');
+      const tutoringRes = await client.query(
+        `SELECT t.id, t.code, t.subject, t.details, t.reserv_date as "reservDate", t.request_date as "requestDate",
+                t.modality, t.type, t.max_participants as "maxParticipants", t.status, t.space, t.block,
+                t.cancel_reason as "cancelReason", t.subject_course_id as "subjectCourseId",
+                t.subject_course_name as "subjectCourseName", t.teacher_id as "teacherId", t.teacher_name as "teacherName",
+                t.petitioner_student_id as "petitionerStudentId", t.petitioner_student_name as "petitionerStudentName",
+                t.created_by_user_id as "createdByUserId", t.created_by_name as "createdByName", t.created_by_role as "createdByRole",
+                t.schedule_slot_id as "scheduleSlotId", t.schedule_label as "scheduleLabel",
+                t.approved_by_id as "approvedById", t.approved_by_name as "approvedByName",
+                t.start_time as "startTime", t.finish_time as "finishTime", t.score,
+                t.student_comment as "studentComment", t.teacher_comment as "teacherComment",
+                t.attachment_name as "attachmentName", t.attachment_url as "attachmentUrl", t.created_at as "createdAt",
+                s.career_id as "subjectCareerId", s.semester as "subjectSemester"
+         FROM tutorings t LEFT JOIN subjects s ON s.id = t.subject_course_id
+         WHERE t.id = $1 AND t.status IN ($2, $3)
+         FOR UPDATE OF t;`,
+        [tutoringId, TutoringStatus.PENDING, TutoringStatus.APPROVED]
+      );
+      tut = tutoringRes.rows[0];
+      if (!tut) throw new Error('La tutoría no existe o ya no está disponible.');
+      if (tut.type !== 'GROUP') throw new Error('Esta tutoría es individual y no admite participantes invitados.');
 
-    // Se aplica el menor límite entre el cupo confirmado por el docente y el aforo físico/virtual.
-    let capacity = 0;
-    if (tut.modality === TutoringModality.PRESENCIAL && tut.space) {
-      const sectionRes = await pool.query('SELECT capacity FROM sections WHERE name = $1;', [tut.space]);
-      capacity = parseInt(sectionRes.rows[0]?.capacity ?? '0', 10);
-    } else {
-      const configuredCapacity = Number.parseInt(process.env.MAX_VIRTUAL_TUTORING_PARTICIPANTS || '30', 10);
-      capacity = Number.isFinite(configuredCapacity) && configuredCapacity > 0 ? configuredCapacity : 30;
-    }
-    if (tut.maxParticipants && (!capacity || tut.maxParticipants < capacity)) capacity = tut.maxParticipants;
-    if (capacity > 0) {
-      const countRes = await client.query(
-        'SELECT COUNT(*) as count FROM tutoring_assistants WHERE tutoring_id = $1;',
+      if (tut.subjectCareerId && student.careerId && tut.subjectCareerId !== student.careerId) {
+        throw new Error('Solo pueden unirse estudiantes de la misma carrera de la materia.');
+      }
+      if (tut.subjectSemester && student.semester && Number(tut.subjectSemester) !== Number(student.semester)) {
+        throw new Error(`Solo pueden unirse estudiantes del semestre ${tut.subjectSemester} de la materia.`);
+      }
+
+      const participantsRes = await client.query(
+        `SELECT id, tutoring_id as "tutoringId", student_id as "studentId", student_name as "studentName",
+                student_account as "studentAccount", student_email as "studentEmail",
+                is_petitioner as "isPetitioner", has_attended as "hasAttended", joined_at as "joinedAt"
+         FROM tutoring_assistants WHERE tutoring_id = $1;`,
         [tutoringId]
       );
-      const current = parseInt(countRes.rows[0]?.count ?? '0', 10);
-      if (current >= capacity) {
+      assistants = participantsRes.rows;
+      if (assistants.some((participant) => participant.studentId === student.id)) {
+        throw new Error('Ya estás registrado en esta tutoría.');
+      }
+
+      // La tutoría queda bloqueada hasta confirmar inscripción y cupo; así no se exceden plazas en clics simultáneos.
+      let capacity = Number.parseInt(process.env.MAX_VIRTUAL_TUTORING_PARTICIPANTS || '30', 10);
+      if (!Number.isFinite(capacity) || capacity < 1) capacity = 30;
+      if (tut.modality === TutoringModality.PRESENCIAL && tut.space) {
+        const sectionRes = await client.query('SELECT capacity FROM sections WHERE LOWER(name) = LOWER($1);', [tut.space]);
+        capacity = Number.parseInt(sectionRes.rows[0]?.capacity ?? '0', 10);
+      }
+      if (tut.maxParticipants && (!capacity || tut.maxParticipants < capacity)) capacity = Number(tut.maxParticipants);
+      if (capacity > 0 && assistants.length >= capacity) {
         throw new Error(`El cupo de esta tutoría está completo (máximo ${capacity} participantes).`);
       }
-    }
 
-    const asstId = `asst-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
-
-    await client.query(
-      `INSERT INTO tutoring_assistants (id, tutoring_id, student_id, student_name, student_account, student_email, is_petitioner, has_attended, joined_at)
-       VALUES ($1, $2, $3, $4, $5, $6, false, false, $7);`,
-      [asstId, tutoringId, student.id, student.fullName, student.account, student.email, nowStr]
-    );
-    await client.query('COMMIT');
+      const asstId = `asst-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+      const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+      const insertRes = await client.query(
+        `INSERT INTO tutoring_assistants (id, tutoring_id, student_id, student_name, student_account, student_email, is_petitioner, has_attended, joined_at)
+         VALUES ($1, $2, $3, $4, $5, $6, false, false, $7)
+         RETURNING id, tutoring_id as "tutoringId", student_id as "studentId", student_name as "studentName",
+                   student_account as "studentAccount", student_email as "studentEmail",
+                   is_petitioner as "isPetitioner", has_attended as "hasAttended", joined_at as "joinedAt";`,
+        [asstId, tutoringId, student.id, student.fullName, student.account, student.email, nowStr]
+      );
+      joinedAssistant = insertRes.rows[0];
+      await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -1598,16 +1679,25 @@ export class PgRepository {
       client.release();
     }
 
-    await this.logBinnacle(
+    void this.logBinnacle(
       'Inscripción a Tutoría',
       `Estudiante ${student.fullName} se unió a la tutoría ${tut.code}`,
       student.username
-    );
-
-    return (await this.getTutoringById(tutoringId))!;
+    ).catch((error) => console.error('[PgRepository] No se pudo guardar la bitácora de inscripción:', error));
+    const creatorRole = tut.createdByRole || (tut.petitionerStudentId === tut.teacherId ? UserRole.TEACHER : UserRole.STUDENT);
+    return {
+      ...tut,
+      createdByUserId: tut.createdByUserId || tut.petitionerStudentId,
+      createdByName: tut.createdByName || tut.petitionerStudentName,
+      createdByRole: creatorRole,
+      creatorRole,
+      score: Number(tut.score || 0),
+      assistants: [...assistants, joinedAssistant!],
+      ratings: []
+    };
   }
 
-  public async withdrawFromTutoring(tutoringId: string, student: User): Promise<Tutoring> {
+  public async withdrawFromTutoring(tutoringId: string, student: User): Promise<{ id: string }> {
     if (student.role !== UserRole.STUDENT) throw new Error('Solo los estudiantes pueden retirarse de una tutoría.');
     const pool = await getPgPool();
     const client = await pool.connect();
@@ -1638,9 +1728,11 @@ export class PgRepository {
     } finally {
       client.release();
     }
-    await this.logBinnacle('Retiro de tutoría grupal', `${student.fullName} se retiró de la tutoría ${tutoringCode} (${tutoringSubject})`, student.username);
-    await this.addNotification(teacherId, 'Participante retirado', `${student.fullName} se retiró de la tutoría grupal ${tutoringCode}.`, tutoringId);
-    return (await this.getTutoringById(tutoringId))!;
+    void Promise.all([
+      this.logBinnacle('Retiro de tutoría grupal', `${student.fullName} se retiró de la tutoría ${tutoringCode} (${tutoringSubject})`, student.username),
+      this.addNotification(teacherId, 'Participante retirado', `${student.fullName} se retiró de la tutoría grupal ${tutoringCode}.`, tutoringId)
+    ]).catch((error) => console.error('[PgRepository] No se pudo completar el registro posterior al retiro:', error));
+    return { id: tutoringId };
   }
 
   public async recordAssistance(tutoringId: string, records: AssistanceRecordItem[], teacher: User): Promise<Tutoring> {

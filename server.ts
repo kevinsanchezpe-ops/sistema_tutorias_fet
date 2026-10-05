@@ -5,7 +5,7 @@ import path from 'path';
 import crypto from 'crypto';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { createServer as createViteServer } from 'vite';
 import { initPostgres } from './src/core/infrastructure/database/pg-init';
 import { pgRepo } from './src/core/infrastructure/database/pg-repository';
@@ -118,15 +118,20 @@ async function startServer() {
   });
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 300,
+    max: 1000,
     standardHeaders: true,
     legacyHeaders: false,
+    // En instituciones, muchos usuarios suelen compartir la misma IP pública.
+    // Limitar sesiones autenticadas por cuenta evita que una persona agote el cupo de todos.
+    keyGenerator: (req) => {
+      const userId = (req as AuthenticatedRequest).user?.userId;
+      return userId ? `user:${userId}` : `ip:${ipKeyGenerator(req.ip || '127.0.0.1')}`;
+    },
     message: {
       success: false,
       error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' }
     }
   });
-  app.use('/api/', apiLimiter);
 
   // Helpers: cookies HttpOnly (sin dependencia extra) + validación de borde
   const setAuthCookie = (res: express.Response, token: string) => {
@@ -183,6 +188,7 @@ async function startServer() {
 
   // 5. JWT token decoder middleware
   app.use(verifyTokenMiddleware as any);
+  app.use('/api/', apiLimiter);
 
   // Initialize PostgreSQL
   let isDbConnected = false;
@@ -250,6 +256,7 @@ async function startServer() {
         role: user.role, mustChangePassword: user.mustChangePassword === true,
         sessionVersion: Number(user.sessionVersion || 0)
       };
+      req.actor = user;
       next();
     }).catch(next);
   });
@@ -279,7 +286,7 @@ async function startServer() {
       if (!filename || path.basename(filename) !== filename || filename.includes('..')) {
         return res.status(400).json({ success: false, error: { code: 'INVALID_FILE', message: 'Archivo inválido.' } });
       }
-      const actor = await pgRepo.getUserById(req.user!.userId);
+      const actor = req.actor!;
       if (!actor || !(await pgRepo.canAccessAttachment(filename, actor))) {
         return res.status(404).json({ success: false, error: { code: 'FILE_NOT_FOUND', message: 'Archivo no encontrado.' } });
       }
@@ -486,7 +493,7 @@ async function startServer() {
       if (!req.user) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'No autenticado' } });
       }
-      const user = await pgRepo.getUserById(req.user.userId);
+      const user = req.actor!;
       if (!user) {
         return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Usuario no encontrado' } });
       }
@@ -509,7 +516,7 @@ async function startServer() {
   // Refresh deslizante: con token aún válido se emite uno nuevo de 2h
   app.post('/api/auth/refresh', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const user = await pgRepo.getUserById(req.user!.userId);
+      const user = req.actor!;
       if (!user || !user.isActive) {
         clearAuthCookie(res);
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Sesión no válida.' } });
@@ -605,7 +612,7 @@ async function startServer() {
           const isParticipant = tutoring.petitionerStudentId === actor.id || tutoring.assistants?.some((a) => a.studentId === actor.id);
           if (!isParticipant) {
             tutoring.petitionerStudentId = '';
-            tutoring.petitionerStudentName = 'Estudiante FET';
+            if (tutoring.creatorRole !== UserRole.TEACHER) tutoring.petitionerStudentName = 'Estudiante FET';
             tutoring.assistants = [];
             tutoring.ratings = [];
             tutoring.attachmentName = '';
@@ -647,12 +654,15 @@ async function startServer() {
           return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: e?.message || 'Adjunto inválido.' } });
         }
       }
-      const user = await pgRepo.getUserById(req.user!.userId);
-      if (!user || user.role !== UserRole.STUDENT) {
-        return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario estudiante requerido.' } });
+      const user = req.actor!;
+      if (!user || (user.role !== UserRole.STUDENT && user.role !== UserRole.TEACHER)) {
+        return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Se requiere una cuenta de estudiante o docente.' } });
+      }
+      if (user.role === UserRole.TEACHER && dto?.type !== 'GROUP') {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Los docentes solo pueden convocar tutorías grupales.' } });
       }
       const tutoring = await pgRepo.createTutoring(dto, user);
-      res.json({ success: true, data: tutoring, message: 'Solicitud de tutoría creada con éxito.' });
+      res.json({ success: true, data: tutoring, message: user.role === UserRole.TEACHER ? 'Tutoría grupal aprobada y publicada.' : 'Solicitud de tutoría creada con éxito.' });
     } catch (err: any) {
       res.status(400).json({ success: false, error: { code: 'CREATE_TUTORING_ERROR', message: publicError(err) } });
     }
@@ -666,7 +676,7 @@ async function startServer() {
       if (!cleanSpace) {
         return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Salón o enlace requerido.' } });
       }
-      const approver = await pgRepo.getUserById(req.user!.userId);
+      const approver = req.actor!;
       if (!approver || (approver.role !== UserRole.ADMIN && approver.role !== UserRole.TEACHER)) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Permiso de administrador o docente requerido.' } });
       }
@@ -683,7 +693,7 @@ async function startServer() {
       if (typeof reason !== 'string' || reason.trim().length < 4) {
         return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Debe indicar un motivo de cancelación detallado.' } });
       }
-      const user = await pgRepo.getUserById(req.user!.userId);
+      const user = req.actor!;
       if (!user) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario no identificado.' } });
       }
@@ -696,7 +706,7 @@ async function startServer() {
 
   app.patch('/api/tutorings/:id/start', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const teacher = await pgRepo.getUserById(req.user!.userId);
+      const teacher = req.actor!;
       if (!teacher) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Docente titular requerido.' } });
       }
@@ -709,10 +719,13 @@ async function startServer() {
 
   app.patch('/api/tutorings/:id/stop', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { teacherComment } = req.body;
-      const teacher = await pgRepo.getUserById(req.user!.userId);
+      const { teacherComment, records } = req.body;
+      const teacher = req.actor!;
       if (!teacher) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Docente titular requerido.' } });
+      }
+      if (Array.isArray(records) && records.length > 0) {
+        await pgRepo.recordAssistance(req.params.id, records, teacher);
       }
       const tutoring = await pgRepo.finishTutoring(req.params.id, teacher, teacherComment);
       res.json({ success: true, data: tutoring, message: 'Tutoría finalizada exitosamente.' });
@@ -723,7 +736,7 @@ async function startServer() {
 
   app.post('/api/tutorings/:id/join', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const student = await pgRepo.getUserById(req.user!.userId);
+      const student = req.actor!;
       if (!student) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Estudiante requerido.' } });
       }
@@ -736,7 +749,7 @@ async function startServer() {
 
   app.delete('/api/tutorings/:id/participants/me', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const student = await pgRepo.getUserById(req.user!.userId);
+      const student = req.actor!;
       if (!student || student.role !== UserRole.STUDENT) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Solo el estudiante inscrito puede retirarse.' } });
       }
@@ -750,7 +763,7 @@ async function startServer() {
   app.post('/api/tutorings/:id/assistance', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const { records } = req.body;
-      const teacher = await pgRepo.getUserById(req.user!.userId);
+      const teacher = req.actor!;
       if (!teacher) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Docente titular requerido.' } });
       }
@@ -770,7 +783,7 @@ async function startServer() {
       if (typeof studentComment !== 'string' || studentComment.trim().length < 5) {
         return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Agregue un comentario sobre su experiencia.' } });
       }
-      const student = await pgRepo.getUserById(req.user!.userId);
+      const student = req.actor!;
       if (!student) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Estudiante solicitante requerido.' } });
       }
@@ -789,7 +802,7 @@ async function startServer() {
   app.post('/api/subjects', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId, ...dto } = req.body;
-      const admin = await pgRepo.getUserById(req.user!.userId);
+      const admin = req.actor!;
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -803,7 +816,7 @@ async function startServer() {
   app.patch('/api/subjects/:id/toggle', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId } = req.body;
-      const admin = await pgRepo.getUserById(req.user!.userId);
+      const admin = req.actor!;
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -817,7 +830,7 @@ async function startServer() {
   app.delete('/api/subjects/:id', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId } = req.body;
-      const admin = await pgRepo.getUserById(req.user!.userId);
+      const admin = req.actor!;
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -836,7 +849,7 @@ async function startServer() {
   app.post('/api/careers', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId, ...dto } = req.body;
-      const admin = await pgRepo.getUserById(req.user!.userId);
+      const admin = req.actor!;
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -850,7 +863,7 @@ async function startServer() {
   app.put('/api/careers/:id', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId, ...dto } = req.body;
-      const admin = await pgRepo.getUserById(req.user!.userId);
+      const admin = req.actor!;
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -864,7 +877,7 @@ async function startServer() {
   app.patch('/api/careers/:id/toggle', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId } = req.body;
-      const admin = await pgRepo.getUserById(req.user!.userId);
+      const admin = req.actor!;
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -878,7 +891,7 @@ async function startServer() {
   app.delete('/api/careers/:id', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId } = req.body;
-      const admin = await pgRepo.getUserById(req.user!.userId);
+      const admin = req.actor!;
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -903,7 +916,7 @@ async function startServer() {
 
   app.patch('/api/availability/:id/toggle', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const actor = await pgRepo.getUserById(req.user!.userId);
+      const actor = req.actor!;
       if (!actor) return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario requerido.' } });
       const item = await pgRepo.toggleTeacherAvailability(req.params.id, actor);
       res.json({ success: true, data: item, message: `Disponibilidad ${item.isAvailable ? 'activada' : 'desactivada'}.` });
@@ -915,7 +928,7 @@ async function startServer() {
   app.post('/api/availability', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const { subjectCourseId, scheduleSlotId } = req.body;
-      const teacher = await pgRepo.getUserById(req.user!.userId);
+      const teacher = req.actor!;
       if (!teacher || teacher.role !== UserRole.TEACHER) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Docente requerido.' } });
       }
@@ -928,7 +941,7 @@ async function startServer() {
 
   app.delete('/api/availability/:id', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const teacher = await pgRepo.getUserById(req.user!.userId);
+      const teacher = req.actor!;
       if (!teacher || (teacher.role !== UserRole.TEACHER && teacher.role !== UserRole.ADMIN)) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario requerido.' } });
       }
@@ -942,7 +955,7 @@ async function startServer() {
   app.post('/api/availability/batch', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const { subjectCourseId, scheduleSlotIds } = req.body;
-      const teacher = await pgRepo.getUserById(req.user!.userId);
+      const teacher = req.actor!;
       if (!teacher || teacher.role !== UserRole.TEACHER) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Docente requerido.' } });
       }
@@ -966,7 +979,7 @@ async function startServer() {
   app.put('/api/teachers/:id/subjects', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const { subjectIds } = req.body;
-      const actor = await pgRepo.getUserById(req.user!.userId);
+      const actor = req.actor!;
       if (!actor) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario requerido.' } });
       }
@@ -988,7 +1001,7 @@ async function startServer() {
   app.put('/api/teachers/:id', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId, fullName, email, careerId, subjectIds } = req.body;
-      const admin = await pgRepo.getUserById(req.user!.userId);
+      const admin = req.actor!;
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -1020,7 +1033,7 @@ async function startServer() {
       if (alias !== undefined && (typeof alias !== 'string' || alias.length > 100)) {
         return res.status(400).json({ success: false, error: { code: 'INVALID_PROFILE', message: 'El nombre de perfil no es válido.' } });
       }
-      const actor = await pgRepo.getUserById(req.user!.userId);
+      const actor = req.actor!;
       if (!actor) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuario no autenticado.' } });
       }
@@ -1034,7 +1047,7 @@ async function startServer() {
   app.patch('/api/users/:id/toggle', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId } = req.body;
-      const admin = await pgRepo.getUserById(req.user!.userId);
+      const admin = req.actor!;
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -1048,7 +1061,7 @@ async function startServer() {
   app.delete('/api/users/:id', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId } = req.body;
-      const admin = await pgRepo.getUserById(req.user!.userId);
+      const admin = req.actor!;
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }
@@ -1108,7 +1121,7 @@ async function startServer() {
   app.put('/api/institution', requireDb, requireRole(UserRole.ADMIN), async (req: AuthenticatedRequest, res) => {
     try {
       const { adminId, ...info } = req.body;
-      const admin = await pgRepo.getUserById(req.user!.userId);
+      const admin = req.actor!;
       if (!admin || admin.role !== UserRole.ADMIN) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin requerido.' } });
       }

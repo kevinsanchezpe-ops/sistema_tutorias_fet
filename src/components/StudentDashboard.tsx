@@ -58,6 +58,8 @@ interface StudentDashboardProps {
   schedules: ScheduleSlot[];
   availabilities: TeacherAvailability[];
   onRefresh: () => void;
+  onTutoringUpdated: (tutoring: Tutoring) => void;
+  onParticipantWithdrawn: (tutoringId: string, studentId: string) => void;
   onOpenEvaluation: (tutoring: Tutoring) => void;
 }
 
@@ -68,6 +70,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   schedules,
   availabilities,
   onRefresh,
+  onTutoringUpdated,
+  onParticipantWithdrawn,
   onOpenEvaluation
 }) => {
   const [activeTab, setActiveTab] = useState<
@@ -115,6 +119,9 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const [selectedDetailTutoring, setSelectedDetailTutoring] = useState<Tutoring | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
+  const [joiningTutoringId, setJoiningTutoringId] = useState<string | null>(null);
+  const [withdrawingTutoringId, setWithdrawingTutoringId] = useState<string | null>(null);
+  const [peerActionError, setPeerActionError] = useState<{ tutoringId: string; message: string } | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
 
@@ -288,7 +295,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       const fileInput = document.getElementById('file-attachment') as HTMLInputElement | null;
       if (fileInput) fileInput.value = '';
       setTimeout(() => setSubmitSuccess(null), 5000);
-      onRefresh();
+      if (res.data) onTutoringUpdated(res.data);
     } else {
       setSubmitError(res.error?.message || 'Error al procesar la solicitud.');
     }
@@ -296,19 +303,40 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
   // Join existing tutoring as guest
   const handleJoin = async (tutoringId: string) => {
-    const res = await ApiClient.joinTutoring(tutoringId, currentUser);
-    if (res.success) {
-      onRefresh();
-    } else {
-      alert(res.error?.message || 'No fue posible unirse a la tutoría.');
+    if (joiningTutoringId) return;
+    setPeerActionError(null);
+    setJoiningTutoringId(tutoringId);
+    try {
+      const res = await ApiClient.joinTutoring(tutoringId, currentUser);
+      if (res.success) {
+        if (res.data) onTutoringUpdated(res.data);
+        return;
+      }
+      else setPeerActionError({ tutoringId, message: res.error?.message || 'No fue posible unirse a la tutoría.' });
+    } catch {
+      setPeerActionError({ tutoringId, message: 'No se pudo conectar. Revisa tu conexión e inténtalo de nuevo.' });
+    } finally {
+      setJoiningTutoringId(null);
     }
   };
 
   const handleWithdraw = async (tutoring: Tutoring) => {
     if (!window.confirm(`¿Quieres retirarte de la tutoría grupal ${tutoring.code}?`)) return;
-    const res = await ApiClient.withdrawFromTutoring(tutoring.id, currentUser);
-    if (res.success) onRefresh();
-    else alert(res.error?.message || 'No fue posible retirarse de la tutoría.');
+    if (withdrawingTutoringId) return;
+    setPeerActionError(null);
+    setWithdrawingTutoringId(tutoring.id);
+    try {
+      const res = await ApiClient.withdrawFromTutoring(tutoring.id);
+      if (res.success) {
+        onParticipantWithdrawn(tutoring.id, currentUser.id);
+        return;
+      }
+      else setPeerActionError({ tutoringId: tutoring.id, message: res.error?.message || 'No fue posible retirarse de la tutoría.' });
+    } catch {
+      setPeerActionError({ tutoringId: tutoring.id, message: 'No se pudo conectar. Revisa tu conexión e inténtalo de nuevo.' });
+    } finally {
+      setWithdrawingTutoringId(null);
+    }
   };
 
   // Handle student cancel request
@@ -329,7 +357,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       setCancellingTutoring(null);
       setCancelSuccess(`Tutoría ${cancellingTutoring.code} cancelada.`);
       setTimeout(() => setCancelSuccess(null), 4000);
-      onRefresh();
+      if (res.data) onTutoringUpdated(res.data);
     } else {
       setCancelError(res.error?.message || 'Error al cancelar la tutoría.');
     }
@@ -846,7 +874,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               <div className="rounded-xl border border-dashed border-stone-300 bg-white px-5 py-14 text-center">
                 <Users aria-hidden="true" className="mx-auto mb-3 h-8 w-8 text-stone-300" />
                 <p className="text-sm font-semibold text-slate-800">No hay tutorías grupales disponibles</p>
-                <p className="mt-1 text-sm text-stone-500">Cuando un compañero publique una sesión, aparecerá aquí.</p>
+                <p className="mt-1 text-sm text-stone-500">Cuando un compañero o docente publique una sesión, aparecerá aquí.</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -900,12 +928,17 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                             type="button"
                             id={`btn-join-tutoring-${tut.id}`}
                             onClick={() => handleJoin(tut.id)}
-                            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-brand-700 px-3.5 text-xs font-semibold text-white transition-colors hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                            disabled={joiningTutoringId !== null}
+                            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-brand-700 px-3.5 text-xs font-semibold text-white transition-colors hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 disabled:cursor-wait disabled:opacity-60"
                           >
-                            <Users aria-hidden="true" className="h-3.5 w-3.5" />Unirme
+                            {joiningTutoringId === tut.id ? <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Users aria-hidden="true" className="h-3.5 w-3.5" />}
+                            {joiningTutoringId === tut.id ? 'Uniéndome…' : 'Unirme'}
                           </button>
                         </div>
                       </div>
+                      {peerActionError?.tutoringId === tut.id && (
+                        <p role="alert" className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-xs font-medium text-danger">{peerActionError.message}</p>
+                      )}
                     </article>
                   );
                 })}
@@ -1072,12 +1105,12 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                                     <Star aria-hidden="true" className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />Mi calificación: {myRating.score}/5
                                   </span>
                                 )}
-                                {tut.status === TutoringStatus.PENDING && (
+                                {(tut.status === TutoringStatus.PENDING || tut.status === TutoringStatus.APPROVED) && (
                                   <button
                                     type="button"
                                     onClick={() => { setCancellingTutoring(tut); setCancelReason(''); setCancelError(null); }}
                                     className="inline-flex min-h-10 items-center rounded-lg border border-danger-border px-3 text-xs font-medium text-danger transition-colors hover:bg-danger-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
-                                  >Cancelar</button>
+                                  >{tut.status === TutoringStatus.APPROVED ? 'Cancelar tutoría' : 'Cancelar solicitud'}</button>
                                 )}
                                 <button
                                   type="button"
@@ -1140,9 +1173,12 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                                     </span>
                                   )}
                                   {(g.status === TutoringStatus.PENDING || g.status === TutoringStatus.APPROVED) && (
-                                    <button type="button" onClick={() => handleWithdraw(g)} className="mt-1 h-9 rounded-xl border border-danger-border px-3 text-danger font-semibold text-xs hover:bg-danger-soft">
-                                      Retirarme de esta tutoría
+                                    <button type="button" disabled={withdrawingTutoringId !== null} onClick={() => handleWithdraw(g)} className="mt-1 h-9 rounded-xl border border-danger-border px-3 text-danger font-semibold text-xs hover:bg-danger-soft disabled:cursor-wait disabled:opacity-60">
+                                      {withdrawingTutoringId === g.id ? 'Retirándome…' : 'Retirarme de esta tutoría'}
                                     </button>
+                                  )}
+                                  {peerActionError?.tutoringId === g.id && (
+                                    <p role="alert" className="mt-2 rounded-lg bg-danger-soft px-3 py-2 text-xs font-medium text-danger">{peerActionError.message}</p>
                                   )}
                                 </>
                               );
@@ -1310,6 +1346,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1">
                 <div className="font-bold text-slate-900">{cancellingTutoring.subject}</div>
                 <div className="text-slate-600">Docente: Prof. {cancellingTutoring.teacherName}</div>
+                {cancellingTutoring.status === TutoringStatus.APPROVED && <p className="pt-1 text-amber-800">La cancelación está sujeta al plazo mínimo de anticipación establecido por el sistema.</p>}
               </div>
 
               <div>
