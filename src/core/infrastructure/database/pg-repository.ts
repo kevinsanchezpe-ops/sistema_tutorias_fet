@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { getPgPool } from './pg-pool';
 import {
   ApiResponse,
@@ -195,7 +196,9 @@ export class PgRepository {
     const pool = await getPgPool();
     const profileColumns = `u.id, u.username, u.full_name as "fullName", u.alias, u.email, u.role, u.account,
       u.career_id as "careerId", u.career_name as "careerName", u.semester,
-      u.photo_url as "photoUrl", u.is_active as "isActive", u.created_at as "createdAt"`;
+      u.photo_url as "photoUrl", u.is_active as "isActive",
+      CASE WHEN u.id = $1 THEN u.must_change_password ELSE false END as "mustChangePassword",
+      u.created_at as "createdAt"`;
     if (actor.role === UserRole.TEACHER) {
       const res = await pool.query(
         `SELECT DISTINCT ${profileColumns}
@@ -381,58 +384,59 @@ export class PgRepository {
 
   public async registerStudent(dto: RegisterStudentDto, mustChangePassword = false): Promise<User> {
     const pool = await getPgPool();
+    const username = dto.username.trim().toLowerCase();
+    const email = dto.email.trim().toLowerCase();
+    const account = dto.account.trim();
 
     // Check existing
     const existing = await pool.query(
-      'SELECT id FROM users WHERE LOWER(username) = $1 OR LOWER(email) = $2 OR (account != \'\' AND account = $3);',
-      [dto.username.toLowerCase(), dto.email.toLowerCase(), dto.account || '']
+      'SELECT id FROM users WHERE LOWER(username) = $1 OR LOWER(email) = $2 OR (account != \'\' AND LOWER(account) = LOWER($3));',
+      [username, email, account]
     );
     if (existing.rows.length > 0) {
       throw new Error('Ya existe un usuario con ese nombre de usuario, correo o número de cuenta.');
     }
 
-    const id = `usr-student-${Date.now()}`;
+    const id = `usr-student-${randomUUID()}`;
     const createdAt = new Date().toISOString().split('T')[0];
 
     const nameParts = dto.fullName.trim().split(' ');
     const alias = (dto as any).alias || (nameParts.length >= 2 ? `${nameParts[0]} ${nameParts[1]}` : dto.fullName);
-    const plainPass = ((dto as any).password || '').trim();
-    if (plainPass.length < 10) {
+    const plainPass = typeof dto.password === 'string' ? dto.password : '';
+    if (plainPass.length < 10 || plainPass.length > 100 || plainPass.trim().length < 10) {
       throw new Error('La contraseña del estudiante es obligatoria (mínimo 10 caracteres).');
     }
     const hashedPass = await hashPassword(plainPass);
 
     const studentCareer = this.resolveCareer(dto.careerId);
 
-    await pool.query(
-      `INSERT INTO users (id, username, password_hash, full_name, alias, email, role, account,
-                          campus_id, campus_name, career_id, career_name, birth_date, admission_date,
-                           semester, photo_url, observations, is_active, must_change_password, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, true, $18, $19);`,
-      [
-        id,
-        dto.username,
-        hashedPass,
-        dto.fullName,
-        alias,
-        dto.email,
-        UserRole.STUDENT,
-        dto.account,
-        dto.campusId || 'cam-1',
-        (dto as any).campusName || 'Sede Única',
-        studentCareer.id,
-        studentCareer.name,
-        dto.birthDate || '',
-        dto.admissionDate || createdAt,
-        dto.semester || 0,
-        (dto as any).photoUrl || '',
-        (dto as any).observations || '',
-        mustChangePassword,
-        createdAt
-      ]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+        await client.query(
+          `INSERT INTO users (id, username, password_hash, full_name, alias, email, role, account,
+                            campus_id, campus_name, career_id, career_name, birth_date, admission_date,
+                            semester, photo_url, observations, is_active, must_change_password, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, true, $18, $19);`,
+          [
+            id, username, hashedPass, dto.fullName, alias, email, UserRole.STUDENT, account,
+            dto.campusId || 'cam-1', (dto as any).campusName || 'Sede Única', studentCareer.id,
+            studentCareer.name, dto.birthDate || '', dto.admissionDate || createdAt, dto.semester || 0,
+            (dto as any).photoUrl || '', (dto as any).observations || '', mustChangePassword, createdAt
+          ]
+        );
+      await client.query('COMMIT');
+    } catch (error: any) {
+      await client.query('ROLLBACK');
+      if (error?.code === '23505') {
+        throw new Error('Ya existe una cuenta con ese nombre de usuario, correo o número de cuenta.');
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
 
-    await this.logBinnacle('Registro de Estudiante', `Nuevo estudiante ${dto.fullName} registrado`, dto.username);
+    await this.logBinnacle('Registro de Estudiante', `Nuevo estudiante ${dto.fullName} registrado`, username);
 
     const user = await this.getUserById(id);
     return user!;
@@ -440,85 +444,97 @@ export class PgRepository {
 
   public async registerTeacher(dto: RegisterTeacherDto): Promise<User> {
     const pool = await getPgPool();
+    const username = dto.username.trim().toLowerCase();
+    const email = dto.email.trim().toLowerCase();
+    const account = (dto.account || '').trim();
 
     const existing = await pool.query(
-      'SELECT id FROM users WHERE LOWER(username) = $1 OR LOWER(email) = $2;',
-      [dto.username.toLowerCase(), dto.email.toLowerCase()]
+      'SELECT id FROM users WHERE LOWER(username) = $1 OR LOWER(email) = $2 OR ($3 <> \'\' AND LOWER(account) = LOWER($3));',
+      [username, email, account]
     );
     if (existing.rows.length > 0) {
       throw new Error('Ya existe un usuario con ese nombre de usuario o correo.');
     }
 
-    const id = `usr-teacher-${Date.now()}`;
+    const id = `usr-teacher-${randomUUID()}`;
     const createdAt = new Date().toISOString().split('T')[0];
 
     const nameParts = dto.fullName.trim().split(' ');
     const alias = (dto as any).alias || (nameParts.length >= 2 ? `${nameParts[0]} ${nameParts[1]}` : dto.fullName);
-    const plainPass = ((dto as any).password || '').trim();
-    if (plainPass.length < 10) {
+    const plainPass = typeof dto.password === 'string' ? dto.password : '';
+    if (plainPass.length < 10 || plainPass.length > 100 || plainPass.trim().length < 10) {
       throw new Error('La contraseña inicial del docente es obligatoria (mínimo 10 caracteres).');
     }
     const hashedPass = await hashPassword(plainPass);
 
     const teacherCareer = this.resolveCareer(dto.careerId);
 
-    await pool.query(
-      `INSERT INTO users (id, username, password_hash, full_name, alias, email, role, account,
-                          campus_id, campus_name, career_id, career_name, birth_date, admission_date,
-                          semester, photo_url, observations, is_active, must_change_password, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0, $15, $16, true, true, $17);`,
-      [
-        id,
-        dto.username,
-        hashedPass,
-        dto.fullName,
-        alias,
-        dto.email,
-        UserRole.TEACHER,
-        dto.account || '',
-        dto.campusId || 'cam-1',
-        (dto as any).campusName || 'Sede Única',
-        teacherCareer.id,
-        teacherCareer.name,
-        (dto as any).birthDate || '',
-        (dto as any).admissionDate || createdAt,
-        (dto as any).photoUrl || '',
-        (dto as any).observations || '',
-        createdAt
-      ]
-    );
-
-    // Save initial availability if provided
-    const initialAvailability = (dto as any).initialAvailability;
-    if (initialAvailability && initialAvailability.length > 0) {
-      for (const item of initialAvailability) {
-        const slot = await pool.query('SELECT label FROM schedule_slots WHERE id = $1', [item.scheduleSlotId]);
-        const subj = await pool.query('SELECT name FROM subjects WHERE id = $1', [item.subjectCourseId]);
-        const slotLabel = slot.rows[0]?.label || 'Horario';
-        const subjName = subj.rows[0]?.name || 'Materia';
-        const availId = `avail-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-
-        await pool.query(
-          `INSERT INTO teacher_availability (id, teacher_id, teacher_name, schedule_slot_id, schedule_label, subject_course_id, subject_course_name, is_available)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, true);`,
-          [availId, id, dto.fullName, item.scheduleSlotId, slotLabel, item.subjectCourseId, subjName]
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+        await client.query(
+          `INSERT INTO users (id, username, password_hash, full_name, alias, email, role, account,
+                            campus_id, campus_name, career_id, career_name, birth_date, admission_date,
+                            semester, photo_url, observations, is_active, must_change_password, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0, $15, $16, true, true, $17);`,
+          [
+            id, username, hashedPass, dto.fullName, alias, email, UserRole.TEACHER, account,
+            dto.campusId || 'cam-1', (dto as any).campusName || 'Sede Única', teacherCareer.id,
+            teacherCareer.name, (dto as any).birthDate || '', (dto as any).admissionDate || createdAt,
+            (dto as any).photoUrl || '', (dto as any).observations || '', createdAt
+          ]
         );
+
+      // Save initial availability in the same transaction as the account.
+      const initialAvailability = (dto as any).initialAvailability || [];
+      const availability = Array.from(new Map(
+        initialAvailability.map((item: { scheduleSlotId: string; subjectCourseId: string }) => [
+          `${item.scheduleSlotId}:${item.subjectCourseId}`,
+          item
+        ])
+      ).values()) as Array<{ scheduleSlotId: string; subjectCourseId: string }>;
+      if (availability.length > 0) {
+        const slotIds = [...new Set(availability.map((item) => item.scheduleSlotId))];
+        const subjectIds = [...new Set(availability.map((item) => item.subjectCourseId))];
+        const [slots, subjects] = await Promise.all([
+          client.query('SELECT id, label FROM schedule_slots WHERE id = ANY($1::text[]);', [slotIds]),
+          client.query('SELECT id, name FROM subjects WHERE id = ANY($1::text[]);', [subjectIds])
+        ]);
+        const slotLabels = new Map(slots.rows.map((slot) => [slot.id, slot.label]));
+        const subjectNames = new Map(subjects.rows.map((subject) => [subject.id, subject.name]));
+        if (slotIds.some((slotId) => !slotLabels.has(slotId)) || subjectIds.some((subjectId) => !subjectNames.has(subjectId))) {
+          throw new Error('Una asignatura o franja seleccionada ya no existe. Actualiza el formulario e inténtalo de nuevo.');
+        }
+
+        for (const item of availability) {
+          await client.query(
+            `INSERT INTO teacher_availability (id, teacher_id, teacher_name, schedule_slot_id, schedule_label, subject_course_id, subject_course_name, is_available)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, true);`,
+            [randomUUID(), id, dto.fullName.trim(), item.scheduleSlotId, slotLabels.get(item.scheduleSlotId), item.subjectCourseId, subjectNames.get(item.subjectCourseId)]
+          );
+        }
+
+        for (const subjectId of subjectIds) {
+          await client.query(
+            `INSERT INTO teacher_subjects (teacher_id, subject_id) VALUES ($1, $2)
+             ON CONFLICT (teacher_id, subject_id) DO NOTHING;`,
+            [id, subjectId]
+          );
+        }
       }
+
+      await client.query('COMMIT');
+    } catch (error: any) {
+      await client.query('ROLLBACK');
+      if (error?.code === '23505') {
+        throw new Error('Ya existe una cuenta con ese nombre de usuario, correo o código de docente.');
+      }
+      throw error;
+    } finally {
+      client.release();
     }
 
-    // Registrar catálogo de asignaturas del docente (teacher_subjects)
-    if (initialAvailability && initialAvailability.length > 0) {
-      const catalogSubjects = Array.from(new Set(initialAvailability.map((item) => item.subjectCourseId)));
-      for (const subId of catalogSubjects) {
-        await pool.query(
-          `INSERT INTO teacher_subjects (teacher_id, subject_id) VALUES ($1, $2)
-           ON CONFLICT (teacher_id, subject_id) DO NOTHING;`,
-          [id, subId]
-        );
-      }
-    }
-
-    await this.logBinnacle('Registro de Docente', `Nuevo docente ${dto.fullName} registrado`, dto.username);
+    await this.logBinnacle('Registro de Docente', `Nuevo docente ${dto.fullName} registrado`, username);
     const user = await this.getUserById(id);
     return user!;
   }
@@ -575,7 +591,8 @@ export class PgRepository {
     const pool = await getPgPool();
     const result = await pool.query(
       `SELECT 1 FROM tutorings t
-       WHERE t.attachment_url = $1
+       WHERE md5(t.attachment_url) = md5($1)
+         AND t.attachment_url = $1
          AND (t.teacher_id = $2 OR t.petitioner_student_id = $2 OR EXISTS (
            SELECT 1 FROM tutoring_assistants ta
            WHERE ta.tutoring_id = t.id AND ta.student_id = $2
@@ -1239,11 +1256,6 @@ export class PgRepository {
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
           `tutoring-room:${dto.reservDate}:${dto.scheduleSlotId}:${tutoringSpace.toLocaleLowerCase()}:${tutoringBlock.toLocaleLowerCase()}`
         ]);
-        const sectionRes = await client.query('SELECT capacity, is_available as "isAvailable" FROM sections WHERE LOWER(name) = LOWER($1) FOR UPDATE;', [tutoringSpace]);
-        const section = sectionRes.rows[0];
-        if (!section?.isAvailable) throw new Error('Selecciona un aula disponible del catálogo institucional.');
-        const roomCapacity = Number.parseInt(section.capacity ?? '0', 10);
-        if (roomCapacity > 0 && maxParticipants > roomCapacity) throw new Error(`El cupo no puede superar el aforo del aula (${roomCapacity}).`);
         const roomConflict = await client.query(
           `SELECT id FROM tutorings WHERE reserv_date = $1 AND schedule_slot_id = $2
              AND LOWER(space) = LOWER($3) AND LOWER(COALESCE(block, '')) = LOWER($4)
@@ -1376,14 +1388,10 @@ export class PgRepository {
       const locked = await client.query('SELECT status FROM tutorings WHERE id = $1 FOR UPDATE;', [tutoringId]);
       if (locked.rows[0]?.status !== TutoringStatus.PENDING) throw new Error('La solicitud cambió mientras se procesaba. Actualiza la lista e inténtalo de nuevo.');
 
-      let capacityLimit = virtualLimit;
       if (tut.modality === TutoringModality.PRESENCIAL) {
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
           `tutoring-room:${tut.reservDate}:${tut.scheduleSlotId}:${cleanSpace.toLocaleLowerCase()}:${cleanBlock.toLocaleLowerCase()}`
         ]);
-        const roomRes = await client.query('SELECT capacity FROM sections WHERE LOWER(name) = LOWER($1) AND is_available = TRUE FOR UPDATE;', [cleanSpace]);
-        if (!roomRes.rows[0]) throw new Error('Selecciona un aula disponible del catálogo institucional.');
-        capacityLimit = Number.parseInt(roomRes.rows[0].capacity ?? '0', 10);
         const conflictRes = await client.query(
           `SELECT id FROM tutorings
            WHERE reserv_date = $1 AND schedule_slot_id = $2
@@ -1394,7 +1402,7 @@ export class PgRepository {
         );
         if (conflictRes.rowCount) throw new Error(`Conflicto de Aula: el espacio "${cleanSpace}" (Bloque ${cleanBlock}) ya está reservado para esa franja horaria.`);
       }
-      if (isGroup && capacityLimit > 0 && Number(maxParticipants) > capacityLimit) throw new Error(`El cupo no puede superar la capacidad disponible (${capacityLimit}).`);
+      if (isGroup && tut.modality === TutoringModality.VIRTUAL && Number(maxParticipants) > virtualLimit) throw new Error(`El cupo no puede superar el límite virtual configurado (${virtualLimit}).`);
       const countRes = await client.query('SELECT COUNT(*) AS count FROM tutoring_assistants WHERE tutoring_id = $1;', [tutoringId]);
       const current = Number.parseInt(countRes.rows[0]?.count ?? '0', 10);
       const effectiveLimit = isGroup ? Number(maxParticipants) : 1;
@@ -1649,13 +1657,11 @@ export class PgRepository {
       }
 
       // La tutoría queda bloqueada hasta confirmar inscripción y cupo; así no se exceden plazas en clics simultáneos.
-      let capacity = Number.parseInt(process.env.MAX_VIRTUAL_TUTORING_PARTICIPANTS || '30', 10);
-      if (!Number.isFinite(capacity) || capacity < 1) capacity = 30;
-      if (tut.modality === TutoringModality.PRESENCIAL && tut.space) {
-        const sectionRes = await client.query('SELECT capacity FROM sections WHERE LOWER(name) = LOWER($1);', [tut.space]);
-        capacity = Number.parseInt(sectionRes.rows[0]?.capacity ?? '0', 10);
-      }
-      if (tut.maxParticipants && (!capacity || tut.maxParticipants < capacity)) capacity = Number(tut.maxParticipants);
+      let virtualLimit = Number.parseInt(process.env.MAX_VIRTUAL_TUTORING_PARTICIPANTS || '30', 10);
+      if (!Number.isFinite(virtualLimit) || virtualLimit < 1) virtualLimit = 30;
+      const capacity = tut.maxParticipants
+        ? Number(tut.maxParticipants)
+        : tut.modality === TutoringModality.VIRTUAL ? virtualLimit : 0;
       if (capacity > 0 && assistants.length >= capacity) {
         throw new Error(`El cupo de esta tutoría está completo (máximo ${capacity} participantes).`);
       }

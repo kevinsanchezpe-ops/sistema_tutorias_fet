@@ -19,7 +19,8 @@ import {
   requireAuth,
   requireRole,
   AuthenticatedRequest,
-  AUTH_COOKIE_MAX_AGE
+  AUTH_COOKIE_MAX_AGE,
+  isPublicAuthEntryRequest
 } from './src/core/infrastructure/security/auth-security';
 import { emailService } from './src/core/infrastructure/email/email-service';
 
@@ -45,7 +46,7 @@ async function startServer() {
     }
   }
 
-  // 0. Trust proxy (Render/Railway/Nginx) para IP real y rate-limit correcto
+  // 0. Trust proxy opcional para obtener la IP real si se usa un proxy local
   app.set('trust proxy', 1);
 
   // Adjuntos en disco (no base64 en PG): carpeta pública /uploads
@@ -206,7 +207,7 @@ async function startServer() {
   } catch (err: any) {
     dbInitError = err.message;
     console.warn('⚠️ [PostgreSQL] Error de conexión:', dbInitError);
-    console.warn('💡 Asegúrate de configurar tu contraseña en el archivo .env (PGPASSWORD o DATABASE_URL).');
+      console.warn('💡 Asegúrate de configurar PGHOST, PGUSER y PGPASSWORD para tu PostgreSQL local en el archivo .env.');
   }
 
   if (isDbConnected) {
@@ -236,7 +237,7 @@ async function startServer() {
         error: {
           code: 'DATABASE_NOT_CONNECTED',
           message:
-            'PostgreSQL no está conectado todavía. Por favor ingresa tu contraseña de PostgreSQL en el archivo .env (variable PGPASSWORD o DATABASE_URL) y reinicia el servidor.'
+            'PostgreSQL local no está conectado. Verifica que esté activo y configura PGHOST, PGUSER y PGPASSWORD en el archivo .env.'
         }
       });
     }
@@ -249,6 +250,11 @@ async function startServer() {
     pgRepo.getUserById(req.user.userId).then((user) => {
       if (!user || !user.isActive || Number(user.sessionVersion || 0) !== Number(req.user!.sessionVersion || 0)) {
         clearAuthCookie(res);
+        if (isPublicAuthEntryRequest(req)) {
+          req.user = undefined;
+          req.actor = undefined;
+          return next();
+        }
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'La sesión ya no es válida.' } });
       }
       req.user = {
@@ -351,27 +357,37 @@ async function startServer() {
   app.post('/api/auth/register', authLimiter, requireDb, async (req, res) => {
     try {
       const b = req.body || {};
-      if (!isValidEmail(b.email)) {
+      const email = typeof b.email === 'string' ? b.email.trim().toLowerCase() : '';
+      const username = typeof b.username === 'string' ? b.username.trim().toLowerCase() : '';
+      const account = typeof b.account === 'string' ? b.account.trim() : '';
+      const fullName = typeof b.fullName === 'string' ? b.fullName.trim() : '';
+      if (!isValidEmail(email)) {
         return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Correo institucional inválido.' } });
       }
-      if (typeof b.username !== 'string' || b.username.trim().length < 3 || b.username.trim().length > 40) {
+      if (username.length < 3 || username.length > 40) {
         return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Nombre de usuario inválido.' } });
       }
-      if (typeof b.fullName !== 'string' || b.fullName.trim().length < 5 || b.fullName.trim().length > 120) {
+      if (fullName.length < 10 || fullName.length > 120) {
         return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Nombre completo inválido.' } });
+      }
+      if (account.length < 6 || account.length > 50) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'El número de cuenta debe tener entre 6 y 50 caracteres.' } });
       }
       const allowedDomains = (process.env.INSTITUTIONAL_EMAIL_DOMAINS || 'fet.edu.co')
         .split(',').map((domain) => domain.trim().toLowerCase()).filter(Boolean);
-      if (!allowedDomains.includes(b.email.trim().toLowerCase().split('@').pop() || '')) {
+      if (!allowedDomains.includes(email.split('@').pop() || '')) {
         return res.status(400).json({ success: false, error: { code: 'INSTITUTIONAL_EMAIL_REQUIRED', message: 'Debes registrarte con un correo institucional autorizado.' } });
       }
-      if (typeof b.password !== 'string' || b.password.length < 10 || b.password.length > 100) {
+      if (typeof b.password !== 'string' || b.password.length < 10 || b.password.length > 100 || b.password.trim().length < 10) {
         return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'La contraseña debe tener entre 10 y 100 caracteres.' } });
       }
       if (b.confirmPassword !== b.password) {
         return res.status(400).json({ success: false, error: { code: 'PASSWORD_MISMATCH', message: 'Las contraseñas no coinciden.' } });
       }
-      const user = await pgRepo.registerStudent(req.body);
+      if (typeof b.careerId !== 'string' || !b.careerId.trim() || !Number.isInteger(Number(b.semester)) || Number(b.semester) < 1 || Number(b.semester) > 20) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Selecciona una carrera y un semestre válido.' } });
+      }
+      const user = await pgRepo.registerStudent({ ...b, username, email, account, fullName });
       const token = generateAuthToken({
         userId: user.id,
         username: user.username,
@@ -395,19 +411,38 @@ async function startServer() {
   app.post('/api/auth/register-teacher', authLimiter, requireDb, requireAuth, requireRole(UserRole.ADMIN), async (req, res) => {
     try {
       const body = req.body || {};
+      const fullName = typeof body.fullName === 'string' ? body.fullName.trim() : '';
+      const username = typeof body.username === 'string' ? body.username.trim().toLowerCase() : '';
+      const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+      const account = typeof body.account === 'string' ? body.account.trim() : '';
+      if (fullName.length < 8 || fullName.length > 120 || username.length < 3 || username.length > 40 || account.length < 4 || account.length > 50 || !isValidEmail(email)) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Verifica el nombre, usuario, correo y código institucional del docente.' } });
+      }
+      const allowedDomains = (process.env.INSTITUTIONAL_EMAIL_DOMAINS || 'fet.edu.co')
+        .split(',').map((domain) => domain.trim().toLowerCase()).filter(Boolean);
+      if (!allowedDomains.includes(email.split('@').pop() || '')) {
+        return res.status(400).json({ success: false, error: { code: 'INSTITUTIONAL_EMAIL_REQUIRED', message: 'Debes usar un correo institucional autorizado.' } });
+      }
       let initialAvailability = body.initialAvailability;
+      if (initialAvailability !== undefined && !Array.isArray(initialAvailability)) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'La disponibilidad inicial no tiene un formato válido.' } });
+      }
 
       // Traducir el formulario del admin (subjectIds + scheduleSlotIds) a disponibilidad inicial
-      const subjectIds: string[] = body.subjectIds || [];
-      const scheduleSlotIds: string[] = body.scheduleSlotIds || [];
-      if (subjectIds.length > 0 && scheduleSlotIds.length > 0 && !initialAvailability) {
+      const subjectIds: string[] = Array.isArray(body.subjectIds) ? body.subjectIds.filter((id: unknown): id is string => typeof id === 'string') : [];
+      const scheduleSlotIds: string[] = Array.isArray(body.scheduleSlotIds) ? body.scheduleSlotIds.filter((id: unknown): id is string => typeof id === 'string') : [];
+      if (initialAvailability === undefined && subjectIds.length > 0 && scheduleSlotIds.length > 0) {
         initialAvailability = subjectIds.flatMap((subjectCourseId: string) =>
           scheduleSlotIds.map((scheduleSlotId: string) => ({ subjectCourseId, scheduleSlotId }))
         );
       }
+      if (initialAvailability === undefined) initialAvailability = [];
 
-      const temporaryPassword = `Gt-${crypto.randomBytes(12).toString('hex')}`;
-      const user = await pgRepo.registerTeacher({ ...body, password: temporaryPassword, initialAvailability });
+      if (!Array.isArray(initialAvailability)) {
+        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'La disponibilidad inicial no tiene un formato válido.' } });
+      }
+      const temporaryPassword = `FET-${crypto.randomBytes(18).toString('hex')}`;
+      const user = await pgRepo.registerTeacher({ ...body, fullName, username, email, account, password: temporaryPassword, initialAvailability });
       res.json({
         success: true,
         data: {
@@ -436,7 +471,7 @@ async function startServer() {
       if (fullName.length < 10 || account.length < 6 || !body.careerId || !Number.isInteger(semester) || semester < 1 || semester > 20) {
         return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Verifica nombre, carnet, carrera y semestre.' } });
       }
-      const temporaryPassword = crypto.randomBytes(12).toString('base64url');
+      const temporaryPassword = `FET-${crypto.randomBytes(18).toString('hex')}`;
       const user = await pgRepo.registerStudent({
         fullName, email, account, username: email, careerId: cleanStr(body.careerId, 100), semester,
         birthDate: cleanStr(body.birthDate, 20), admissionDate: cleanStr(body.admissionDate, 20),
@@ -466,7 +501,7 @@ async function startServer() {
         return res.status(400).json({ success: false, error: { code: 'PASSWORD_MISMATCH', message: 'Las contraseñas no coinciden.' } });
       }
 
-      const user = await pgRepo.updatePassword(req.user.userId, String(newPassword).trim());
+      const user = await pgRepo.updatePassword(req.user.userId, newPassword);
       const token = generateAuthToken({
         userId: user.id,
         username: user.username,
@@ -584,7 +619,7 @@ async function startServer() {
         return res.status(400).json({ success: false, error: { code: 'PASSWORD_TOO_SHORT', message: 'La nueva contraseña debe tener entre 10 y 100 caracteres.' } });
       }
 
-      const result = await pgRepo.resetPasswordWithToken(token.trim(), newPassword.trim());
+      const result = await pgRepo.resetPasswordWithToken(token.trim(), newPassword);
       if (!result.success) {
         const prev = resetAttempts.get(ipKey) || { count: 0, until: 0 };
         const count = prev.count + 1;

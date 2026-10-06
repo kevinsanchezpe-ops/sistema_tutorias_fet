@@ -41,6 +41,11 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS semester INT DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INT NOT NULL DEFAULT 0;
 
+-- Normalized unique keys prevent duplicate accounts differing only by case or whitespace.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_users_username_lower ON users (LOWER(username));
+CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email_lower ON users (LOWER(email)) WHERE COALESCE(email, '') <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS ux_users_account_lower ON users (LOWER(account)) WHERE COALESCE(account, '') <> '';
+
 CREATE TABLE IF NOT EXISTS subjects (
   id VARCHAR(100) PRIMARY KEY,
   name VARCHAR(150) NOT NULL,
@@ -127,7 +132,11 @@ ALTER TABLE tutorings ADD COLUMN IF NOT EXISTS created_by_user_id VARCHAR(100) R
 ALTER TABLE tutorings ADD COLUMN IF NOT EXISTS created_by_name VARCHAR(150);
 ALTER TABLE tutorings ADD COLUMN IF NOT EXISTS created_by_role VARCHAR(20);
 UPDATE tutorings
-SET created_by_user_id = petitioner_student_id,
+SET created_by_user_id = CASE
+      WHEN EXISTS (SELECT 1 FROM users WHERE users.id = tutorings.petitioner_student_id)
+        THEN petitioner_student_id
+      ELSE NULL
+    END,
     created_by_name = petitioner_student_name,
     created_by_role = CASE WHEN petitioner_student_id = teacher_id THEN 'TEACHER' ELSE 'STUDENT' END
 WHERE created_by_user_id IS NULL OR created_by_name IS NULL OR created_by_role IS NULL;
@@ -205,7 +214,10 @@ CREATE TABLE IF NOT EXISTS teacher_subjects (
 CREATE INDEX IF NOT EXISTS idx_tutorings_teacher_date_status ON tutorings (teacher_id, reserv_date, status);
 CREATE INDEX IF NOT EXISTS idx_tutorings_student_created ON tutorings (petitioner_student_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tutorings_subject_status ON tutorings (subject_course_id, status);
-CREATE INDEX IF NOT EXISTS idx_tutorings_attachment_url ON tutorings (attachment_url) WHERE attachment_url <> '';
+-- URLs históricas pueden contener data-URLs base64 enormes: indexar el texto
+-- completo supera el límite de tamaño de las entradas B-tree de PostgreSQL.
+DROP INDEX IF EXISTS idx_tutorings_attachment_url;
+CREATE INDEX IF NOT EXISTS idx_tutorings_attachment_url_hash ON tutorings (md5(attachment_url)) WHERE attachment_url <> '';
 CREATE INDEX IF NOT EXISTS idx_tutoring_assistants_student ON tutoring_assistants (student_id, tutoring_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications (destination_user_id, is_read, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_teacher_availability_teacher ON teacher_availability (teacher_id, subject_course_id, schedule_slot_id);

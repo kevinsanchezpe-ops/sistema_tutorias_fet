@@ -7,7 +7,7 @@
 import { Pool } from 'pg';
 import { getPgPool } from '../infrastructure/database/pg-pool';
 import { pgRepo } from '../infrastructure/database/pg-repository';
-import { TutoringModality, TutoringStatus, User, UserRole } from '../types';
+import { TutoringModality, TutoringStatus, User, UserRole, TutoringType } from '../types';
 
 export interface PostgresBusinessRuleTest {
   name: string;
@@ -39,38 +39,24 @@ async function findFreeTeacherSlot(p: Pool, dateStr: string, student: User): Pro
   return findFreeTeacherSlotForStudent(p, dateStr, student);
 }
 
-// Variante alineada al estudiante que se unirá: materia de su misma carrera y semestre
+// Selecciona materia y franja para el estudiante y crea un docente de prueba aislado.
 async function findFreeTeacherSlotForStudent(p: Pool, dateStr: string, student: User): Promise<{ teacherId: string; slotId: string; subjectCourseId: string }> {
   const careerId = (student as any).careerId || null;
   const semester = (student as any).semester ?? null;
   const res = await p.query(
-    `SELECT t.id AS teacher_id, s.id AS slot_id, sub.id AS subject_course_id
-     FROM users t
-     CROSS JOIN schedule_slots s
+    `SELECT s.id AS slot_id, sub.id AS subject_course_id
+     FROM schedule_slots s
      CROSS JOIN subjects sub
-     WHERE t.role = 'TEACHER' AND t.is_active = TRUE AND s.is_available = TRUE AND sub.is_active = TRUE
+     WHERE s.is_available = TRUE AND sub.is_active = TRUE
        AND ($3::text IS NULL OR sub.career_id = $3)
        AND ($4::int IS NULL OR sub.semester = $4)
-       AND EXISTS (SELECT 1 FROM teacher_subjects ts WHERE ts.teacher_id = t.id AND ts.subject_id = sub.id)
-       AND NOT EXISTS (
-         SELECT 1 FROM tutorings tut
-         WHERE tut.teacher_id = t.id AND tut.schedule_slot_id = s.id
-           AND tut.reserv_date = $1 AND tut.status != $2
-       )
-       AND (
-         EXISTS (
-           SELECT 1 FROM teacher_availability a
-           WHERE a.teacher_id = t.id AND a.schedule_slot_id = s.id
-             AND a.subject_course_id = sub.id AND a.is_available = TRUE
-         )
-          OR NOT EXISTS (SELECT 1 FROM teacher_availability a2 WHERE a2.teacher_id = t.id)
-       )
-      ORDER BY t.id, s.id, sub.id
+      ORDER BY s.id, sub.id
       LIMIT 1;`,
     [dateStr, TutoringStatus.CANCELLED, careerId, semester]
   );
   if (res.rows.length === 0) throw new Error('No hay combinación libre para la carrera/semestre del estudiante de prueba.');
-  return { teacherId: res.rows[0].teacher_id, slotId: res.rows[0].slot_id, subjectCourseId: res.rows[0].subject_course_id };
+  const teacher = await insertTempTeacher(p, res.rows[0].subject_course_id);
+  return { teacherId: teacher.id, slotId: res.rows[0].slot_id, subjectCourseId: res.rows[0].subject_course_id };
 }
 
 async function insertTempTeacher(p: Pool, subjectId?: string): Promise<User> {
@@ -151,7 +137,8 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
             scheduleSlotId: free.slotId,
             subjectCourseId: free.subjectCourseId,
             teacherId: free.teacherId,
-            modality: TutoringModality.VIRTUAL
+            modality: TutoringModality.VIRTUAL,
+            type: TutoringType.INDIVIDUAL,
           },
           student1
         );
@@ -165,12 +152,12 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
       const subjB = `PGTEST ${RUN_ID} conflictB`;
       try {
         await pgRepo.createTutoring(
-          { subject: subjA, details: 'primera', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.PRESENCIAL },
+          { subject: subjA, details: 'primera', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.PRESENCIAL, type: TutoringType.INDIVIDUAL },
           student1
         );
         await assertThrowsMessage(/ya tiene una tutoría/, async () => {
           await pgRepo.createTutoring(
-            { subject: subjB, details: 'segunda', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.PRESENCIAL },
+            { subject: subjB, details: 'segunda', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.PRESENCIAL, type: TutoringType.INDIVIDUAL },
             student1
           );
         });
@@ -186,22 +173,25 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
       const tempTeacher = await insertTempTeacher(p, free.subjectCourseId);
       const subjA = `PGTEST ${RUN_ID} aulaA`;
       const subjB = `PGTEST ${RUN_ID} aulaB`;
+      const sectionName = 'Aula PGTEST';
       try {
+        await p.query('INSERT INTO sections (id, name, is_available, capacity) VALUES ($1, $2, TRUE, 30);', [`sec-aula-${RUN_ID}`, sectionName]);
         const t1 = await pgRepo.createTutoring(
-          { subject: subjA, details: 'presencial 1', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.PRESENCIAL },
+          { subject: subjA, details: 'presencial 1', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.PRESENCIAL, type: TutoringType.INDIVIDUAL },
           student1
         );
         const t2 = await pgRepo.createTutoring(
-          { subject: subjB, details: 'presencial 2', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: tempTeacher.id, modality: TutoringModality.PRESENCIAL },
+          { subject: subjB, details: 'presencial 2', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: tempTeacher.id, modality: TutoringModality.PRESENCIAL, type: TutoringType.INDIVIDUAL },
           student1
         );
-        await pgRepo.approveTutoring(t1.id, 'Aula PGTEST', admin, 'PG-B1');
+        await pgRepo.approveTutoring(t1.id, sectionName, admin, 'PG-B1');
         await assertThrowsMessage(/Conflicto de Aula/, async () => {
-          await pgRepo.approveTutoring(t2.id, 'Aula PGTEST', admin, 'PG-B1');
+          await pgRepo.approveTutoring(t2.id, sectionName, admin, 'PG-B1');
         });
       } finally {
         await cleanupBySubject(p, subjA);
         await cleanupBySubject(p, subjB);
+        await p.query('DELETE FROM sections WHERE id = $1;', [`sec-aula-${RUN_ID}`]);
       }
     });
 
@@ -211,7 +201,7 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
       const subj = `PGTEST ${RUN_ID} cancel`;
       try {
         const created = await pgRepo.createTutoring(
-          { subject: subj, details: 'a cancelar', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.VIRTUAL },
+          { subject: subj, details: 'a cancelar', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.VIRTUAL, type: TutoringType.INDIVIDUAL },
           student1
         );
         if (student2 && student2.id !== student1.id) {
@@ -232,7 +222,7 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
       const subj = `PGTEST ${RUN_ID} state`;
       try {
         const created = await pgRepo.createTutoring(
-          { subject: subj, details: 'para iniciar', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.VIRTUAL },
+          { subject: subj, details: 'para iniciar', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.VIRTUAL, type: TutoringType.INDIVIDUAL },
           student1
         );
         const teacher = (await pgRepo.getUserById(free.teacherId))!;
@@ -251,7 +241,7 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
       const subj = `PGTEST ${RUN_ID} owner`;
       try {
         const created = await pgRepo.createTutoring(
-          { subject: subj, details: 'titularidad', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.VIRTUAL },
+          { subject: subj, details: 'titularidad', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.VIRTUAL, type: TutoringType.INDIVIDUAL },
           student1
         );
         await assertThrowsMessage(/docente titular/, async () => {
@@ -275,12 +265,12 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
       const subj = `PGTEST ${RUN_ID} flujo`;
       try {
         const created = await pgRepo.createTutoring(
-          { subject: subj, details: 'flujo completo', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.VIRTUAL },
+          { subject: subj, details: 'flujo completo', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.VIRTUAL, type: TutoringType.GROUP },
           student1
         );
         if (created.status !== TutoringStatus.PENDING) throw new Error(`Se esperaba PENDING, se obtuvo ${created.status}`);
 
-        const approved = await pgRepo.approveTutoring(created.id, 'Enlace PGTEST', admin);
+        const approved = await pgRepo.approveTutoring(created.id, 'https://meet.google.com/pgtest', admin, '', 2);
         if (approved.status !== TutoringStatus.APPROVED) throw new Error('Se esperaba APPROVED tras la aprobación');
 
         if (canJoinStudent2 && student2) {
@@ -302,7 +292,7 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
         if (rated.score !== 5) throw new Error(`Se esperaba score 5, se obtuvo ${rated.score}`);
 
         // El invitado también puede calificar: promedio (5+4)/2 = 4.5
-        if (student2 && student2.id !== student1.id) {
+        if (canJoinStudent2 && student2) {
           const rated2 = await pgRepo.rateTutoring({ tutoringId: completed.id, score: 4, studentComment: 'muy buena explicación' }, student2);
           if (rated2.score !== 4.5) throw new Error(`Se esperaba promedio 4.5, se obtuvo ${rated2.score}`);
           if (((rated2 as any).ratings || []).length !== 2) throw new Error('Se esperaban 2 calificaciones registradas');
@@ -342,14 +332,14 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
         );
 
         const created = await pgRepo.createTutoring(
-          { subject: subjOk, details: 'disponibilidad ok', reservDate: dateD, scheduleSlotId: slotId, subjectCourseId: subjA, teacherId: teacher.id, modality: TutoringModality.VIRTUAL },
+          { subject: subjOk, details: 'disponibilidad ok', reservDate: dateD, scheduleSlotId: slotId, subjectCourseId: subjA, teacherId: teacher.id, modality: TutoringModality.VIRTUAL, type: TutoringType.INDIVIDUAL },
           student1
         );
         if (created.status !== TutoringStatus.PENDING) throw new Error('La creación dentro de la disponibilidad debería tener éxito.');
 
         await assertThrowsMessage(/disponibilidad/, async () => {
           await pgRepo.createTutoring(
-            { subject: subjNo, details: 'asignatura sin disponibilidad', reservDate: dateInDays(7), scheduleSlotId: slotId, subjectCourseId: subjB, teacherId: teacher.id, modality: TutoringModality.VIRTUAL },
+            { subject: subjNo, details: 'asignatura sin disponibilidad', reservDate: dateInDays(7), scheduleSlotId: slotId, subjectCourseId: subjB, teacherId: teacher.id, modality: TutoringModality.VIRTUAL, type: TutoringType.INDIVIDUAL },
             student1
           );
         });
@@ -357,7 +347,7 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
         await p.query(`UPDATE teacher_availability SET is_available = FALSE WHERE id = $1;`, [activeId]);
         await assertThrowsMessage(/disponibilidad/, async () => {
           await pgRepo.createTutoring(
-            { subject: subjNo, details: 'disponibilidad desactivada', reservDate: dateInDays(8), scheduleSlotId: slotId, subjectCourseId: subjA, teacherId: teacher.id, modality: TutoringModality.VIRTUAL },
+            { subject: subjNo, details: 'disponibilidad desactivada', reservDate: dateInDays(8), scheduleSlotId: slotId, subjectCourseId: subjA, teacherId: teacher.id, modality: TutoringModality.VIRTUAL, type: TutoringType.INDIVIDUAL },
             student1
           );
         });
@@ -372,7 +362,7 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
     // --- 9. Cupo máximo de la sección (camino Postgres) ---
     await run('PG: Cupo — no se supera la capacidad del aula al unirse', async () => {
       // Slot alineado a student2 (quien se unirá): misma carrera y semestre
-      const free = await findFreeTeacherSlotForStudent(p, dateD, student2);
+      const free = await findFreeTeacherSlot(p, dateD, student1);
       const sectionId = `sec-cupo-${RUN_ID}`;
       const sectionName = `PGTEST Aula Cupo ${RUN_ID}`;
       const subj = `PGTEST ${RUN_ID} cupo`;
@@ -382,15 +372,12 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
           [sectionId, sectionName]
         );
         const created = await pgRepo.createTutoring(
-          { subject: subj, details: 'prueba de cupo', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.PRESENCIAL },
+          { subject: subj, details: 'prueba de cupo', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.PRESENCIAL, type: TutoringType.GROUP },
           student1
         );
-        await pgRepo.approveTutoring(created.id, sectionName, admin, 'PG-B2');
-        if (student2 && student2.id !== student1.id) {
-          await assertThrowsMessage(/cupo/, async () => {
-            await pgRepo.joinTutoring(created.id, student2);
-          });
-        }
+        await assertThrowsMessage(/capacidad/, async () => {
+          await pgRepo.approveTutoring(created.id, sectionName, admin, 'PG-B2', 2);
+        });
       } finally {
         await cleanupBySubject(p, subj);
         await p.query('DELETE FROM sections WHERE id = $1;', [sectionId]);
@@ -412,7 +399,7 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
       const subj = `PGTEST ${RUN_ID} grupal`;
       try {
         const created = await pgRepo.createTutoring(
-          { subject: subj, details: 'prueba grupal distinto', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.VIRTUAL },
+          { subject: subj, details: 'prueba grupal distinto', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.VIRTUAL, type: TutoringType.GROUP },
           petitioner
         );
         await assertThrowsMessage(/misma carrera|semestre/, async () => {
@@ -427,18 +414,22 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
     await run('PG: Presencial — aprobar sin bloque es rechazado', async () => {
       const free = await findFreeTeacherSlot(p, dateD, student1);
       const subj = `PGTEST ${RUN_ID} bloque`;
+      const sectionId = `sec-bloque-${RUN_ID}`;
+      const sectionName = `PGTEST Aula Bloque ${RUN_ID}`;
       try {
+        await p.query('INSERT INTO sections (id, name, is_available, capacity) VALUES ($1, $2, TRUE, 10);', [sectionId, sectionName]);
         const created = await pgRepo.createTutoring(
-          { subject: subj, details: 'prueba bloque requerido', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.PRESENCIAL },
+          { subject: subj, details: 'prueba bloque requerido', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.PRESENCIAL, type: TutoringType.INDIVIDUAL },
           student1
         );
         await assertThrowsMessage(/bloque/i, async () => {
-          await pgRepo.approveTutoring(created.id, 'Aula PGTEST Bloque', admin);
+          await pgRepo.approveTutoring(created.id, sectionName, admin);
         });
-        const approved = await pgRepo.approveTutoring(created.id, 'Aula PGTEST Bloque', admin, 'PG-B3');
+        const approved = await pgRepo.approveTutoring(created.id, sectionName, admin, 'PG-B3');
         if ((approved as any).block !== 'PG-B3') throw new Error('Debería guardar el bloque asignado');
       } finally {
         await cleanupBySubject(p, subj);
+        await p.query('DELETE FROM sections WHERE id = $1;', [sectionId]);
       }
     });
 
@@ -446,15 +437,18 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
     await run('PG: Cancelación — conserva espacio/bloque y rechaza estados finales', async () => {
       const free = await findFreeTeacherSlot(p, dateD, student1);
       const subj = `PGTEST ${RUN_ID} cancela`;
+      const sectionId = `sec-cancela-${RUN_ID}`;
+      const sectionName = `PGTEST Aula Cancela ${RUN_ID}`;
       try {
+        await p.query('INSERT INTO sections (id, name, is_available, capacity) VALUES ($1, $2, TRUE, 10);', [sectionId, sectionName]);
         const created = await pgRepo.createTutoring(
-          { subject: subj, details: 'prueba conserva espacio', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.PRESENCIAL },
+          { subject: subj, details: 'prueba conserva espacio', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.PRESENCIAL, type: TutoringType.INDIVIDUAL },
           student1
         );
-        const approved = await pgRepo.approveTutoring(created.id, 'Aula PGTEST Cancela', admin, 'PG-B4');
+        const approved = await pgRepo.approveTutoring(created.id, sectionName, admin, 'PG-B4');
         if ((approved as any).block !== 'PG-B4') throw new Error('Debería guardar el bloque asignado');
         const cancelled = await pgRepo.cancelTutoring(created.id, 'Motivo de prueba detallado', student1);
-        if (cancelled.space !== 'Aula PGTEST Cancela') throw new Error('La cancelación no debe sobrescribir el espacio');
+        if (cancelled.space !== sectionName) throw new Error('La cancelación no debe sobrescribir el espacio');
         if ((cancelled as any).block !== 'PG-B4') throw new Error('La cancelación no debe borrar el bloque');
         if ((cancelled as any).cancelReason !== 'Motivo de prueba detallado') throw new Error('Debe guardar el motivo por separado');
         await assertThrowsMessage(/pendientes o programadas/, async () => {
@@ -462,6 +456,7 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
         });
       } finally {
         await cleanupBySubject(p, subj);
+        await p.query('DELETE FROM sections WHERE id = $1;', [sectionId]);
       }
     });
 

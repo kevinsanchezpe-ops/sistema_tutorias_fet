@@ -15,7 +15,7 @@ import { StartTutoringUseCase } from '../application/use-cases/start-tutoring.us
 import { BusinessRuleException, ScheduleConflictService } from '../domain/services/schedule-conflict.service';
 import { TutoringStateMachineService } from '../domain/services/state-machine.service';
 import { db } from '../infrastructure/database/database';
-import { TutoringModality, TutoringStatus, UserRole } from '../types';
+import { TutoringModality, TutoringStatus, UserRole, TutoringType } from '../types';
 
 export function runBusinessRulesTests(): { total: number; passed: number; results: { name: string; success: boolean; message: string }[] } {
   const results: { name: string; success: boolean; message: string }[] = [];
@@ -206,7 +206,8 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
           scheduleSlotId: slotOk,
           subjectCourseId: subjectOk,
           teacherId: teacher.id,
-          modality: TutoringModality.VIRTUAL
+          modality: TutoringModality.VIRTUAL,
+          type: TutoringType.INDIVIDUAL,
         },
         student
       );
@@ -222,7 +223,8 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
             scheduleSlotId: slotOk,
             subjectCourseId: subjectOther,
             teacherId: teacher.id,
-            modality: TutoringModality.VIRTUAL
+            modality: TutoringModality.VIRTUAL,
+            type: TutoringType.INDIVIDUAL,
           },
           student
         );
@@ -276,13 +278,14 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
           scheduleSlotId: slotId,
           subjectCourseId: subjectId,
           teacherId: teacher.id,
-          modality: TutoringModality.PRESENCIAL
+          modality: TutoringModality.PRESENCIAL,
+          type: TutoringType.GROUP,
         },
         student1
       );
       created.push(tut.id);
 
-      ApproveTutoringUseCase.execute({ tutoringId: tut.id, space: section.name, block: 'B1' }, teacher);
+      ApproveTutoringUseCase.execute({ tutoringId: tut.id, space: section.name, block: 'B1', maxParticipants: 2 }, teacher);
 
       let threw = false;
       try {
@@ -329,7 +332,8 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
         scheduleSlotId: slotId,
         subjectCourseId: subject.id,
         teacherId: teacher.id,
-        modality: TutoringModality.VIRTUAL
+                modality: TutoringModality.VIRTUAL,
+        type: TutoringType.GROUP,
       },
       petitioner
     );
@@ -376,7 +380,8 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
         scheduleSlotId: slotId,
         subjectCourseId: subject.id,
         teacherId: teacher.id,
-        modality: TutoringModality.VIRTUAL
+                modality: TutoringModality.VIRTUAL,
+        type: TutoringType.GROUP,
       },
       petitioner
     );
@@ -420,7 +425,8 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
         scheduleSlotId: slotId,
         subjectCourseId: subjectId,
         teacherId: teacher.id,
-        modality: TutoringModality.PRESENCIAL
+        modality: TutoringModality.PRESENCIAL,
+        type: TutoringType.INDIVIDUAL,
       },
       petitioner
     );
@@ -469,7 +475,8 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
         scheduleSlotId: slotId,
         subjectCourseId: subjectId,
         teacherId: teacher.id,
-        modality: TutoringModality.PRESENCIAL
+        modality: TutoringModality.PRESENCIAL,
+        type: TutoringType.INDIVIDUAL,
       },
       petitioner
     );
@@ -537,13 +544,14 @@ export function runBusinessRulesTests(): { total: number; passed: number; result
         scheduleSlotId: slotId,
         subjectCourseId: subject.id,
         teacherId: teacher.id,
-        modality: TutoringModality.PRESENCIAL
+        modality: TutoringModality.PRESENCIAL,
+        type: TutoringType.GROUP,
       },
       petitioner
     );
     try {
       JoinTutoringUseCase.execute(tut.id, guest);
-      ApproveTutoringUseCase.execute({ tutoringId: tut.id, space: 'Aula 77', block: 'B7' }, teacher);
+      ApproveTutoringUseCase.execute({ tutoringId: tut.id, space: 'Aula 77', block: 'B7', maxParticipants: 2 }, teacher);
       StartTutoringUseCase.execute(tut.id, teacher);
       FinishTutoringUseCase.execute(tut.id, teacher, 'buena sesión');
 

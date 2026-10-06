@@ -127,6 +127,10 @@ export class ApiClient {
     return res;
   }
 
+  public static async getAuthMe(): Promise<ApiResponse<User>> {
+    return request<User>('/auth/me');
+  }
+
   public static async registerStudent(dto: RegisterStudentDto): Promise<ApiResponse<User>> {
     const res = await request<User & { token?: string }>('/auth/register', {
       method: 'POST',

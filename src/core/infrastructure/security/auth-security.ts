@@ -91,6 +91,18 @@ function getTokenFromCookies(req: Request): string | null {
   return null;
 }
 
+const PUBLIC_AUTH_ENTRY_PATHS = new Set([
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/logout'
+]);
+
+export function isPublicAuthEntryRequest(req: Request): boolean {
+  return req.method === 'POST' && PUBLIC_AUTH_ENTRY_PATHS.has(req.path);
+}
+
 export function verifyTokenMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   const cookieToken = getTokenFromCookies(req);
@@ -103,6 +115,15 @@ export function verifyTokenMiddleware(req: AuthenticatedRequest, res: Response, 
       req.user = decoded;
       return next();
     } catch (err: any) {
+      // A stale cookie must not prevent a fresh login, registration, logout, or password reset.
+      if (isPublicAuthEntryRequest(req)) {
+        const secure = process.env.NODE_ENV === 'production';
+        res.appendHeader(
+          'Set-Cookie',
+          `gt_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax${secure ? '; Secure' : ''}`
+        );
+        return next();
+      }
       return res.status(401).json({
         success: false,
         error: { code: 'INVALID_OR_EXPIRED_TOKEN', message: 'Sesión expirada o token inválido. Por favor inicia sesión nuevamente.' }

@@ -62,14 +62,6 @@ export class ApproveTutoringUseCase {
         block
       );
 
-      // Regla de cupo: la sección asignada debe tener capacidad para los participantes ya inscritos.
-      const section = db.sections.find((s) => s.name.toLowerCase() === dto.space.trim().toLowerCase());
-      if (section && section.capacity > 0 && tutoring.assistants.length > section.capacity) {
-        throw new BusinessRuleException(
-          `El cupo de "${dto.space.trim()}" es de ${section.capacity} participantes y esta tutoría ya cuenta con ${tutoring.assistants.length}.`,
-          'CAPACITY_EXCEEDED'
-        );
-      }
     }
 
     tutoring.status = TutoringStatus.APPROVED;

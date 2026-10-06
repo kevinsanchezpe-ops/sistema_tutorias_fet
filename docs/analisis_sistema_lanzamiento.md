@@ -1,6 +1,6 @@
-# 📊 Informe de Evaluación y Estado del Sistema de Gestión de Tutorías (FET)
+# 📊 Informe de Evaluación y Estado Local del Sistema de Gestión de Tutorías (FET)
 
-Este documento presenta una auditoría técnica completa del estado actual del sistema, abarcando seguridad, arquitectura backend/frontend, reglas de negocio, cobertura de pruebas y recomendaciones para el lanzamiento a producción.
+Este documento presenta una auditoría técnica del estado actual del sistema, abarcando seguridad, arquitectura backend/frontend, reglas de negocio y cobertura de pruebas. El sistema se ejecuta actualmente en local.
 
 ---
 
@@ -13,7 +13,7 @@ Este documento presenta una auditoría técnica completa del estado actual del s
 | **Base de Datos y Persistencia** | 🟢 Excelente | 100% | PostgreSQL con consultas 100% parametrizadas. Pénsum oficial FET de 365 materias. |
 | **Interfaz y Experiencia de Usuario** | 🟢 Excelente | 98% | Diseño minimalista corporativo FET, Vista Calendario interactiva y Visor de Adjuntos en 2do plano. |
 | **Pruebas Automatizadas** | 🟢 Excelente | 100% | 21/21 pruebas de integración y autorización pasando limpiamente en PostgreSQL. |
-| **Preparación para Producción** | 🟡 Listo (95%) | 95% | Requiere únicamente configuración de variables SMTP real, HTTPS y secreto JWT seguro. |
+| **Ejecución actual** | 🟢 Local | — | Aplicación y PostgreSQL configurados para ejecutarse en el equipo local. |
 
 ---
 
@@ -86,22 +86,11 @@ Resultado: 21/21 Pruebas pasadas exitosamente (1.6s)
 
 ---
 
-## 🚀 5. Lista de Verificación para Lanzamiento a Producción
+## 🚀 5. Ejecución actual en local
 
-Para desplegar el sistema en un entorno de producción (ej. Render, Vercel, Railway, AWS o VPS Institucional), se deben completar los siguientes pasos de infraestructura:
-
-1. **Variables de Entorno (`.env`)**:
-   - `JWT_SECRET`: Definir una clave criptográfica aleatoria de al menos 64 caracteres.
-   - `DATABASE_URL` / `PGPASSWORD`: Credenciales de PostgreSQL en producción con SSL activado si aplica.
-   - `PORT`: Puerto configurado por la plataforma de hosting (default 3000 o 443).
-2. **Servidor SMTP de Correo Real**:
-   - Configurar `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER` y `SMTP_PASS` en `.env` (ej. SendGrid, Mailgun o Google Workspace institucionales) para el envío real de notificaciones por email.
-3. **Configuración SSL / HTTPS**:
-   - Desplegar tras un proxy inverso (Nginx, Caddy o Cloudflare) con certificado SSL activo (HTTPS) para cifrar todo el tráfico entre los navegadores y el servidor.
-4. **Respaldo de Base de Datos**:
-   - Configurar `pg_dump` automático diario para la base de datos PostgreSQL de producción.
+Por ahora el sistema se ejecuta en el equipo local. Configura PostgreSQL con `PGHOST=localhost`, `PGPORT=5432`, `PGDATABASE=gt_db`, `PGUSER` y `PGPASSWORD` en `.env`, y luego inicia la aplicación con `npm run dev`. No requiere una base de datos ni un servicio de alojamiento remoto.
 
 ---
 
 ### 📌 Conclusión
-El **Sistema de Gestión de Tutorías FET** se encuentra **técnicamente maduro, estable y seguro al 95%**, con todas sus funcionalidades principales, reglas de negocio y medidas de ciberseguridad totalmente probadas y validadas. Está listo para pasar a la fase de despliegue en servidor de staging o producción.
+El **Sistema de Gestión de Tutorías FET** queda configurado para el desarrollo y uso local mientras se define un despliegue futuro.

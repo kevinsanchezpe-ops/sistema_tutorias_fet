@@ -1,7 +1,6 @@
 import React, { useState, Fragment } from 'react';
 import {
   ScheduleSlot,
-  Section,
   SubjectCourse,
   TeacherAvailability,
   Tutoring,
@@ -60,7 +59,6 @@ interface TeacherDashboardProps {
   availabilities: TeacherAvailability[];
   schedules: ScheduleSlot[];
   subjects?: SubjectCourse[];
-  sections?: Section[];
   onRefresh: () => void;
   onTutoringUpdated: (tutoring: Tutoring) => void;
 }
@@ -71,7 +69,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   availabilities,
   schedules,
   subjects = [],
-  sections = [],
   onRefresh,
   onTutoringUpdated
 }) => {
@@ -1281,10 +1278,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 </div>
               </div>
               {convocationModality === TutoringModality.PRESENCIAL ? <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5"><label htmlFor="teacher-convocation-room" className="block text-xs font-semibold text-slate-700">Aula disponible</label><select id="teacher-convocation-room" value={convocationSpace} onChange={(e) => setConvocationSpace(e.target.value)} required className="h-11 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm"><option value="">Selecciona aula</option>{sections.filter((section) => section.isAvailable).map((section) => <option key={section.id} value={section.name}>{section.name} · aforo {section.capacity || 'sin límite'}</option>)}</select></div>
+                <div className="space-y-1.5"><label htmlFor="teacher-convocation-room" className="block text-xs font-semibold text-slate-700">Salón</label><input id="teacher-convocation-room" value={convocationSpace} onChange={(e) => setConvocationSpace(e.target.value)} required maxLength={200} placeholder="Ej.: Salón 101" className="h-11 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm" /></div>
                 <div className="space-y-1.5"><label htmlFor="teacher-convocation-block" className="block text-xs font-semibold text-slate-700">Bloque / edificio</label><input id="teacher-convocation-block" value={convocationBlock} onChange={(e) => setConvocationBlock(e.target.value)} required maxLength={50} className="h-11 w-full rounded-lg border border-stone-200 px-3 text-sm" /></div>
               </div> : convocationModality === TutoringModality.VIRTUAL ? <div className="space-y-1.5"><label htmlFor="teacher-convocation-link" className="block text-xs font-semibold text-slate-700">Enlace de reunión</label><input id="teacher-convocation-link" type="url" value={convocationSpace} onChange={(e) => setConvocationSpace(e.target.value)} required placeholder="https://..." className="h-11 w-full rounded-lg border border-stone-200 px-3 text-sm" /></div> : null}
-              <div className="space-y-1.5"><label htmlFor="teacher-convocation-capacity" className="block text-xs font-semibold text-slate-700">Cupo de estudiantes</label><input id="teacher-convocation-capacity" type="number" min={2} max={convocationModality === TutoringModality.VIRTUAL ? 30 : sections.find((section) => section.name === convocationSpace)?.capacity || undefined} value={convocationCapacity} onChange={(e) => setConvocationCapacity(Number(e.target.value))} required className="h-11 w-full rounded-lg border border-stone-200 px-3 text-sm" /><p className="text-xs text-stone-500">El cupo incluye solo estudiantes; tú apareces como docente convocante.</p></div>
+              <div className="space-y-1.5"><label htmlFor="teacher-convocation-capacity" className="block text-xs font-semibold text-slate-700">Cupo de estudiantes</label><input id="teacher-convocation-capacity" type="number" min={2} max={convocationModality === TutoringModality.VIRTUAL ? 30 : undefined} value={convocationCapacity} onChange={(e) => setConvocationCapacity(Number(e.target.value))} required className="h-11 w-full rounded-lg border border-stone-200 px-3 text-sm" /><p className="text-xs text-stone-500">El cupo incluye solo estudiantes; tú apareces como docente convocante.</p></div>
               <div className="space-y-1.5">
                 <label htmlFor="teacher-convocation-topic" className="block text-xs font-semibold text-slate-700">Tema de la convocatoria</label>
                 <input id="teacher-convocation-topic" value={convocationTopic} onChange={(e) => setConvocationTopic(e.target.value)} maxLength={70} minLength={3} required placeholder="Ej.: Repaso de derivadas" className="h-11 w-full rounded-lg border border-stone-200 px-3 text-sm" />
@@ -2195,7 +2192,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               {approvingTutoring.type === 'GROUP' && (
                 <div>
                   <label htmlFor="approval-group-capacity" className="block font-bold text-slate-800 uppercase tracking-wider text-[10px] mb-1.5">Cupo máximo de participantes (incluye al solicitante)</label>
-                  <input id="approval-group-capacity" type="number" min={Math.max(2, approvingTutoring.assistants.length)} max={approvingTutoring.modality === TutoringModality.PRESENCIAL ? (sections.find((s) => s.name.toLowerCase() === assignedSpace.trim().toLowerCase())?.capacity || undefined) : 30} value={confirmedCapacity} onChange={(e) => setConfirmedCapacity(Number(e.target.value))} required className="w-full rounded-xl border border-stone-200 p-3 text-xs" />
+                  <input id="approval-group-capacity" type="number" min={Math.max(2, approvingTutoring.assistants.length)} max={approvingTutoring.modality === TutoringModality.VIRTUAL ? 30 : undefined} value={confirmedCapacity} onChange={(e) => setConfirmedCapacity(Number(e.target.value))} required className="w-full rounded-xl border border-stone-200 p-3 text-xs" />
                 </div>
               )}
 

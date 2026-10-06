@@ -513,9 +513,9 @@ El sistema cuenta con una batería de pruebas automatizadas que certifican la no
 - Test 06: Bloqueo de calificación para tutorías no completadas (RN-05) -> PASS [100%]
 ```
 
-### 4.2. Procedimientos de Despliegue e Instalación
+### 4.2. Procedimientos de Instalación y Ejecución Local
 
-#### 4.2.1. Requisitos Previos del Servidor
+#### 4.2.1. Requisitos Previos
 - Node.js versión 20 LTS o superior.
 - PostgreSQL 15+ en ejecución con base de datos `gt_db`.
 - Gestor de paquetes `npm`.
@@ -523,12 +523,16 @@ El sistema cuenta con una batería de pruebas automatizadas que certifican la no
 #### 4.2.2. Variables de Entorno (`.env`)
 ```ini
 PORT=3000
-NODE_ENV=production
-DATABASE_URL=postgresql://postgres:admin123@localhost:5432/gt_db
-SESSION_SECRET=fet_secret_key_production_2026
+NODE_ENV=development
+PGHOST=localhost
+PGPORT=5432
+PGUSER=postgres
+PGPASSWORD=CAMBIA_POR_TU_PASSWORD_LOCAL
+PGDATABASE=gt_db
+JWT_SECRET=GENERA_UNA_CLAVE_LOCAL_SEGURA_DE_32_CARACTERES_O_MAS
 ```
 
-#### 4.2.3. Comandos de Inicialización y Puesta en Producción
+#### 4.2.3. Comandos de Inicialización Local
 ```bash
 # 1. Instalación de dependencias del proyecto
 npm install
@@ -536,16 +540,13 @@ npm install
 # 2. Verificación y chequeo de sintaxis estricta
 npm run lint
 
-# 3. Compilación de artefactos de producción (Frontend y Backend)
-npm run build
-
-# 4. Puesta en marcha del servidor institucional
-npm start
+# 3. Inicio de la aplicación local
+npm run dev
 ```
 
-### 4.3. Plan de Contingencia, Respaldos y Recuperación
-- **Respaldos de Base de Datos:** Se programa una tarea periódica (*cron job*) mediante la utilidad `pg_dump` para realizar volcado completo diario de la base `gt_db` con retención rotativa de 30 días.
-- **Failover:** En caso de interrupción del servicio, el proceso es reiniciado automáticamente mediante el gestor de procesos `pm2` o contenedor Docker.
+### 4.3. Respaldos y Recuperación Local
+- **Respaldos de Base de Datos:** Para conservar los datos locales, realiza una copia con `pg_dump` de la base `gt_db` antes de cambios importantes.
+- **Recuperación:** Restaura la copia en PostgreSQL local con `pg_restore` o `psql`, según el formato generado.
 
 ### 4.4. Guía de Operación y Manual Breve por Rol
 

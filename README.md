@@ -70,7 +70,7 @@ Sistema Web de Gestión Integral de Tutorías Académicas para la **Fundación E
 ### Prerequisitos
 
 - Node.js v18+ y npm v9+
-- PostgreSQL v14+ activo (o servidor en la nube ej. Neon, Supabase, Render)
+- PostgreSQL v14+ activo en el equipo local
 
 ### 1. Clonar el repositorio e instalar dependencias
 
@@ -157,9 +157,9 @@ Resultado: 21/21 Pruebas pasadas exitosamente (1.6s)
 
 La carpeta [`docs/`](./docs) contiene la documentación técnica oficial del proyecto:
 
-- [`docs/analisis_sistema_lanzamiento.md`](./docs/analisis_sistema_lanzamiento.md): **Informe Técnico de Evaluación, Seguridad y Despliegue**.
+- [`docs/analisis_sistema_lanzamiento.md`](./docs/analisis_sistema_lanzamiento.md): **Informe Técnico de Evaluación, Seguridad y Estado Local**.
 - [`docs/DOCUMENTO_RUP.md`](./docs/DOCUMENTO_RUP.md): **Especificación Formal RUP (Rational Unified Process)** para la FET.
-- [`docs/GUIA_DESPLIEGUE_PRODUCCION.md`](./docs/GUIA_DESPLIEGUE_PRODUCCION.md): **Guía de Operación en Producción (PM2, Nginx, SSL)**.
+- [`docs/GUIA_LOCAL.md`](./docs/GUIA_LOCAL.md): **Guía de instalación y ejecución local**.
 - [`docs/architecture.md`](./docs/architecture.md): **Arquitectura Clean y Estructura Monolito Modular**.
 - [`docs/business-rules.md`](./docs/business-rules.md): **Especificación de Reglas de Negocio Institucionales**.
 - [`docs/api.md`](./docs/api.md): **Documentación del Contrato de API REST**.

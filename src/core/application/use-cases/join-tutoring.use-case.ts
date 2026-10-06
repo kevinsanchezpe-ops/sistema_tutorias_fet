@@ -1,6 +1,6 @@
 import { BusinessRuleException } from '../../domain/services/schedule-conflict.service';
 import { db } from '../../infrastructure/database/database';
-import { Tutoring, TutoringAssistant, TutoringModality, TutoringStatus, TutoringType, User, UserRole } from '../../types';
+import { Tutoring, TutoringAssistant, TutoringStatus, TutoringType, User, UserRole } from '../../types';
 
 export class JoinTutoringUseCase {
   public static execute(tutoringId: string, student: User): Tutoring {
@@ -48,16 +48,6 @@ export class JoinTutoringUseCase {
       );
     }
 
-    // Regla de cupo: no superar la capacidad del aula en tutorías presenciales.
-    if (tutoring.modality === TutoringModality.PRESENCIAL) {
-      const section = db.sections.find((s) => s.name.toLowerCase() === tutoring.space.trim().toLowerCase());
-      if (section && section.capacity > 0 && tutoring.assistants.length >= section.capacity) {
-        throw new BusinessRuleException(
-          `El cupo de esta tutoría está completo (máximo ${section.capacity} participantes).`,
-          'CAPACITY_FULL'
-        );
-      }
-    }
     if (tutoring.maxParticipants && tutoring.assistants.length >= tutoring.maxParticipants) {
       throw new BusinessRuleException('El cupo confirmado para esta tutoría está completo.', 'CAPACITY_FULL');
     }

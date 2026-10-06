@@ -38,6 +38,9 @@ export default function App() {
     } catch (e) {}
     return null;
   });
+  const [isRestoringSession, setIsRestoringSession] = useState(() => {
+    try { return Boolean(localStorage.getItem('gt_auth_user')); } catch { return false; }
+  });
 
   const [dbHealth, setDbHealth] = useState<{ status: string; database: string; error?: string } | null>(null);
   const [apiRequestActive, setApiRequestActive] = useState(false);
@@ -131,6 +134,45 @@ export default function App() {
     }
   };
 
+  // Never trust the cached profile as the source of authentication or password policy.
+  useEffect(() => {
+    if (!currentUser) {
+      setIsRestoringSession(false);
+      return;
+    }
+    let active = true;
+    ApiClient.getAuthMe().then((result) => {
+      if (!active) return;
+      if (result.success && result.data) {
+        setCurrentUser(result.data);
+        try {
+          localStorage.setItem('gt_auth_user', JSON.stringify(result.data));
+          localStorage.setItem('gt_auth_user_id', result.data.id);
+        } catch {}
+      } else {
+        try {
+          localStorage.removeItem('gt_auth_user');
+          localStorage.removeItem('gt_auth_user_id');
+          localStorage.removeItem('gt_auth_token');
+        } catch {}
+        setCurrentUser(null);
+        void ApiClient.logout();
+      }
+      setIsRestoringSession(false);
+    }).catch(() => {
+      if (!active) return;
+      try {
+        localStorage.removeItem('gt_auth_user');
+        localStorage.removeItem('gt_auth_user_id');
+        localStorage.removeItem('gt_auth_token');
+      } catch {}
+      setCurrentUser(null);
+      setIsRestoringSession(false);
+      void ApiClient.logout();
+    });
+    return () => { active = false; };
+  }, []);
+
   const scheduleRefreshData = () => {
     if (refreshTimerRef.current !== null) window.clearTimeout(refreshTimerRef.current);
     refreshTimerRef.current = window.setTimeout(() => {
@@ -166,14 +208,24 @@ export default function App() {
 
   // Subscribe to DB notifications
   useEffect(() => {
+    if (isRestoringSession) return;
     refreshData();
+    // Keep the public login screen's database status fresh after sign-out or a reconnect.
+    const healthTimer = !currentUser
+      ? window.setInterval(() => {
+          void ApiClient.getHealth().then(setDbHealth);
+        }, 10_000)
+      : null;
     const unsubscribe = db.subscribe(() => {
       // If user logged out (no storage), do not trigger state refresh that could re-bind
       if (!localStorage.getItem('gt_auth_user')) return;
       scheduleRefreshData();
     });
-    return () => unsubscribe();
-  }, [currentUser?.id]);
+    return () => {
+      if (healthTimer !== null) window.clearInterval(healthTimer);
+      unsubscribe();
+    };
+  }, [currentUser?.id, isRestoringSession]);
 
   // Renovación deslizante de sesión (token 2h): refresca cada 90 min si hay sesión
   useEffect(() => {
@@ -210,7 +262,9 @@ export default function App() {
 
   // Handle Logout (limpia cookie HttpOnly en servidor + sesión local)
   const handleLogout = () => {
-    ApiClient.logout().catch(() => {});
+    void ApiClient.logout().finally(async () => {
+      setDbHealth(await ApiClient.getHealth());
+    });
     try {
       localStorage.clear(); // Limpiar de raíz todo token, usuario y clave temporal
     } catch (e) {}
@@ -251,7 +305,7 @@ export default function App() {
           <div className="flex items-center gap-2 max-w-5xl mx-auto w-full">
             <span className="bg-amber-700 text-white rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">Aviso PostgreSQL</span>
             <span>
-              La base de datos PostgreSQL local no está conectada. Abre tu archivo <code className="bg-amber-600/30 px-1 py-0.5 rounded text-amber-950 font-mono">.env</code> en el proyecto y coloca tu contraseña en <code className="bg-amber-600/30 px-1 py-0.5 rounded text-amber-950 font-mono">PGPASSWORD</code> o <code className="bg-amber-600/30 px-1 py-0.5 rounded text-amber-950 font-mono">DATABASE_URL</code>.
+              PostgreSQL local no está conectado. Verifica que el servicio esté activo y que <code className="bg-amber-600/30 px-1 py-0.5 rounded text-amber-950 font-mono">PGHOST</code>, <code className="bg-amber-600/30 px-1 py-0.5 rounded text-amber-950 font-mono">PGUSER</code> y <code className="bg-amber-600/30 px-1 py-0.5 rounded text-amber-950 font-mono">PGPASSWORD</code> en <code className="bg-amber-600/30 px-1 py-0.5 rounded text-amber-950 font-mono">.env</code> correspondan a tu instalación local.
             </span>
           </div>
         </div>
@@ -261,6 +315,10 @@ export default function App() {
   };
 
   // If user is not authenticated, display full Login / Register screen
+  if (isRestoringSession) {
+    return <div className="min-h-screen flex items-center justify-center bg-brand-50/40 text-sm text-slate-600">Verificando sesión…</div>;
+  }
+
   if (!currentUser) {
     return (
       <>
@@ -354,7 +412,6 @@ export default function App() {
             availabilities={availabilities}
             schedules={schedules}
             subjects={subjects}
-            sections={sections}
             onRefresh={scheduleRefreshData}
             onTutoringUpdated={updateTutoring}
             />

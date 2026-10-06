@@ -70,6 +70,7 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
        SELECT 'rate-seed-' || t.id, t.id, t.petitioner_student_id, t.petitioner_student_name, t.score, COALESCE(t.student_comment, ''), t.created_at
        FROM tutorings t
        WHERE t.score > 0
+         AND EXISTS (SELECT 1 FROM users u WHERE u.id = t.petitioner_student_id)
          AND NOT EXISTS (SELECT 1 FROM tutoring_ratings r WHERE r.tutoring_id = t.id AND r.student_id = t.petitioner_student_id);`
     );
     // Corrección: quitar sufijo "(FET)" si quedó de versiones previas
