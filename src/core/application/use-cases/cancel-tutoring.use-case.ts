@@ -1,7 +1,7 @@
 import { BusinessRuleException } from '../../domain/services/schedule-conflict.service';
 import { TutoringStateMachineService } from '../../domain/services/state-machine.service';
 import { db } from '../../infrastructure/database/database';
-import { Tutoring, TutoringStatus, User, UserRole } from '../../types';
+import { Tutoring, TutoringStatus, TutoringType, User, UserRole } from '../../types';
 
 export interface CancelTutoringDto {
   tutoringId: string;
@@ -34,6 +34,28 @@ export class CancelTutoringUseCase {
 
     // Validar transición hacia CANCELLED
     TutoringStateMachineService.ensureValidTransition(tutoring.status, TutoringStatus.CANCELLED);
+
+    const remainingParticipants = tutoring.assistants.filter((assistant) => assistant.studentId !== user.id);
+    if (
+      isOwner &&
+      (tutoring.type || TutoringType.GROUP) === TutoringType.GROUP &&
+      remainingParticipants.length > 0
+    ) {
+      tutoring.assistants = remainingParticipants;
+      db.logBinnacle(
+        'Retiro de tutoría grupal',
+        `El estudiante ${user.fullName} se retiró de la tutoría grupal ${tutoring.code}. La sesión continúa para ${remainingParticipants.length} participante(s). Motivo: ${dto.reason.trim()}`,
+        user.username
+      );
+      db.addNotification(
+        tutoring.teacherId,
+        'Participante se retiró de tutoría grupal',
+        `${user.fullName} se retiró de la tutoría grupal ${tutoring.code}. La sesión continúa con ${remainingParticipants.length} participante(s). Motivo: ${dto.reason.trim()}`,
+        tutoring.id
+      );
+      db.notify();
+      return tutoring;
+    }
 
     tutoring.status = TutoringStatus.CANCELLED;
     tutoring.cancelReason = dto.reason.trim();

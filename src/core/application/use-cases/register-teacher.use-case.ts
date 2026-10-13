@@ -2,6 +2,7 @@ import { BusinessRuleException } from '../../domain/services/schedule-conflict.s
 import { db } from '../../infrastructure/database/database';
 import { getCareerById, getDefaultCareer } from '../../infrastructure/database/careers-data';
 import { TeacherAvailability, User, UserRole } from '../../types';
+import { formatPersonName } from '../../utils/name-formatting';
 
 export interface RegisterTeacherDto {
   fullName: string;
@@ -60,8 +61,9 @@ export class RegisterTeacherUseCase {
       );
     }
 
-    const nameParts = dto.fullName.trim().split(' ');
-    const alias = nameParts.length >= 2 ? `${nameParts[0]} ${nameParts[1]}` : dto.fullName;
+    const fullName = formatPersonName(dto.fullName);
+    const nameParts = fullName.split(' ');
+    const alias = nameParts.length >= 2 ? `${nameParts[0]} ${nameParts[1]}` : fullName;
 
     const careerId = dto.careerId || getDefaultCareer().id;
     const career = getCareerById(careerId);
@@ -73,7 +75,7 @@ export class RegisterTeacherUseCase {
     const newTeacher: User = {
       id: newTeacherId,
       username: usernameLower,
-      fullName: dto.fullName.trim(),
+      fullName,
       alias,
       email: dto.email.trim(),
       role: UserRole.TEACHER,

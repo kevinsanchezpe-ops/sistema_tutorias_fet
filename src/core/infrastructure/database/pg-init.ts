@@ -146,16 +146,6 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
         );
       }
 
-      // Seed Schedule Slots
-      for (const sl of INITIAL_SCHEDULE_SLOTS) {
-        await pool.query(
-          `INSERT INTO schedule_slots (id, start_time, finish_time, label, is_available)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (id) DO NOTHING;`,
-          [sl.id, sl.startTime, sl.finishTime, sl.label, sl.isAvailable]
-        );
-      }
-
       // Seed Sections
       for (const sec of INITIAL_SECTIONS) {
         await pool.query(
@@ -285,6 +275,39 @@ export async function initPostgres(): Promise<{ success: boolean; message: strin
     } else {
       console.log(`[PostgreSQL] Base de datos activa con ${userCount} usuarios registrados.`);
     }
+
+    // Sincronizar siempre las franjas base; el sembrado inicial solo corre cuando no hay usuarios.
+    for (const sl of INITIAL_SCHEDULE_SLOTS) {
+      await pool.query(
+        `INSERT INTO schedule_slots (id, start_time, finish_time, label, is_available)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (id) DO UPDATE SET
+           start_time = EXCLUDED.start_time,
+           finish_time = EXCLUDED.finish_time,
+           label = EXCLUDED.label;`,
+        [sl.id, sl.startTime, sl.finishTime, sl.label, sl.isAvailable]
+      );
+    }
+    const defaultSlotIds = INITIAL_SCHEDULE_SLOTS.map((slot) => slot.id);
+    await pool.query(
+      `UPDATE teacher_availability availability
+       SET schedule_label = slot.label
+       FROM schedule_slots slot
+       WHERE availability.schedule_slot_id = slot.id
+         AND slot.id = ANY($1::varchar[]);`,
+      [defaultSlotIds]
+    );
+    // Las tutorías futuras activas usan el rango actualizado; se conserva el rótulo histórico de las finalizadas.
+    await pool.query(
+      `UPDATE tutorings tutoring
+       SET schedule_label = slot.label
+       FROM schedule_slots slot
+       WHERE tutoring.schedule_slot_id = slot.id
+         AND slot.id = ANY($1::varchar[])
+         AND tutoring.reserv_date >= TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD')
+         AND tutoring.status IN (-1, 0, 1);`,
+      [defaultSlotIds]
+    );
 
     // Migración idempotente: los usuarios con hash vacío o no-bcrypt reciben la
     // contraseña histórica 'password123' ya hasheada. Así se elimina el fallback

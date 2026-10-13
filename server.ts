@@ -693,11 +693,8 @@ async function startServer() {
       if (!user || (user.role !== UserRole.STUDENT && user.role !== UserRole.TEACHER)) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Se requiere una cuenta de estudiante o docente.' } });
       }
-      if (user.role === UserRole.TEACHER && dto?.type !== 'GROUP') {
-        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Los docentes solo pueden convocar tutorías grupales.' } });
-      }
       const tutoring = await pgRepo.createTutoring(dto, user);
-      res.json({ success: true, data: tutoring, message: user.role === UserRole.TEACHER ? 'Tutoría grupal aprobada y publicada.' : 'Solicitud de tutoría creada con éxito.' });
+      res.json({ success: true, data: tutoring, message: user.role === UserRole.TEACHER ? dto.targetStudentId ? 'Tutoría dirigida programada correctamente.' : 'Tutoría grupal aprobada y publicada.' : 'Solicitud de tutoría creada con éxito.' });
     } catch (err: any) {
       res.status(400).json({ success: false, error: { code: 'CREATE_TUTORING_ERROR', message: publicError(err) } });
     }
@@ -705,7 +702,7 @@ async function startServer() {
 
   app.patch('/api/tutorings/:id/approve', requireDb, requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { space, block, maxParticipants } = req.body;
+      const { space, block } = req.body;
       const cleanSpace = cleanStr(space, 200);
       const cleanBlock = cleanStr(block, 50);
       if (!cleanSpace) {
@@ -715,7 +712,7 @@ async function startServer() {
       if (!approver || (approver.role !== UserRole.ADMIN && approver.role !== UserRole.TEACHER)) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Permiso de administrador o docente requerido.' } });
       }
-      const tutoring = await pgRepo.approveTutoring(req.params.id, cleanSpace, approver, cleanBlock, Number(maxParticipants));
+      const tutoring = await pgRepo.approveTutoring(req.params.id, cleanSpace, approver, cleanBlock);
       res.json({ success: true, data: tutoring, message: 'Tutoría aprobada y programada correctamente.' });
     } catch (err: any) {
       res.status(400).json({ success: false, error: { code: 'APPROVE_ERROR', message: publicError(err) } });
@@ -1214,7 +1211,7 @@ async function startServer() {
 
   // --- Error handler global (captura rechazos async enviados con next(err)) ---
   app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    console.error(`[GT-API] Error en ${req.method} ${req.originalUrl}:`, err?.message || err);
+    console.error(`[Tutorías FET API] Error en ${req.method} ${req.originalUrl}:`, err?.message || err);
     res.status(500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: 'Error interno del servidor.' }
@@ -1237,7 +1234,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`GT Full-Stack Server running on port ${PORT}`);
+    console.log(`Tutorías FET server running on port ${PORT}`);
   });
 }
 

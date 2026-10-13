@@ -40,29 +40,28 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-stone-200 shadow-2xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+      <div className="w-full px-4 sm:px-6 lg:px-8 2xl:px-10">
+        <div className="flex min-h-16 flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2 md:flex-nowrap md:py-0">
           {/* Brand */}
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <img
               src="/logo-fet-verde.png"
               alt="Logo de la Fundación Escuela Tecnológica"
-              className="h-9 w-12 shrink-0 object-contain"
+              className="h-10 w-14 shrink-0 object-contain"
             />
-            <div>
-              <div>
-                <span className="font-bold text-stone-900 tracking-tight text-base sm:text-lg">
-                  Agendamientos Tutorias FET
-                </span>
-              </div>
-              <p className="text-[11px] text-stone-500 hidden sm:block">
-                Fundación Escuela Tecnológica (FET)
-              </p>
+            <div className="min-w-0">
+              <span className="whitespace-nowrap text-sm font-bold tracking-tight text-stone-900 sm:text-base">
+                Agendamientos Tutorías FET
+              </span>
+              <p className="hidden text-[11px] text-stone-500 sm:block">Fundación Escuela Tecnológica (FET)</p>
             </div>
           </div>
 
+          {/* Role navigation is portaled here from the active dashboard. */}
+          <div id="dashboard-navigation-slot" className="order-3 min-w-0 basis-full lg:order-none lg:ml-1 lg:flex-1 lg:basis-0 lg:border-l lg:border-stone-300 lg:pl-3 [&>nav]:lg:ml-0 [&>nav]:lg:w-fit" />
+
           {/* Right Navigation: Current User Profile & Actions */}
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-4">
             {/* Notification button + anchored dropdown */}
             <div className="relative">
               <button

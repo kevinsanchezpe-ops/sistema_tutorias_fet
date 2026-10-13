@@ -10,6 +10,7 @@ import {
   User
 } from '../core/types';
 import { ApiClient } from '../core/presentation/api-client';
+import { formatPersonName } from '../core/utils/name-formatting';
 import { StatusBadge } from './StatusBadge';
 import {
   Calendar,
@@ -47,6 +48,8 @@ import { StudentTutoringDetailModal } from './StudentTutoringDetailModal';
 import { ProfilePhotoCropModal } from './ProfilePhotoCropModal';
 import { UserAvatar } from './UserAvatar';
 import { InstitutionalProfileCard } from './InstitutionalProfileCard';
+import { DashboardTopNavigation } from './DashboardTopNavigation';
+import { ContextualHelp } from './ContextualHelp';
 import { compressProfileImage } from '../core/utils/image-utils';
 
 
@@ -128,6 +131,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   // Search & Filter state for History
   const [historySearch, setHistorySearch] = useState('');
   const [historyStatusFilter, setHistoryStatusFilter] = useState('all');
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | TutoringType>('all');
 
   // Cancel Tutoring Modal State
   const [cancellingTutoring, setCancellingTutoring] = useState<Tutoring | null>(null);
@@ -355,7 +359,11 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
     if (res.success) {
       setCancellingTutoring(null);
-      setCancelSuccess(`Tutoría ${cancellingTutoring.code} cancelada.`);
+      const isGroupWithdrawal = cancellingTutoring.type === TutoringType.GROUP &&
+        (cancellingTutoring.assistants || []).some((assistant) => assistant.studentId !== currentUser.id);
+      setCancelSuccess(isGroupWithdrawal
+        ? `Te retiraste de la tutoría ${cancellingTutoring.code}; la sesión continúa para los demás participantes.`
+        : `Tutoría ${cancellingTutoring.code} cancelada.`);
       setTimeout(() => setCancelSuccess(null), 4000);
       if (res.data) onTutoringUpdated(res.data);
     } else {
@@ -364,12 +372,20 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   };
 
   // Filtered data
-  const myRequestedTutorings = tutorings.filter((t) => t.petitionerStudentId === currentUser.id);
+  const myRequestedTutorings = tutorings.filter((t) =>
+    t.petitionerStudentId === currentUser.id &&
+    ((t.type || TutoringType.GROUP) !== TutoringType.GROUP ||
+      (t.assistants || []).some((assistant) => assistant.studentId === currentUser.id))
+  );
   const myGuestTutorings = tutorings.filter(
     (t) =>
       t.petitionerStudentId !== currentUser.id &&
       (t.assistants || []).some((a) => a.studentId === currentUser.id)
   );
+  const historyStates = [TutoringStatus.COMPLETED, TutoringStatus.CANCELLED];
+  const historyTutorings = [...myRequestedTutorings, ...myGuestTutorings];
+  const activeMyTutorings = [...myRequestedTutorings, ...myGuestTutorings]
+    .filter((t) => !historyStates.includes(t.status));
 
   // Total student tutorings
   const totalMyTutorings = myRequestedTutorings.length + myGuestTutorings.length;
@@ -380,10 +396,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const mySemester = currentUser.semester ? Number(currentUser.semester) : null;
   const subjectById = new Map<string, SubjectCourse>(subjects.map((s) => [s.id, s]));
   const peerUpcomingTutorings = tutorings.filter((t) => {
-    if (t.petitionerStudentId === currentUser.id) return false;
     if ((t.type || TutoringType.GROUP) !== TutoringType.GROUP) return false;
     if (!(t.status === TutoringStatus.PENDING || t.status === TutoringStatus.APPROVED)) return false;
-    if ((t.assistants || []).some((a) => a.studentId === currentUser.id)) return false;
+    const isOwnTutoring = t.petitionerStudentId === currentUser.id;
+    if (!isOwnTutoring && (t.assistants || []).some((a) => a.studentId === currentUser.id)) return false;
     const subj = t.subjectCourseId ? subjectById.get(t.subjectCourseId) : undefined;
     if (currentUser.careerId && subj?.careerId && subj.careerId !== currentUser.careerId) return false;
     if (mySemester && subj?.semester && Number(subj.semester) !== mySemester) return false;
@@ -430,12 +446,13 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
   // Keep active sessions separate from completed and cancelled history.
   const filteredRequestedTutorings = myRequestedTutorings.filter((t) => {
-    const isHistoryItem = t.status === TutoringStatus.COMPLETED || t.status === TutoringStatus.CANCELLED;
+    const isHistoryItem = historyStates.includes(t.status);
     if (activeTab === 'my' && isHistoryItem) return false;
-    if (activeTab === 'history' && !isHistoryItem) return false;
-    if (historyStatusFilter !== 'all' && t.status !== historyStatusFilter) return false;
+    // <select> siempre entrega cadenas, mientras TutoringStatus es un enum numérico.
+    if (historyStatusFilter !== 'all' && String(t.status) !== historyStatusFilter) return false;
+    if (activeTab === 'history' && historyTypeFilter !== 'all' && (t.type || TutoringType.GROUP) !== historyTypeFilter) return false;
     if (historySearch.trim()) {
-      const q = historySearch.toLowerCase();
+      const q = historySearch.trim().toLocaleLowerCase('es-CO');
       const matchCode = t.code?.toLowerCase().includes(q);
       const matchSub = t.subject?.toLowerCase().includes(q);
       const matchCourse = t.subjectCourseName?.toLowerCase().includes(q);
@@ -445,125 +462,39 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
     return true;
   });
   const filteredGuestTutorings = myGuestTutorings.filter((t) => {
-    const isHistoryItem = t.status === TutoringStatus.COMPLETED || t.status === TutoringStatus.CANCELLED;
-    return activeTab === 'history' ? isHistoryItem : !isHistoryItem;
+    const isHistoryItem = historyStates.includes(t.status);
+    if (activeTab === 'my' && isHistoryItem) return false;
+    if (historyStatusFilter !== 'all' && String(t.status) !== historyStatusFilter) return false;
+    if (activeTab === 'history' && historyTypeFilter !== 'all' && (t.type || TutoringType.GROUP) !== historyTypeFilter) return false;
+    if (historySearch.trim()) {
+      const q = historySearch.trim().toLocaleLowerCase('es-CO');
+      return [t.code, t.subject, t.subjectCourseName, t.teacherName]
+        .some((value) => value?.toLocaleLowerCase('es-CO').includes(q));
+    }
+    return true;
   });
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 items-start pb-12">
-      {/* LEFT SIDEBAR NAVIGATION */}
-      <aside className="w-full shrink-0 space-y-4 rounded-xl border border-stone-200 bg-white p-4 shadow-xs lg:w-72 xl:w-80">
-        <InstitutionalProfileCard
-          user={currentUser}
-          variant="sidebar"
-          canEditPhoto={false}
-          showEmail={false}
-          className="w-full mb-2"
-        />
+    <div className="flex flex-col gap-4 pb-12">
+      <div className="space-y-3">
+        <DashboardTopNavigation ariaLabel="Navegación estudiantil" activeId={activeTab} groups={[
+          { label: 'Tutorías', items: [
+            { id: 'requests', label: 'Solicitar tutoría', icon: <PlusCircle className="h-4 w-4" />, onSelect: () => setActiveTab('requests') },
+            { id: 'my', label: 'Mis tutorías', icon: <List className="h-4 w-4" />, count: myRequestedTutorings.filter((t) => [TutoringStatus.PENDING, TutoringStatus.APPROVED, TutoringStatus.IN_PROGRESS].includes(t.status)) .length + myGuestTutorings.filter((t) => [TutoringStatus.PENDING, TutoringStatus.APPROVED, TutoringStatus.IN_PROGRESS].includes(t.status)).length, onSelect: () => { setActiveTab('my'); setDisplayMode('list'); setHistoryStatusFilter('all'); } },
+            { id: 'peers', label: 'Explorar grupales', icon: <Users className="h-4 w-4" />, count: peerUpcomingTutorings.length, onSelect: () => setActiveTab('peers') },
+          ] },
+          { label: 'Seguimiento', items: [{ id: 'history', label: 'Historial', icon: <History className="h-4 w-4" />, count: historyTutorings.length, onSelect: () => { setActiveTab('history'); setDisplayMode('list'); setHistoryStatusFilter('all'); setHistoryTypeFilter('all'); } }] },
+          { label: 'Mi perfil', items: [{ id: 'profile', label: 'Mi perfil', icon: <UserCheck className="h-4 w-4" />, onSelect: () => setActiveTab('profile') }] },
+        ]} />
+        <ContextualHelp role="student" activeSectionId={activeTab} onNavigate={(section) => setActiveTab(section as typeof activeTab)} />
+      </div>
 
-        <div className="space-y-2">
-          <div className="px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400">
-            Portal Estudiantil
-          </div>
-
-          <nav className="space-y-1.5">
-            <button
-              id="tab-student-requests"
-              type="button"
-              onClick={() => setActiveTab('requests')}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
-                activeTab === 'requests'
-                  ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200'
-                  : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <PlusCircle aria-hidden="true" className="w-4 h-4 shrink-0" />
-                <span>Solicitar</span>
-              </div>
-            </button>
-
-            <button
-              id="tab-student-my"
-              type="button"
-              onClick={() => { setActiveTab('my'); setDisplayMode('list'); setHistoryStatusFilter('all'); }}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${activeTab === 'my' ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200' : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'}`}
-            >
-              <div className="flex items-center gap-3"><List aria-hidden="true" className="w-4 h-4 shrink-0" /><span>Mis tutorías</span></div>
-              <span className="text-[11px] px-2.5 py-0.5 rounded-full font-extrabold bg-stone-100 text-stone-600">{myRequestedTutorings.filter((t) => t.status === TutoringStatus.PENDING || t.status === TutoringStatus.APPROVED || t.status === TutoringStatus.IN_PROGRESS).length + myGuestTutorings.filter((t) => t.status === TutoringStatus.PENDING || t.status === TutoringStatus.APPROVED || t.status === TutoringStatus.IN_PROGRESS).length}</span>
-            </button>
-
-            <button
-              id="tab-student-peers"
-              type="button"
-              onClick={() => setActiveTab('peers')}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
-                activeTab === 'peers'
-                  ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200'
-                  : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Users aria-hidden="true" className="w-4 h-4 shrink-0" />
-                <span>Tutorías grupales</span>
-              </div>
-              <span
-                className={`text-[11px] px-2.5 py-0.5 rounded-full font-extrabold ${
-                  activeTab === 'peers'
-                  ? 'bg-white text-brand-700'
-                    : 'bg-info-soft text-info'
-                }`}
-              >
-                {peerUpcomingTutorings.length}
-              </span>
-            </button>
-
-            <button
-              id="tab-student-history"
-              type="button"
-              onClick={() => { setActiveTab('history'); setDisplayMode('list'); setHistoryStatusFilter('all'); }}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
-                activeTab === 'history'
-                  ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200'
-                  : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <History aria-hidden="true" className="w-4 h-4 shrink-0" />
-                <span>Historial</span>
-              </div>
-              <span
-                className={`text-[11px] px-2.5 py-0.5 rounded-full font-extrabold ${
-                  activeTab === 'history'
-                    ? 'bg-white text-brand-700'
-                    : 'bg-stone-100 text-stone-600'
-                }`}
-              >
-                {myRequestedTutorings.filter((t) => t.status === TutoringStatus.COMPLETED || t.status === TutoringStatus.CANCELLED).length + myGuestTutorings.filter((t) => t.status === TutoringStatus.COMPLETED || t.status === TutoringStatus.CANCELLED).length}
-              </span>
-            </button>
-
-            <button
-              id="tab-student-profile"
-              type="button"
-              onClick={() => setActiveTab('profile')}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
-                activeTab === 'profile'
-                  ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200'
-                  : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <UserCheck aria-hidden="true" className="w-4 h-4 shrink-0" />
-                <span>Ficha</span>
-              </div>
-            </button>
-          </nav>
-        </div>
-      </aside>
-
-      {/* MAIN CONTENT AREA */}
-      <div className="flex-1 w-full min-w-0 space-y-6">
+      <div className="mt-1 grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[280px_minmax(0,1fr)] xl:gap-6">
+        <aside className="min-w-0 xl:sticky xl:top-20">
+          <InstitutionalProfileCard user={currentUser} variant="sidebar" canEditPhoto={false} showEmail={false} className="w-full" />
+        </aside>
+        {/* MAIN CONTENT AREA */}
+        <div className="w-full min-w-0 space-y-6">
         {/* Notifications */}
         {cancelSuccess && (
           <div className="p-4 bg-brand-50 border border-brand-200 text-brand-700 rounded-2xl text-xs flex items-center gap-2 font-bold animate-in fade-in">
@@ -599,7 +530,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               <form onSubmit={handleSubmitRequest} className="space-y-7 p-5 text-sm sm:p-7">
                 <section aria-labelledby="tutoring-session-heading" className="space-y-4">
                   <div>
-                    <h3 id="tutoring-session-heading" className="text-sm font-semibold text-slate-900">Detalles de la sesión</h3>
+                    <h3 id="tutoring-session-heading" className="text-sm font-semibold text-slate-900">1. Define la sesión</h3>
                     <p className="mt-0.5 text-xs text-stone-500">Selecciona una asignatura para ver sus docentes disponibles.</p>
                   </div>
                   <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2">
@@ -683,7 +614,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                       <option value={TutoringType.INDIVIDUAL}>Individual — solo para mí</option>
                       <option value={TutoringType.GROUP}>Grupal — pueden inscribirse compañeros</option>
                     </select>
-                    <p className="text-xs text-stone-500">El docente confirmará el cupo al aprobar una tutoría grupal.</p>
+                    <p className="text-xs text-stone-500">Los compañeros elegibles podrán unirse mientras la tutoría esté pendiente o aprobada.</p>
                   </div>
 
                   {/* Fecha de Reserva */}
@@ -707,7 +638,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 {/* Tema / Asunto */}
                 <section aria-labelledby="tutoring-topic-heading" className="space-y-4 border-t border-stone-100 pt-6">
                   <div>
-                    <h3 id="tutoring-topic-heading" className="text-sm font-semibold text-slate-900">¿En qué necesitas ayuda?</h3>
+                    <h3 id="tutoring-topic-heading" className="text-sm font-semibold text-slate-900">2. Describe lo que necesitas</h3>
                     <p className="mt-0.5 text-xs text-stone-500">Describe el tema para que el docente pueda prepararse.</p>
                   </div>
                   <div className="space-y-1.5">
@@ -747,7 +678,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 <div className="space-y-3 border-t border-stone-100 pt-6">
                   <div>
                     <label htmlFor="file-attachment" className="block text-xs font-medium text-slate-700">
-                      Material de apoyo <span className="font-normal text-stone-400">(opcional)</span>
+                      3. Adjunta material <span className="font-normal text-stone-400">(opcional)</span>
                     </label>
                     <p className="mt-0.5 text-xs text-stone-500">PDF, DOCX o imagen · Máximo 8 MB</p>
                   </div>
@@ -881,6 +812,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 {peerUpcomingTutorings.map((tut) => {
                   const dt = formatTutoringDateTime(tut.reservDate, tut.scheduleLabel, tut.reservTime);
                   const participantCount = (tut.assistants || []).length;
+                  const isOwnTutoring = tut.petitionerStudentId === currentUser.id;
                   return (
                     <article key={tut.id} className="rounded-xl border border-stone-200 bg-white p-4 transition-colors hover:border-stone-300 sm:p-5">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -888,6 +820,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-mono text-[11px] text-stone-400">{tut.code}</span>
                             <StatusBadge status={tut.status} size="sm" />
+                            {isOwnTutoring && <span className="rounded-full bg-brand-50 px-2 py-1 text-[10px] font-semibold text-brand-700">Tu solicitud</span>}
                           </div>
                           <h3 className="mt-1.5 text-base font-semibold text-slate-900">{tut.subjectCourseName || tut.subject}</h3>
                           {tut.subjectCourseName && tut.subject && tut.subject !== tut.subjectCourseName && (
@@ -924,7 +857,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                           >
                             <FileText aria-hidden="true" className="h-3.5 w-3.5" />Ver detalle
                           </button>
-                          <button
+                          {!isOwnTutoring && <button
                             type="button"
                             id={`btn-join-tutoring-${tut.id}`}
                             onClick={() => handleJoin(tut.id)}
@@ -933,7 +866,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                           >
                             {joiningTutoringId === tut.id ? <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Users aria-hidden="true" className="h-3.5 w-3.5" />}
                             {joiningTutoringId === tut.id ? 'Uniéndome…' : 'Unirme'}
-                          </button>
+                          </button>}
                         </div>
                       </div>
                       {peerActionError?.tutoringId === tut.id && (
@@ -961,7 +894,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   {activeTab === 'my' ? 'Mis tutorías' : 'Historial'}
                 </h2>
                 <p className="text-xs text-stone-500 mt-0.5">
-                  {activeTab === 'my' ? 'Consulta tus sesiones activas y gestiona tu participación.' : 'Consulta las tutorías finalizadas y canceladas; califica las sesiones completadas.'}
+                  {activeTab === 'my' ? 'Consulta tus sesiones activas y gestiona tu participación.' : 'Consulta tus tutorías, filtra por estado o tipo y califica las sesiones completadas.'}
                 </p>
                 </div>
               </div>
@@ -972,7 +905,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   <Search aria-hidden="true" className="w-4 h-4 absolute left-3.5 top-3 text-stone-400 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="Buscar materia, tema, código…"
+                    placeholder="Buscar materia, tema, código o docente…"
                     value={historySearch}
                     onChange={(e) => setHistorySearch(e.target.value)}
                     className="h-11 w-full rounded-lg border border-stone-200 bg-white pl-9 pr-3 text-sm text-slate-800 placeholder-stone-400 transition-colors focus:border-brand-600 focus:outline-hidden focus:ring-2 focus:ring-brand-600/20 sm:w-56"
@@ -985,13 +918,32 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   onChange={(e) => setHistoryStatusFilter(e.target.value)}
                   className="h-11 cursor-pointer rounded-lg border border-stone-200 bg-white px-3.5 text-sm font-normal text-slate-800 transition-colors focus:border-brand-600 focus:outline-hidden focus:ring-2 focus:ring-brand-600/20"
                 >
-                  <option value="all">Todos los estados ({myRequestedTutorings.length})</option>
-                  <option value={TutoringStatus.PENDING}>Pendientes</option>
-                  <option value={TutoringStatus.APPROVED}>Aprobadas</option>
-                  <option value={TutoringStatus.IN_PROGRESS}>En Curso</option>
-                  <option value={TutoringStatus.COMPLETED}>Finalizadas</option>
-                  <option value={TutoringStatus.CANCELLED}>Canceladas</option>
+                  <option value="all">Todos los estados ({activeTab === 'history' ? historyTutorings.length : activeMyTutorings.length})</option>
+                  {activeTab === 'history' ? <>
+                    <option value={TutoringStatus.PENDING}>Por aprobar ({historyTutorings.filter((t) => t.status === TutoringStatus.PENDING).length})</option>
+                    <option value={TutoringStatus.APPROVED}>Aprobadas ({historyTutorings.filter((t) => t.status === TutoringStatus.APPROVED).length})</option>
+                    <option value={TutoringStatus.IN_PROGRESS}>En curso ({historyTutorings.filter((t) => t.status === TutoringStatus.IN_PROGRESS).length})</option>
+                    <option value={TutoringStatus.COMPLETED}>Finalizadas ({historyTutorings.filter((t) => t.status === TutoringStatus.COMPLETED).length})</option>
+                    <option value={TutoringStatus.CANCELLED}>Canceladas ({historyTutorings.filter((t) => t.status === TutoringStatus.CANCELLED).length})</option>
+                  </> : <>
+                    <option value={TutoringStatus.PENDING}>Pendientes</option>
+                    <option value={TutoringStatus.APPROVED}>Aprobadas</option>
+                    <option value={TutoringStatus.IN_PROGRESS}>En curso</option>
+                  </>}
                 </select>
+
+                {activeTab === 'history' && (
+                  <select
+                    aria-label="Filtrar historial por tipo de tutoría"
+                    value={historyTypeFilter}
+                    onChange={(e) => setHistoryTypeFilter(e.target.value as 'all' | TutoringType)}
+                    className="h-11 cursor-pointer rounded-lg border border-stone-200 bg-white px-3.5 text-sm font-normal text-slate-800 transition-colors focus:border-brand-600 focus:outline-hidden focus:ring-2 focus:ring-brand-600/20"
+                  >
+                    <option value="all">Todos los tipos</option>
+                    <option value={TutoringType.GROUP}>Grupales</option>
+                    <option value={TutoringType.INDIVIDUAL}>Individuales</option>
+                  </select>
+                )}
 
                 {/* View Switcher */}
                 {activeTab === 'my' && <>
@@ -1042,10 +994,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 <section aria-labelledby="my-requested-tutorings-title" className="overflow-hidden rounded-xl border border-stone-200 bg-white">
                   <div className="flex flex-col gap-1 border-b border-stone-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                     <div>
-                      <h3 id="my-requested-tutorings-title" className="text-sm font-semibold text-slate-900">{activeTab === 'history' ? 'Solicitudes finalizadas o canceladas' : 'Solicitadas por mí'}</h3>
+                      <h3 id="my-requested-tutorings-title" className="text-sm font-semibold text-slate-900">{activeTab === 'history' ? 'Tutorías solicitadas por mí' : 'Solicitadas por mí'}</h3>
                       <p className="mt-0.5 text-xs text-stone-500">Estado, horario y acciones de cada sesión.</p>
                     </div>
-                    <span className="text-xs font-medium text-stone-500">{filteredRequestedTutorings.length} de {myRequestedTutorings.length} tutorías</span>
+                    <span className="text-xs font-medium text-stone-500">{filteredRequestedTutorings.length} {filteredRequestedTutorings.length === 1 ? 'tutoría' : 'tutorías'}</span>
                   </div>
 
                   {filteredRequestedTutorings.length === 0 ? (
@@ -1110,7 +1062,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                                     type="button"
                                     onClick={() => { setCancellingTutoring(tut); setCancelReason(''); setCancelError(null); }}
                                     className="inline-flex min-h-10 items-center rounded-lg border border-danger-border px-3 text-xs font-medium text-danger transition-colors hover:bg-danger-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
-                                  >{tut.status === TutoringStatus.APPROVED ? 'Cancelar tutoría' : 'Cancelar solicitud'}</button>
+                                  >{tut.type === TutoringType.GROUP && (tut.assistants || []).some((assistant) => assistant.studentId !== currentUser.id) ? 'Retirarme de la tutoría' : tut.status === TutoringStatus.APPROVED ? 'Cancelar tutoría' : 'Cancelar solicitud'}</button>
                                 )}
                                 <button
                                   type="button"
@@ -1130,7 +1082,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
                     <div className="border-b border-stone-100 px-5 py-4">
                       <h3 className="text-sm font-semibold text-slate-900">
-                        {activeTab === 'history' ? 'Grupales del historial' : 'Tutorías grupales en las que participo'} ({filteredGuestTutorings.length})
+                        Tutorías grupales en las que participo ({filteredGuestTutorings.length})
                       </h3>
                     </div>
 
@@ -1210,7 +1162,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
         {/* TAB 4: FICHA ESTUDIANTIL */}
         {activeTab === 'profile' && (
-          <section aria-labelledby="student-profile-title" className="max-w-4xl space-y-4 animate-in fade-in duration-200">
+          <section aria-labelledby="student-profile-title" className="mx-auto w-full min-w-0 space-y-4 animate-in fade-in duration-200">
             <header>
               <p className="text-xs font-medium text-brand-700">Mi cuenta</p>
               <h2 id="student-profile-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Ficha estudiantil</h2>
@@ -1254,7 +1206,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                     className="hidden"
                   />
                 </div>
-                <h3 className="mt-4 max-w-full break-words text-base font-semibold text-slate-900">{currentUser.fullName}</h3>
+                <h3 className="mt-4 max-w-full break-words text-base font-semibold text-slate-900">{formatPersonName(currentUser.fullName)}</h3>
                 <span className="mt-2 inline-flex max-w-full items-center rounded-full border border-stone-200 bg-white px-3 py-1 font-mono text-xs text-stone-600">
                   Matrícula · {currentUser.account || 'N/A'}
                 </span>
@@ -1317,6 +1269,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             </div>
           </section>
         )}
+        </div>
       </div>
 
       {/* MODAL: CANCEL TUTORING */}
@@ -1329,7 +1282,9 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   <Ban aria-hidden="true" className="w-4 h-4" />
                 </div>
                 <h3 className="font-bold text-danger text-sm">
-                  Cancelar Solicitud {cancellingTutoring.code}
+                  {cancellingTutoring.type === TutoringType.GROUP && (cancellingTutoring.assistants || []).some((assistant) => assistant.studentId !== currentUser.id)
+                    ? `Retirarme de la tutoría ${cancellingTutoring.code}`
+                    : `Cancelar Solicitud ${cancellingTutoring.code}`}
                 </h3>
               </div>
               <button
@@ -1346,7 +1301,9 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1">
                 <div className="font-bold text-slate-900">{cancellingTutoring.subject}</div>
                 <div className="text-slate-600">Docente: Prof. {cancellingTutoring.teacherName}</div>
-                {cancellingTutoring.status === TutoringStatus.APPROVED && <p className="pt-1 text-amber-800">La cancelación está sujeta al plazo mínimo de anticipación establecido por el sistema.</p>}
+                {cancellingTutoring.type === TutoringType.GROUP && (cancellingTutoring.assistants || []).some((assistant) => assistant.studentId !== currentUser.id)
+                  ? <p className="pt-1 text-slate-600">Tu retiro no cancelará la tutoría; los demás participantes podrán asistir. Se notificará al docente.</p>
+                  : cancellingTutoring.status === TutoringStatus.APPROVED && <p className="pt-1 text-amber-800">La cancelación está sujeta al plazo mínimo de anticipación establecido por el sistema.</p>}
               </div>
 
               <div>
@@ -1384,7 +1341,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   disabled={cancelling}
                   className="h-10 px-5 bg-gradient-to-b from-danger to-rose-800 hover:from-rose-800 hover:to-rose-900 text-white rounded-xl font-bold shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
                 >
-                  {cancelling ? 'Cancelando…' : 'Confirmar Cancelación'}
+                  {cancelling ? 'Procesando…' : cancellingTutoring.type === TutoringType.GROUP && (cancellingTutoring.assistants || []).some((assistant) => assistant.studentId !== currentUser.id) ? 'Confirmar retiro' : 'Confirmar Cancelación'}
                 </button>
               </div>
             </form>

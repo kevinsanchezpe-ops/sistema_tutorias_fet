@@ -1,6 +1,6 @@
-# Reglas de Negocio Oficiales: Sistema GT
+# Reglas de Negocio Oficiales de Tutorías FET
 
-Este documento formaliza todas las invariantes y reglas de negocio del Sistema de Gestión de Tutorías (GT), asegurando una fidelidad del 100% respecto a la lógica original.
+Este documento formaliza las invariantes y reglas de negocio de Tutorías FET.
 
 ---
 
@@ -12,7 +12,8 @@ Este documento formaliza todas las invariantes y reglas de negocio del Sistema d
    - Único rol que puede emitir calificaciones (`score` 1-5 y `stucomment`) una vez finalizada la tutoría.
 
 2. **`TEACHER` (Docente / Tutor):**
-   - Puede convocar tutorías grupales para sus asignaturas y disponibilidad activa; la convocatoria queda aprobada al publicarse con aula/enlace y cupo válidos.
+   - Puede convocar tutorías grupales para sus asignaturas y disponibilidad activa; la convocatoria queda aprobada al publicarse con aula/enlace válidos.
+   - Puede programar una tutoría individual dirigida a un estudiante elegible de la asignatura; queda aprobada y notifica al estudiante seleccionado.
    - Imparte las tutorías asignadas según sus horarios configurados.
    - Es el único con autorización para presionar **Iniciar tutoría** (`start`) y **Finalizar tutoría** (`stop`).
    - Registra la lista de asistencia de los estudiantes (`members_assistance`).
@@ -46,8 +47,9 @@ Una tutoría transita exclusivamente por los siguientes estados:
 ### Reglas de Transición:
 - De `-1` a `1`: Solo cuando el Administrador valida la disponibilidad del aula (o link) y no hay colisión horaria.
 - De `-1` a `3`: Cancelación/Denegación por parte del Administrador especificando la razón, o cancelación preventiva del solicitante.
-- Una convocatoria creada por el docente se publica directamente en `APPROVED` tras validar horario, aula/enlace y cupo.
-- Un estudiante puede cancelar su solicitud pendiente. Si ya está aprobada, puede cancelarla respetando el plazo mínimo configurable (`CANCELLATION_MIN_NOTICE_HOURS`, 24 horas por defecto).
+- Una convocatoria creada por el docente se publica directamente en `APPROVED` tras validar horario y aula/enlace.
+- Una tutoría individual dirigida por un docente se publica en `APPROVED` tras validar estudiante, disponibilidad, horario y aula/enlace.
+- Un estudiante puede cancelar su solicitud pendiente. Si ya está aprobada, puede cancelarla respetando el plazo mínimo configurable (`CANCELLATION_MIN_NOTICE_HOURS`, 24 horas por defecto). Si es una tutoría grupal y hay otros participantes inscritos, el solicitante se retira, se notifica al docente y la sesión continúa para los demás.
 - De `1` a `0`: Solo el Docente asignado el día programado.
 - De `0` a `2`: Solo el Docente asignado al concluir la sesión. Se registra la hora exacta de culminación.
 - No se permiten transiciones inversas (por ejemplo, de `2` a `1` o de `3` a `0`).
@@ -87,9 +89,9 @@ Una tutoría transita exclusivamente por los siguientes estados:
 ## 4. Participación de Estudiantes Invitados (`join`)
 
 1. Al crear una solicitud, el estudiante elige si será individual o grupal. Las individuales no admiten invitados; las grupales pendientes y aprobadas aparecen en **Tutorías disponibles** para estudiantes elegibles.
-2. Un docente puede convocar tutorías grupales únicamente para materias asignadas y franjas activas de su disponibilidad. Al crearla queda aprobada y publicada si ya asignó un espacio/enlace válido, fijó un cupo admisible y no hay choques de horario; de lo contrario la solicitud se rechaza sin crear una tutoría incompleta. El docente aparece como convocante y no como estudiante participante.
-3. Al aprobar una tutoría grupal, el docente o administrador confirma el cupo máximo, incluyendo al solicitante. El cupo no puede exceder la capacidad del aula o el límite virtual configurado.
-4. Solo estudiantes que cumplan los requisitos de carrera y semestre pueden unirse a tutorías grupales pendientes o aprobadas mientras haya cupo. En materias transversales sin carrera asociada, se permite la participación de cualquier carrera si coincide el semestre configurado.
+2. Un docente puede convocar tutorías grupales únicamente para materias asignadas y franjas activas de su disponibilidad. Al crearla queda aprobada y publicada si ya asignó un espacio/enlace válido y no hay choques de horario; de lo contrario la solicitud se rechaza sin crear una tutoría incompleta. El docente aparece como convocante y no como estudiante participante.
+3. Las tutorías grupales presenciales y virtuales no tienen un límite de participantes impuesto por el sistema.
+4. Solo estudiantes que cumplan los requisitos de carrera y semestre pueden unirse a tutorías grupales pendientes o aprobadas. En materias transversales sin carrera asociada, se permite la participación de cualquier carrera si coincide el semestre configurado.
 5. Un estudiante no puede unirse como invitado a su propia tutoría ni inscribirse dos veces.
 6. Un participante invitado puede retirarse mientras la tutoría esté pendiente o aprobada, siempre antes de que el docente la inicie. El retiro no cancela la sesión y queda registrado en la bitácora; el docente recibe una notificación.
 7. Al unirse, se crea un registro en `tutoring_assistants` con asistencia pendiente.

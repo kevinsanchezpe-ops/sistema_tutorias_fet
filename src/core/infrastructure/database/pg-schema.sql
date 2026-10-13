@@ -1,5 +1,5 @@
 -- ===================================================================
--- ESQUEMA RELACIONAL POSTGRESQL PARA EL SISTEMA GT (GESTIÓN DE TUTORÍAS)
+-- ESQUEMA RELACIONAL POSTGRESQL PARA TUTORÍAS FET
 -- ===================================================================
 
 CREATE TABLE IF NOT EXISTS careers (

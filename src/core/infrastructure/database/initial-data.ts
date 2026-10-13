@@ -17,7 +17,7 @@ export const INITIAL_USERS: User[] = [
     id: 'usr-admin-1',
     username: 'admin',
     fullName: 'Administrador del Sistema',
-    alias: 'Admin GT',
+    alias: 'Admin Tutorías FET',
     email: 'admin@gt.edu',
     role: UserRole.ADMIN,
     account: 'ADM-2021001',
@@ -126,12 +126,14 @@ export const INITIAL_SUBJECTS: SubjectCourse[] = ALL_CURRICULUM_SUBJECTS;
 
 export const INITIAL_SCHEDULE_SLOTS: ScheduleSlot[] = [
   { id: 'sch-1', startTime: '07:30', finishTime: '08:30', label: '07:30 - 08:30', isAvailable: true },
-  { id: 'sch-2', startTime: '09:00', finishTime: '10:00', label: '09:00 - 10:00', isAvailable: true },
-  { id: 'sch-3', startTime: '10:00', finishTime: '11:00', label: '10:00 - 11:00', isAvailable: true },
-  { id: 'sch-4', startTime: '11:00', finishTime: '12:00', label: '11:00 - 12:00', isAvailable: true },
-  { id: 'sch-5', startTime: '13:00', finishTime: '14:00', label: '13:00 - 14:00', isAvailable: true },
-  { id: 'sch-6', startTime: '14:00', finishTime: '15:00', label: '14:00 - 15:00', isAvailable: true },
-  { id: 'sch-7', startTime: '15:00', finishTime: '16:00', label: '15:00 - 16:00', isAvailable: true }
+  { id: 'sch-2', startTime: '08:30', finishTime: '09:30', label: '08:30 - 09:30', isAvailable: true },
+  { id: 'sch-3', startTime: '09:30', finishTime: '10:30', label: '09:30 - 10:30', isAvailable: true },
+  { id: 'sch-4', startTime: '10:30', finishTime: '11:30', label: '10:30 - 11:30', isAvailable: true },
+  { id: 'sch-5', startTime: '11:30', finishTime: '12:30', label: '11:30 - 12:30', isAvailable: true },
+  { id: 'sch-6', startTime: '12:30', finishTime: '13:30', label: '12:30 - 13:30', isAvailable: true },
+  { id: 'sch-7', startTime: '13:30', finishTime: '14:30', label: '13:30 - 14:30', isAvailable: true },
+  { id: 'sch-8', startTime: '14:30', finishTime: '15:30', label: '14:30 - 15:30', isAvailable: true },
+  { id: 'sch-9', startTime: '15:30', finishTime: '16:30', label: '15:30 - 16:30', isAvailable: true }
 ];
 
 export const INITIAL_SECTIONS: SectionClassroom[] = [
@@ -149,7 +151,7 @@ export const INITIAL_TEACHER_AVAILABILITY: TeacherAvailability[] = [
     teacherId: 'usr-teacher-1',
     teacherName: 'Ing. Osman Mejía',
     scheduleSlotId: 'sch-6',
-    scheduleLabel: '14:00 - 15:00',
+    scheduleLabel: '12:30 - 13:30',
     subjectCourseId: 'sub-1',
     subjectCourseName: 'Programación Orientada a Objetos',
     isAvailable: true
@@ -159,7 +161,7 @@ export const INITIAL_TEACHER_AVAILABILITY: TeacherAvailability[] = [
     teacherId: 'usr-teacher-1',
     teacherName: 'Ing. Osman Mejía',
     scheduleSlotId: 'sch-5',
-    scheduleLabel: '13:00 - 14:00',
+    scheduleLabel: '11:30 - 12:30',
     subjectCourseId: 'sub-2',
     subjectCourseName: 'Estructuras de Datos y Recursividad',
     isAvailable: true
@@ -179,7 +181,7 @@ export const INITIAL_TEACHER_AVAILABILITY: TeacherAvailability[] = [
     teacherId: 'usr-teacher-2',
     teacherName: 'Licda. Karen Alvarado',
     scheduleSlotId: 'sch-2',
-    scheduleLabel: '09:00 - 10:00',
+    scheduleLabel: '08:30 - 09:30',
     subjectCourseId: 'sub-4',
     subjectCourseName: 'Matemática Discreta y Algoritmos',
     isAvailable: true
@@ -211,9 +213,9 @@ export const INITIAL_TUTORINGS: Tutoring[] = [
     petitionerStudentId: 'usr-student-1',
     petitionerStudentName: 'Dennis M. Andino',
     scheduleSlotId: 'sch-6',
-    scheduleLabel: '14:00 - 15:00',
+    scheduleLabel: '12:30 - 13:30',
     approvedById: 'usr-admin-1',
-    approvedByName: 'Admin GT',
+    approvedByName: 'Admin Tutorías FET',
     startTime: null,
     finishTime: null,
     score: 0,
@@ -263,7 +265,7 @@ export const INITIAL_TUTORINGS: Tutoring[] = [
     petitionerStudentId: 'usr-student-2',
     petitionerStudentName: 'Lidia Castillo',
     scheduleSlotId: 'sch-5',
-    scheduleLabel: '13:00 - 14:00',
+    scheduleLabel: '11:30 - 12:30',
     approvedById: undefined,
     startTime: null,
     finishTime: null,
@@ -305,7 +307,7 @@ export const INITIAL_TUTORINGS: Tutoring[] = [
     scheduleSlotId: 'sch-1',
     scheduleLabel: '07:30 - 08:30',
     approvedById: 'usr-admin-1',
-    approvedByName: 'Admin GT',
+    approvedByName: 'Admin Tutorías FET',
     startTime: '28-08-2026 7:32am',
     finishTime: '28-08-2026 8:35am',
     score: 5,
@@ -344,7 +346,7 @@ export const INITIAL_BINNACLE: BinnacleEntry[] = [
   {
     id: 'bin-1',
     typeEvent: 'Registro',
-    description: 'Registro de usuario Dennis M. Andino en el sistema GT',
+    description: 'Registro de usuario Dennis M. Andino en Tutorías FET',
     username: 'dennis_andino',
     ipAddress: '192.168.1.10',
     dateEvent: '2021-01-22',
@@ -380,4 +382,3 @@ export const INITIAL_INSTITUTION: InstitutionInfo = {
   email: 'gestiontutorias@fet.edu.co',
   logo: 'logo.png'
 };
-

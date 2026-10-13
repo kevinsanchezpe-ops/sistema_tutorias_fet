@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ApiClient } from '../core/presentation/api-client';
 import { Career, ScheduleSlot, SubjectCourse, TeacherAvailability, User, UserRole } from '../core/types';
+import { formatScheduleLabel } from '../core/utils/time-formatting';
 import { UserAvatar } from './UserAvatar';
 import {
   Plus,
@@ -38,6 +39,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
   onRefresh
 }) => {
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [registerStep, setRegisterStep] = useState<1 | 2 | 3>(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [careerFilter, setCareerFilter] = useState<string>('all');
@@ -47,7 +49,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
   const [account, setAccount] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
-  const [selectedCareerId, setSelectedCareerId] = useState<string>(currentUser.careerId || careers[0]?.id || '');
+  const [selectedCareerId, setSelectedCareerId] = useState<string>('');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
 
@@ -93,7 +95,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
 
   const openEditTeacher = async (teacher: User) => {
     setEditingTeacher(teacher);
-    setEditCareerId(teacher.careerId || careers[0]?.id || '');
+    setEditCareerId(teacher.careerId || '');
     const existing = teacherCatalogMap[teacher.id];
     if (existing) {
       setEditSubjects(existing.map((s) => s.id));
@@ -131,11 +133,11 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
 
   const editCareerSubjects = editCareerId
     ? subjects.filter((s) => s.careerId === editCareerId)
-    : subjects;
+    : [];
 
   const careerSubjects = selectedCareerId
     ? subjects.filter((s) => s.careerId === selectedCareerId)
-    : subjects;
+    : [];
 
   const sampleTeachers = [
     {
@@ -172,10 +174,14 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
     setErrorMsg(null);
   };
 
-  const handleRegisterTeacher = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleRegisterTeacher = async () => {
     setErrorMsg(null);
     setSuccessMsg(null);
+
+    if (!selectedCareerId) {
+      setErrorMsg('Selecciona una carrera principal para el docente.');
+      return;
+    }
 
     if (selectedSubjects.length === 0) {
       setErrorMsg('Debe seleccionar al menos una asignatura para asignar al docente.');
@@ -209,8 +215,10 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
       setAccount('');
       setUsername('');
       setEmail('');
+      setSelectedCareerId('');
       setSelectedSubjects([]);
       setSelectedSlots([]);
+      setRegisterStep(1);
       setShowCreateForm(false);
       onRefresh();
       setTimeout(() => setSuccessMsg(null), 4000);
@@ -278,12 +286,9 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
           id="btn-admin-add-teacher"
           onClick={() => {
             setShowCreateForm(!showCreateForm);
+            setRegisterStep(1);
             setErrorMsg(null);
             setSuccessMsg(null);
-            if (!showCreateForm && selectedSubjects.length === 0) {
-              setSelectedSubjects(subjects.filter((s) => s.isActive).slice(0, 2).map((s) => s.id));
-              setSelectedSlots(schedules.slice(0, 3).map((s) => s.id));
-            }
           }}
           className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white transition-colors hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 sm:self-auto"
         >
@@ -355,7 +360,28 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
             </div>
           )}
 
-          <form onSubmit={handleRegisterTeacher} className="space-y-4">
+          <form id="form-register-teacher" onSubmit={(e) => e.preventDefault()} className="space-y-5">
+            <ol aria-label="Pasos para registrar un docente" className="grid grid-cols-3 gap-2">
+              {[
+                { step: 1, label: 'Datos y carrera' },
+                { step: 2, label: 'Asignaturas' },
+                { step: 3, label: 'Horarios' },
+              ].map((item) => (
+                <li
+                  key={item.step}
+                  aria-current={registerStep === item.step ? 'step' : undefined}
+                  className={`rounded-lg border px-2 py-2 text-center text-[11px] font-semibold sm:text-xs ${registerStep === item.step ? 'border-brand-300 bg-brand-50 text-brand-800' : registerStep > item.step ? 'border-brand-100 bg-white text-brand-700' : 'border-stone-200 bg-stone-50 text-stone-500'}`}
+                >
+                  <span className="mr-1">{item.step}.</span>{item.label}
+                </li>
+              ))}
+            </ol>
+
+            {registerStep === 1 && <section aria-labelledby="register-teacher-details" className="space-y-4">
+            <div>
+              <h4 id="register-teacher-details" className="text-sm font-semibold text-slate-900">Datos del docente</h4>
+              <p className="mt-1 text-xs text-stone-500">Ingresa sus datos de acceso y su carrera principal.</p>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
               <div className="sm:col-span-8">
                 <label
@@ -455,6 +481,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                   required
                   className="w-full text-sm rounded-lg border border-stone-200 px-3.5 py-3 text-slate-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 bg-white font-medium"
                 >
+                  <option value="" disabled>Selecciona una carrera</option>
                   {careers.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -469,12 +496,18 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                 </label>
                 <div className="flex items-center gap-2 h-[38px] px-3.5 rounded-xl border border-stone-200 bg-slate-50 text-xs text-slate-600">
                   <BookOpen aria-hidden="true" className="w-3.5 h-3.5 text-brand-700 shrink-0" />
-                  <span>{careerSubjects.length} asignaturas registradas</span>
+                  <span>{selectedCareerId ? `${careerSubjects.length} asignaturas registradas` : 'Selecciona una carrera'}</span>
                 </div>
               </div>
             </div>
+            </section>}
 
             {/* Selection of Subjects */}
+            {registerStep === 2 && <section aria-labelledby="register-teacher-subjects" className="space-y-4">
+            <div>
+              <h4 id="register-teacher-subjects" className="text-sm font-semibold text-slate-900">Asigna las asignaturas</h4>
+              <p className="mt-1 text-xs text-stone-500">Selecciona al menos una materia del catálogo de la carrera elegida.</p>
+            </div>
             <div className="space-y-1.5 pt-1">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
                 <span>Asignaturas Asignadas * ({selectedSubjects.length} seleccionadas)</span>
@@ -519,12 +552,18 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                 )}
               </div>
             </div>
+            </section>}
 
             {/* Selection of Schedule Slots */}
+            {registerStep === 3 && <section aria-labelledby="register-teacher-schedules" className="space-y-4">
+            <div>
+              <h4 id="register-teacher-schedules" className="text-sm font-semibold text-slate-900">Define sus horarios semanales</h4>
+              <p className="mt-1 text-xs text-stone-500">Este paso es opcional; el docente también puede configurarlos después desde su cuenta.</p>
+            </div>
             <div className="space-y-1.5 pt-1">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>Franjas Horarias Disponibles ({selectedSlots.length} seleccionadas)</span>
-                <span className="text-[11px] text-slate-400 font-normal">Disponibilidad semanal del docente</span>
+                <span>Franjas horarias ({selectedSlots.length} seleccionadas)</span>
+                <span className="text-[11px] text-slate-400 font-normal">Opcional</span>
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-36 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-stone-200">
                 {schedules.map((slot) => {
@@ -551,36 +590,55 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                         className="rounded border-stone-300 text-brand-700 focus:ring-brand-600"
                       />
                       <Clock aria-hidden="true" className="w-3.5 h-3.5 text-brand-700 shrink-0" />
-                      <span className="truncate text-[11px]">{slot.label}</span>
+                      <span className="truncate text-[11px]">{formatScheduleLabel(slot.label)}</span>
                     </label>
                   );
                 })}
               </div>
             </div>
+            </section>}
 
-            <div className="flex justify-end gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowCreateForm(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                id="btn-submit-register-teacher-admin"
-                type="submit"
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-brand-700 hover:bg-brand-800 rounded-xl shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Registrando…</span>
-                  </>
-                ) : (
-                  <span>Registrar y Activar Docente</span>
-                )}
-              </button>
+            <div className="flex flex-col-reverse gap-2 border-t border-stone-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => registerStep === 1 ? setShowCreateForm(false) : setRegisterStep((step) => (step - 1) as 1 | 2 | 3)}
+                  className="min-h-10 rounded-xl bg-stone-100 px-4 text-xs font-semibold text-slate-700 transition-colors hover:bg-stone-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                >
+                  {registerStep === 1 ? 'Cancelar' : 'Atrás'}
+                </button>
+              </div>
+              {registerStep < 3 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErrorMsg(null);
+                    if (registerStep === 1) {
+                      const fieldIds = ['input-teacher-fullname', 'input-teacher-account', 'input-teacher-username', 'input-teacher-email', 'input-teacher-career'];
+                      const firstInvalid = fieldIds.map((id) => document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null).find((field) => field && !field.checkValidity());
+                      if (firstInvalid) { firstInvalid.reportValidity(); return; }
+                    }
+                    if (registerStep === 2 && selectedSubjects.length === 0) {
+                      setErrorMsg('Selecciona al menos una asignatura para continuar.');
+                      return;
+                    }
+                    setRegisterStep((step) => (step + 1) as 1 | 2 | 3);
+                  }}
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-brand-700 px-5 text-xs font-semibold text-white transition-colors hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                >
+                  Continuar <span aria-hidden="true">→</span>
+                </button>
+              ) : (
+                <button
+                  id="btn-submit-register-teacher-admin"
+                  type="button"
+                  onClick={() => void handleRegisterTeacher()}
+                  disabled={isSubmitting}
+                  className="flex min-h-10 items-center justify-center gap-2 rounded-xl bg-brand-700 px-5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 disabled:opacity-50"
+                >
+                  {isSubmitting ? <><span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /><span>Registrando…</span></> : <span>Registrar docente</span>}
+                </button>
+              )}
             </div>
           </form>
         </div>
@@ -912,6 +970,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                   required
                   className="w-full text-sm rounded-lg border border-stone-200 px-3.5 py-3 text-slate-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 bg-white font-medium"
                 >
+                  <option value="" disabled>Selecciona una carrera</option>
                   {careers.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -928,7 +987,7 @@ export const AdminTeachersTab: React.FC<AdminTeachersTabProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-stone-200">
                   {editCareerSubjects.length === 0 ? (
                     <div className="col-span-1 sm:col-span-2 p-4 text-center text-xs text-slate-400">
-                      No hay asignaturas registradas para esta carrera todavía.
+                      {editCareerId ? 'No hay asignaturas registradas para esta carrera todavía.' : 'Selecciona una carrera para ver las asignaturas disponibles.'}
                     </div>
                   ) : (
                     editCareerSubjects.map((sub) => {

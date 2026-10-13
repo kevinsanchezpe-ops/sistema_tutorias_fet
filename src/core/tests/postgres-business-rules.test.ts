@@ -48,11 +48,11 @@ async function findFreeTeacherSlotForStudent(p: Pool, dateStr: string, student: 
      FROM schedule_slots s
      CROSS JOIN subjects sub
      WHERE s.is_available = TRUE AND sub.is_active = TRUE
-       AND ($3::text IS NULL OR sub.career_id = $3)
-       AND ($4::int IS NULL OR sub.semester = $4)
+       AND ($1::text IS NULL OR sub.career_id = $1)
+       AND ($2::int IS NULL OR sub.semester = $2)
       ORDER BY s.id, sub.id
       LIMIT 1;`,
-    [dateStr, TutoringStatus.CANCELLED, careerId, semester]
+    [careerId, semester]
   );
   if (res.rows.length === 0) throw new Error('No hay combinación libre para la carrera/semestre del estudiante de prueba.');
   const teacher = await insertTempTeacher(p, res.rows[0].subject_course_id);
@@ -359,10 +359,15 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
       }
     });
 
-    // --- 9. Cupo máximo de la sección (camino Postgres) ---
-    await run('PG: Cupo — no se supera la capacidad del aula al unirse', async () => {
+    // --- 9. Los grupos no tienen tope de participantes ---
+    await run('PG: Grupal — permite superar la capacidad configurada del aula', async () => {
       // Slot alineado a student2 (quien se unirá): misma carrera y semestre
       const free = await findFreeTeacherSlot(p, dateD, student1);
+      const subjectMeta = await p.query('SELECT career_id, semester FROM subjects WHERE id = $1;', [free.subjectCourseId]);
+      const guest = students.find((student) => student.id !== student1.id &&
+        (!subjectMeta.rows[0]?.career_id || subjectMeta.rows[0].career_id === student.careerId) &&
+        (!Number(subjectMeta.rows[0]?.semester) || Number(subjectMeta.rows[0].semester) === Number(student.semester)));
+      if (!guest) return;
       const sectionId = `sec-cupo-${RUN_ID}`;
       const sectionName = `PGTEST Aula Cupo ${RUN_ID}`;
       const subj = `PGTEST ${RUN_ID} cupo`;
@@ -375,9 +380,9 @@ export async function runPostgresBusinessRulesTests(): Promise<{ total: number; 
           { subject: subj, details: 'prueba de cupo', reservDate: dateD, scheduleSlotId: free.slotId, subjectCourseId: free.subjectCourseId, teacherId: free.teacherId, modality: TutoringModality.PRESENCIAL, type: TutoringType.GROUP },
           student1
         );
-        await assertThrowsMessage(/capacidad/, async () => {
-          await pgRepo.approveTutoring(created.id, sectionName, admin, 'PG-B2', 2);
-        });
+        const approved = await pgRepo.approveTutoring(created.id, sectionName, admin, 'PG-B2', 2);
+        const joined = await pgRepo.joinTutoring(approved.id, guest);
+        if (joined.assistants.length < 2) throw new Error('El participante no se pudo unir a la tutoría sin límite de cupo.');
       } finally {
         await cleanupBySubject(p, subj);
         await p.query('DELETE FROM sections WHERE id = $1;', [sectionId]);

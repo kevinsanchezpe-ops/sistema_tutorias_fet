@@ -517,7 +517,7 @@ El sistema cuenta con una batería de pruebas automatizadas que certifican la no
 
 #### 4.2.1. Requisitos Previos
 - Node.js versión 20 LTS o superior.
-- PostgreSQL 15+ en ejecución con base de datos `gt_db`.
+- PostgreSQL 15+ en ejecución con la base de datos configurada para la instalación (`gt_db` por compatibilidad con entornos existentes).
 - Gestor de paquetes `npm`.
 
 #### 4.2.2. Variables de Entorno (`.env`)

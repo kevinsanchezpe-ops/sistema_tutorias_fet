@@ -11,6 +11,7 @@ export interface CreateTutoringDto {
   teacherId: string;
   modality: TutoringModality;
   type: TutoringType;
+  targetStudentId?: string;
   space?: string;
   block?: string;
   maxParticipants?: number;
@@ -20,8 +21,16 @@ export interface CreateTutoringDto {
 
 export class CreateTutoringUseCase {
   public static execute(dto: CreateTutoringDto, petitioner: User): Tutoring {
-    if (petitioner.role !== UserRole.STUDENT) {
-      throw new BusinessRuleException('Solo los estudiantes pueden solicitar una tutoría.', 'UNAUTHORIZED_ROLE');
+    const isTeacherRequest = petitioner.role === UserRole.TEACHER;
+    const isDirectedTeacherRequest = isTeacherRequest && dto.type === TutoringType.INDIVIDUAL && Boolean(dto.targetStudentId);
+    if (petitioner.role !== UserRole.STUDENT && !(isTeacherRequest && (dto.type === TutoringType.GROUP || dto.type === TutoringType.INDIVIDUAL))) {
+      throw new BusinessRuleException('Solicitud de tutoría no permitida para este usuario.', 'UNAUTHORIZED_ROLE');
+    }
+    if (isTeacherRequest && dto.type === TutoringType.INDIVIDUAL && !dto.targetStudentId) {
+      throw new BusinessRuleException('Selecciona el estudiante al que se dirige la tutoría.', 'TARGET_STUDENT_REQUIRED');
+    }
+    if (!isTeacherRequest && dto.targetStudentId) {
+      throw new BusinessRuleException('Solo un docente puede dirigir una tutoría a un estudiante.', 'FORBIDDEN_TARGET_STUDENT');
     }
 
     if (!dto.subject || dto.subject.trim().length < 3) {
@@ -49,14 +58,28 @@ export class CreateTutoringUseCase {
       throw new BusinessRuleException('La franja horaria seleccionada no es válida.', 'NOT_FOUND_SLOT');
     }
 
-    const teacher = db.users.find((u) => u.id === dto.teacherId && u.role === UserRole.TEACHER);
+    const teacherId = isTeacherRequest ? petitioner.id : dto.teacherId;
+    const teacher = db.users.find((u) => u.id === teacherId && u.role === UserRole.TEACHER);
     if (!teacher) {
       throw new BusinessRuleException('El docente seleccionado no existe o no está habilitado.', 'NOT_FOUND_TEACHER');
     }
 
+    const targetStudent = isDirectedTeacherRequest
+      ? db.users.find((u) => u.id === dto.targetStudentId && u.role === UserRole.STUDENT && u.isActive)
+      : undefined;
+    if (isDirectedTeacherRequest && !targetStudent) {
+      throw new BusinessRuleException('El estudiante seleccionado no existe o está inactivo.', 'NOT_FOUND_STUDENT');
+    }
+    if (targetStudent && course.careerId && targetStudent.careerId !== course.careerId) {
+      throw new BusinessRuleException('El estudiante no pertenece a la carrera de la asignatura.', 'STUDENT_CAREER_MISMATCH');
+    }
+    if (targetStudent && course.semester && Number(course.semester) > 0 && Number(targetStudent.semester) !== Number(course.semester)) {
+      throw new BusinessRuleException(`El estudiante debe pertenecer al semestre ${course.semester} de la asignatura.`, 'STUDENT_SEMESTER_MISMATCH');
+    }
+
     // 3. Regla de conflicto de docente en la misma fecha y bloque
     ScheduleConflictService.validateTeacherScheduleConflict(
-      dto.teacherId,
+      teacherId,
       dto.reservDate,
       dto.scheduleSlotId,
       db.tutorings
@@ -68,7 +91,7 @@ export class CreateTutoringUseCase {
     if (teacherHasAvailability) {
       const matchesAvailability = db.teacherAvailability.some(
         (a) =>
-          a.teacherId === dto.teacherId &&
+          a.teacherId === teacherId &&
           a.scheduleSlotId === dto.scheduleSlotId &&
           a.subjectCourseId === dto.subjectCourseId &&
           a.isAvailable
@@ -81,6 +104,26 @@ export class CreateTutoringUseCase {
       }
     }
 
+    if (isTeacherRequest) {
+      if (!dto.space?.trim()) throw new BusinessRuleException('Asigna el aula o enlace antes de publicar.', 'SPACE_REQUIRED');
+      if (dto.modality === TutoringModality.PRESENCIAL && !dto.block?.trim()) {
+        throw new BusinessRuleException('Indica el bloque o edificio del aula.', 'BLOCK_REQUIRED');
+      }
+      if (dto.modality === TutoringModality.PRESENCIAL) {
+        ScheduleConflictService.validateSectionState(
+          dto.space.trim(), dto.reservDate, dto.scheduleSlotId, dto.modality, db.tutorings, undefined, dto.block
+        );
+      }
+      if (dto.modality === TutoringModality.VIRTUAL) {
+        try {
+          const meetingUrl = new URL(dto.space || '');
+          if (!['http:', 'https:'].includes(meetingUrl.protocol)) throw new Error();
+        } catch {
+          throw new BusinessRuleException('Ingresa un enlace virtual válido.', 'INVALID_MEETING_URL');
+        }
+      }
+    }
+
     const newId = `tut-${Date.now()}`;
     // Código correlativo sin colisiones (MAX sufijo numérico + 1, no length)
     const codeNumber =
@@ -89,6 +132,7 @@ export class CreateTutoringUseCase {
         return Number.isFinite(n) && n > max ? n : max;
       }, 0) + 1;
 
+    const recipient = targetStudent || petitioner;
     const newTutoring: Tutoring = {
       id: newId,
       code: `#${codeNumber}`,
@@ -99,15 +143,21 @@ export class CreateTutoringUseCase {
       modality: dto.modality,
       type: dto.type,
       maxParticipants: dto.type === TutoringType.GROUP ? null : 1,
-      status: TutoringStatus.PENDING,
-      space: dto.modality === TutoringModality.VIRTUAL ? 'Pendiente enlace virtual' : 'Pendiente aula',
-      block: '',
+      status: isTeacherRequest ? TutoringStatus.APPROVED : TutoringStatus.PENDING,
+      space: isTeacherRequest ? (dto.space || '').trim() : dto.modality === TutoringModality.VIRTUAL ? 'Pendiente enlace virtual' : 'Pendiente aula',
+      block: isTeacherRequest && dto.modality === TutoringModality.PRESENCIAL ? dto.block!.trim() : '',
       subjectCourseId: course.id,
       subjectCourseName: course.name,
       teacherId: teacher.id,
       teacherName: teacher.fullName,
-      petitionerStudentId: petitioner.id,
-      petitionerStudentName: petitioner.fullName,
+      createdByUserId: petitioner.id,
+      createdByName: petitioner.fullName,
+      createdByRole: petitioner.role,
+      creatorRole: petitioner.role,
+      approvedById: isTeacherRequest ? petitioner.id : undefined,
+      approvedByName: isTeacherRequest ? (petitioner.alias || petitioner.fullName) : undefined,
+      petitionerStudentId: recipient.id,
+      petitionerStudentName: recipient.fullName,
       scheduleSlotId: slot.id,
       scheduleLabel: slot.label,
       score: 0,
@@ -117,10 +167,10 @@ export class CreateTutoringUseCase {
         {
           id: `ast-${Date.now()}`,
           tutoringId: newId,
-          studentId: petitioner.id,
-          studentName: petitioner.fullName,
-          studentAccount: petitioner.account,
-          studentEmail: petitioner.email,
+          studentId: recipient.id,
+          studentName: recipient.fullName,
+          studentAccount: recipient.account,
+          studentEmail: recipient.email,
           isPetitioner: true,
           hasAttended: false,
           joinedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
@@ -133,8 +183,10 @@ export class CreateTutoringUseCase {
 
     // Auditoría en bitácora
     db.logBinnacle(
-      'Solicitud',
-      `Estudiante ${petitioner.fullName} solicitó la tutoría ${newTutoring.code} sobre '${newTutoring.subject}'`,
+      isTeacherRequest ? (targetStudent ? 'Tutoría dirigida' : 'Convocatoria de Tutoría') : 'Solicitud',
+      isTeacherRequest
+        ? targetStudent ? `Docente ${petitioner.fullName} programó tutoría ${newTutoring.code} para ${targetStudent.fullName}` : `Docente ${petitioner.fullName} convocó tutoría grupal ${newTutoring.code}`
+        : `Estudiante ${petitioner.fullName} solicitó la tutoría ${newTutoring.code} sobre '${newTutoring.subject}'`,
       petitioner.username
     );
 
@@ -149,6 +201,15 @@ export class CreateTutoringUseCase {
           newTutoring.id
         );
       });
+
+    if (targetStudent) {
+      db.addNotification(
+        targetStudent.id,
+        'Tutoría programada por tu docente',
+        `El docente ${petitioner.fullName} programó la tutoría ${newTutoring.code} de ${course.name} para el ${dto.reservDate} a las ${slot.label}.`,
+        newTutoring.id
+      );
+    }
 
     db.notify();
     return newTutoring;

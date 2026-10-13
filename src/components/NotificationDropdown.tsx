@@ -82,7 +82,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         role="dialog"
         aria-label="Notificaciones del sistema"
         tabIndex={-1}
-        className="absolute right-0 top-full z-50 mt-2 flex max-h-[min(72dvh,38rem)] w-[min(92vw,24rem)] flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl"
+        className="fixed left-2 right-2 top-[calc(env(safe-area-inset-top)+4rem)] z-50 flex max-h-[min(72dvh,38rem)] w-auto max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(92vw,24rem)]"
       >
         <header className="border-b border-stone-200 px-4 py-4">
           <div className="flex items-start justify-between gap-3">

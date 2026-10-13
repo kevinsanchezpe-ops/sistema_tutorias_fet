@@ -1,4 +1,4 @@
-# 📊 Informe de Evaluación y Estado Local del Sistema de Gestión de Tutorías (FET)
+# 📊 Informe de Evaluación y Estado Local de Tutorías FET
 
 Este documento presenta una auditoría técnica del estado actual del sistema, abarcando seguridad, arquitectura backend/frontend, reglas de negocio y cobertura de pruebas. El sistema se ejecuta actualmente en local.
 
@@ -93,4 +93,4 @@ Por ahora el sistema se ejecuta en el equipo local. Configura PostgreSQL con `PG
 ---
 
 ### 📌 Conclusión
-El **Sistema de Gestión de Tutorías FET** queda configurado para el desarrollo y uso local mientras se define un despliegue futuro.
+**Tutorías FET** queda configurado para el desarrollo y uso local mientras se define un despliegue futuro.

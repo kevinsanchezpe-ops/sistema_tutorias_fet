@@ -48,10 +48,6 @@ export class JoinTutoringUseCase {
       );
     }
 
-    if (tutoring.maxParticipants && tutoring.assistants.length >= tutoring.maxParticipants) {
-      throw new BusinessRuleException('El cupo confirmado para esta tutoría está completo.', 'CAPACITY_FULL');
-    }
-
     const newAssistant: TutoringAssistant = {
       id: `ast-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       tutoringId: tutoring.id,

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../core/types';
+import { formatPersonName } from '../core/utils/name-formatting';
 import {
   Mail,
   GraduationCap,
@@ -41,6 +42,7 @@ export const InstitutionalProfileCard: React.FC<InstitutionalProfileCardProps> =
   const isStudent = user.role === UserRole.STUDENT;
 
   const hasPhoto = Boolean(user.photoUrl && user.photoUrl.trim() !== '' && !imageError);
+  const displayName = formatPersonName(user.fullName) || 'Usuario FET';
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -65,16 +67,16 @@ export const InstitutionalProfileCard: React.FC<InstitutionalProfileCardProps> =
 
   if (variant === 'sidebar') {
     return (
-      <section className={`rounded-xl border border-stone-200 bg-stone-50/60 p-3 ${className}`} aria-label="Perfil institucional">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="group relative h-[68px] w-[68px] shrink-0">
-            <div className="h-full w-full overflow-hidden rounded-xl bg-white ring-1 ring-stone-200">
+      <section className={`rounded-xl border border-stone-200 bg-white p-4 shadow-sm ${className}`} aria-label="Perfil institucional">
+        <div className="flex min-w-0 flex-col items-center gap-3">
+          <div className="group relative h-28 w-28 shrink-0 xl:h-32 xl:w-32">
+            <div className="h-full w-full overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-stone-200">
               {hasPhoto ? (
                 <img src={user.photoUrl!} alt={user.fullName || 'Foto de perfil'} onError={() => setImageError(true)} className="h-full w-full object-cover object-center" />
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-[#11770e] to-[#0a4d09] text-white">
-                  <span className="text-xl font-semibold tracking-wide">{initials}</span>
-                  <span className="mt-0.5 text-[8px] font-medium uppercase tracking-wider text-green-100">FET</span>
+                  <span className="text-2xl font-semibold tracking-wide xl:text-3xl">{initials}</span>
+                  <span className="mt-0.5 text-[9px] font-medium uppercase tracking-wider text-green-100">FET</span>
                 </div>
               )}
             </div>
@@ -85,24 +87,37 @@ export const InstitutionalProfileCard: React.FC<InstitutionalProfileCardProps> =
             )}
             <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/jpg" onChange={handleFileChange} className="hidden" />
           </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="line-clamp-2 text-sm font-semibold leading-snug tracking-tight text-slate-900" title={user.fullName}>{user.fullName || 'Usuario FET'}</h2>
-            <p className="mt-1 truncate text-[11px] text-stone-500" title={user.account}>{isTeacher ? 'Código' : 'Carnet'} · {user.account || 'Sin registrar'}</p>
-            <span className="mt-2 inline-flex max-w-full items-center rounded-md border border-stone-200 bg-white px-2 py-1 text-[10px] font-medium text-stone-600">
-              <span className="truncate">{isTeacher ? 'Docente titular FET' : user.semester ? `Semestre ${user.semester}` : 'Estudiante FET'}</span>
-            </span>
+          <div className="w-full min-w-0 text-center">
+            <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-brand-700">{isTeacher ? 'Perfil docente' : 'Perfil estudiantil'}</p>
+            <h2 className="mx-auto mt-1 max-w-full break-words text-base font-semibold leading-snug tracking-tight text-slate-900" title={displayName}>{displayName}</h2>
           </div>
         </div>
-        {user.careerName && (
-          <div className="mt-3 flex min-w-0 items-start gap-2 border-t border-stone-200/80 pt-3">
-            <BookOpen aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" />
-            <div className="min-w-0">
-              <p className="text-[9px] font-semibold uppercase tracking-wide text-stone-400">Programa académico</p>
-              <p className="truncate text-[11px] text-slate-700" title={user.careerName}>{user.careerName}</p>
-            </div>
+        <dl className="mt-4 grid w-full grid-cols-1 gap-2 border-t border-stone-200 pt-4 text-xs">
+          <div className="min-w-0 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5">
+            <dt className="text-[10px] font-medium uppercase tracking-wide text-stone-500">{isTeacher ? 'Código docente' : 'Carnet'}</dt>
+            <dd className="mt-1 break-all font-semibold text-slate-800" title={user.account || undefined}>{user.account || 'Sin registrar'}</dd>
           </div>
-        )}
-        {extraBadge && <p className="mt-2 truncate text-[10px] font-medium text-brand-700">{extraBadge}</p>}
+          <div className="min-w-0 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5">
+            <dt className="text-[10px] font-medium uppercase tracking-wide text-stone-500">{isTeacher ? 'Tipo de perfil' : 'Semestre'}</dt>
+            <dd className="mt-1 break-words font-semibold text-slate-800">{isTeacher ? 'Docente titular FET' : user.semester ? `Semestre ${user.semester}` : 'No registrado'}</dd>
+          </div>
+          {isStudent && (
+            <div className="min-w-0 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5">
+              <dt className="text-[10px] font-medium uppercase tracking-wide text-stone-500">Tipo de perfil</dt>
+              <dd className="mt-1 break-words font-semibold text-slate-800">Estudiante activo FET</dd>
+            </div>
+          )}
+          <div className="min-w-0 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5">
+            <dt className="text-[10px] font-medium uppercase tracking-wide text-stone-500">Programa académico</dt>
+            <dd className="mt-1 break-words font-semibold text-slate-800" title={user.careerName || undefined}>{user.careerName || 'No registrado'}</dd>
+          </div>
+          {extraBadge && (
+            <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2">
+              <dt className="shrink-0 text-brand-700">Estado</dt>
+              <dd className="min-w-0 break-words text-right font-medium text-brand-800">{extraBadge}</dd>
+            </div>
+          )}
+        </dl>
       </section>
     );
   }
@@ -172,9 +187,9 @@ export const InstitutionalProfileCard: React.FC<InstitutionalProfileCardProps> =
       {/* 2. NOMBRE COMPLETO */}
       <h3
         className={`font-extrabold text-slate-900 text-base sm:text-lg tracking-tight line-clamp-2 leading-snug ${variant === 'full' ? 'mt-4' : 'mt-3'}`}
-        title={user.fullName}
+        title={displayName}
       >
-        {user.fullName || 'Usuario FET'}
+        {displayName}
       </h3>
       {/* 3. PÍLDORA DESTACADA CENTRAL (ESTILO REFERENCIA) */}
       <div className={`w-full flex flex-col items-center gap-1.5 ${variant === 'full' ? 'my-3' : 'my-2'}`}>

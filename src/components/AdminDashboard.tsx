@@ -18,6 +18,8 @@ import { StatusBadge } from './StatusBadge';
 import { AdminSubjectsTab } from './AdminSubjectsTab';
 import { AdminTeachersTab } from './AdminTeachersTab';
 import { AdminCareersTab } from './AdminCareersTab';
+import { DashboardTopNavigation } from './DashboardTopNavigation';
+import { ContextualHelp } from './ContextualHelp';
 import {
   BarChart,
   Bar,
@@ -76,7 +78,8 @@ import {
   ArrowRight,
   Plus,
   CalendarDays,
-  ExternalLink
+  ExternalLink,
+  X
 } from 'lucide-react';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
 import { TutoringCalendarView } from './TutoringCalendarView';
@@ -152,7 +155,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedScheduleDay, setSelectedScheduleDay] = useState<string>('all');
 
   // Dashboard filters (por carrera y semestre)
-  const [dashCareerFilter, setDashCareerFilter] = useState<string>(currentUser.careerId || 'all');
+  const [dashCareerFilter, setDashCareerFilter] = useState<string>('all');
   const [dashSemesterFilter, setDashSemesterFilter] = useState<string>('all');
   const selectedDashCareer = careers.find((c) => c.id === dashCareerFilter);
 
@@ -198,7 +201,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [approvingTutoring, setApprovingTutoring] = useState<Tutoring | null>(null);
   const [assignedSpace, setAssignedSpace] = useState<string>('');
   const [assignedBlock, setAssignedBlock] = useState<string>('');
-  const [confirmedCapacity, setConfirmedCapacity] = useState(10);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [approving, setApproving] = useState<boolean>(false);
 
@@ -209,7 +211,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [cancelling, setCancelling] = useState<boolean>(false);
 
   // User Management filters
-  const [userRoleFilter, setUserRoleFilter] = useState<string>('all');
   const [userSearch, setUserSearch] = useState<string>('');
 
   // User Deletion state
@@ -262,7 +263,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Filtered Users
   const filteredUsers = dashUsers.filter((u) => {
-    const matchesRole = userRoleFilter === 'all' || u.role === userRoleFilter;
+    const matchesRole = u.role === UserRole.STUDENT;
     const matchesSemester =
       dashSemesterFilter === 'all' ||
       u.role !== UserRole.STUDENT ||
@@ -281,7 +282,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setApprovalError(null);
     setApproving(true);
 
-    const res = await ApiClient.approveTutoring(approvingTutoring.id, assignedSpace, currentUser, assignedBlock, confirmedCapacity);
+    const res = await ApiClient.approveTutoring(approvingTutoring.id, assignedSpace, currentUser, assignedBlock);
     setApproving(false);
 
     if (res.success) {
@@ -341,68 +342,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const adminNavItems: { id: typeof activeTab; label: string; icon: React.ReactNode; count?: number }[] = [
-    { id: 'overview', label: 'Métricas', icon: <LayoutDashboard aria-hidden="true" className="h-4 w-4" /> },
+    { id: 'overview', label: 'Resumen', icon: <LayoutDashboard aria-hidden="true" className="h-4 w-4" /> },
     { id: 'subjects', label: 'Asignaturas', icon: <BookOpen aria-hidden="true" className="h-4 w-4" />, count: subjects.length },
     { id: 'careers', label: 'Carreras', icon: <GraduationCap aria-hidden="true" className="h-4 w-4" />, count: careers.length },
     { id: 'teachers', label: 'Docentes', icon: <Briefcase aria-hidden="true" className="h-4 w-4" />, count: users.filter((u) => u.role === UserRole.TEACHER).length },
-    { id: 'tutorings', label: 'Solicitudes', icon: <CheckCircle aria-hidden="true" className="h-4 w-4" />, count: tutorings.filter((t) => t.status === TutoringStatus.PENDING).length },
-    { id: 'users', label: 'Estudiantes y cuentas', icon: <Users aria-hidden="true" className="h-4 w-4" />, count: users.filter((u) => u.role === UserRole.STUDENT).length },
-    { id: 'binnacle', label: 'Bitácora', icon: <FileText aria-hidden="true" className="h-4 w-4" /> },
+    { id: 'tutorings', label: 'Solicitudes pendientes', icon: <CheckCircle aria-hidden="true" className="h-4 w-4" />, count: tutorings.filter((t) => t.status === TutoringStatus.PENDING).length },
+    { id: 'users', label: 'Estudiantes', icon: <Users aria-hidden="true" className="h-4 w-4" />, count: users.filter((u) => u.role === UserRole.STUDENT).length },
+    { id: 'binnacle', label: 'Auditoría del sistema', icon: <FileText aria-hidden="true" className="h-4 w-4" /> },
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-4 pb-8 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start">
-      <header className="overflow-hidden rounded-xl border border-[#e2e6e2] bg-white lg:sticky lg:top-4">
-        <div className="p-3">
-          <div className="flex min-w-0 items-center gap-3 rounded-xl bg-stone-50/70 p-3">
+    <div className="space-y-4 pb-8">
+      <div className="space-y-3">
+        <DashboardTopNavigation ariaLabel="Navegación de administración" activeId={activeTab} groups={[
+          { label: 'Inicio', items: [adminNavItems[0]].map((item) => ({ ...item, onSelect: () => setActiveTab(item.id) })) },
+          { label: 'Académico', items: adminNavItems.filter((item) => ['subjects', 'careers'].includes(item.id)).map((item) => ({ ...item, onSelect: () => setActiveTab(item.id) })) },
+          { label: 'Tutorías', items: adminNavItems.filter((item) => item.id === 'tutorings').map((item) => ({ ...item, onSelect: () => setActiveTab(item.id) })) },
+          { label: 'Usuarios', items: adminNavItems.filter((item) => ['teachers', 'users'].includes(item.id)).map((item) => ({ ...item, onSelect: () => setActiveTab(item.id) })) },
+          { label: 'Sistema', items: adminNavItems.filter((item) => item.id === 'binnacle').map((item) => ({ ...item, onSelect: () => setActiveTab(item.id) })) },
+        ]} />
+        <ContextualHelp role="admin" activeSectionId={activeTab} onNavigate={(section) => setActiveTab(section as typeof activeTab)} />
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-[#e2e6e2] bg-white p-3">
+          <div className="flex min-w-0 items-center gap-3">
             <UserAvatar user={currentUser} size="sm" className="shrink-0 border border-stone-200" />
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-brand-700">Administrador</p>
-              <h1 className="mt-0.5 truncate text-xs font-semibold tracking-tight text-slate-900" title={currentUser.fullName}>{currentUser.fullName}</h1>
-            </div>
+            <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-brand-700">Administrador · Panel FET</p><h1 className="truncate text-sm font-semibold text-slate-900" title={currentUser.fullName}>{currentUser.fullName}</h1></div>
           </div>
-          <div className="mt-2 flex items-center justify-between gap-3 px-1">
-            <span className="text-[10px] text-stone-500">Panel FET</span>
-            <button
-              type="button"
-              onClick={onRefresh}
-              aria-label="Actualizar datos del panel"
-              title="Actualizar datos"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 transition-colors hover:bg-stone-50 hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
-            >
-              <RefreshCw aria-hidden="true" className="h-4 w-4" />
-            </button>
-          </div>
+          <button type="button" onClick={onRefresh} aria-label="Actualizar datos del panel" title="Actualizar datos" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 transition-colors hover:bg-stone-50 hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"><RefreshCw aria-hidden="true" className="h-4 w-4" /></button>
         </div>
-        <nav aria-label="Paneles de administración" className="flex gap-1 overflow-x-auto border-t border-stone-100 px-2 py-2 lg:flex-col lg:overflow-visible lg:px-2 lg:pb-3">
-          {adminNavItems.map((item) => {
-            const selected = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                id={`tab-admin-${item.id}`}
-                type="button"
-                onClick={() => setActiveTab(item.id)}
-                aria-current={selected ? 'page' : undefined}
-                className={`inline-flex min-h-11 shrink-0 items-center gap-2.5 rounded-lg px-3 text-left text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 lg:w-full ${
-                  selected ? 'bg-brand-50 text-brand-800 font-semibold' : 'text-stone-600 hover:bg-stone-50 hover:text-slate-900'
-                }`}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-                {item.count !== undefined && (
-                  <span className={`ml-auto min-w-5 rounded-md px-1.5 py-0.5 text-center text-[10px] tabular-nums ${selected ? 'bg-white text-brand-700' : 'bg-stone-100 text-stone-500'}`}>
-                    {item.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-      </header>
+      </div>
 
       {/* Main Content Area */}
-      <div className="min-w-0 space-y-4 lg:pt-1">
+      <div className="min-w-0 space-y-4">
         {/* TAB: CARRERAS */}
         {activeTab === 'careers' && (
           <AdminCareersTab
@@ -592,7 +562,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     onClick={() => setActiveTab('tutorings')}
                     className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-700 px-3 text-xs font-semibold text-white transition-colors hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                   >
-                    Ver solicitudes <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                    {pendingTuts > 0 ? `Revisar ${pendingTuts} ${pendingTuts === 1 ? 'pendiente' : 'pendientes'}` : 'Ver solicitudes'} <ArrowRight className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </div>
               </header>
@@ -1376,8 +1346,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="space-y-4 animate-in fade-in duration-200">
           <YafaPageHeader
             icon={<Users aria-hidden="true" className="h-[18px] w-[18px]" />}
-            title="Estudiantes y cuentas"
-            subtitle="Administra perfiles, roles y acceso a la plataforma."
+            title="Gestión de estudiantes"
+            subtitle="Consulta y administra perfiles y acceso de estudiantes."
             right={<button
                 id="btn-admin-add-user"
                 onClick={onOpenRegister}
@@ -1391,9 +1361,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* Resumen compacto de cuentas */}
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {[
-              { label: 'Cuentas registradas', value: users.length },
+              { label: 'Estudiantes registrados', value: users.filter((u) => u.role === UserRole.STUDENT).length },
               { label: 'Estudiantes activos', value: users.filter((u) => u.role === UserRole.STUDENT && u.isActive).length },
-              { label: 'Personal institucional', value: users.filter((u) => u.role === UserRole.TEACHER || u.role === UserRole.ADMIN).length }
+              { label: 'Estudiantes inactivos', value: users.filter((u) => u.role === UserRole.STUDENT && !u.isActive).length }
             ].map((item) => (
               <div key={item.label} className="rounded-xl border border-stone-200 bg-white px-4 py-3">
                 <dt className="text-xs font-medium text-stone-500">{item.label}</dt>
@@ -1414,12 +1384,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="border-b border-stone-200 px-4 py-4 sm:px-5">
               <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <h2 className="text-sm font-semibold text-slate-900">Directorio de cuentas</h2>
-                  <p className="mt-0.5 text-xs text-stone-500">Consulta perfiles, roles y estado de acceso.</p>
+                  <h2 className="text-sm font-semibold text-slate-900">Directorio de estudiantes</h2>
+                  <p className="mt-0.5 text-xs text-stone-500">Consulta perfiles estudiantiles y estado de acceso.</p>
                 </div>
                 <p className="text-xs text-stone-500" aria-live="polite">{filteredUsers.length} resultados</p>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_auto_auto]">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_auto]">
                 <label className="relative block">
                   <span className="sr-only">Buscar usuario por nombre, carnet o correo</span>
                   <Search aria-hidden="true" className="absolute left-3 top-3 h-4 w-4 text-stone-400" />
@@ -1431,20 +1401,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     placeholder="Buscar por nombre, carnet o correo…"
                     className="h-10 w-full rounded-lg border border-stone-200 bg-white pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
                   />
-                </label>
-                <label>
-                  <span className="sr-only">Filtrar por rol</span>
-                  <select
-                    id="select-filter-user-role"
-                    value={userRoleFilter}
-                    onChange={(e) => setUserRoleFilter(e.target.value)}
-                    className="h-10 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 sm:min-w-44"
-                  >
-                    <option value="all">Todos los roles</option>
-                    <option value={UserRole.STUDENT}>Estudiantes</option>
-                    <option value={UserRole.TEACHER}>Docentes</option>
-                    <option value={UserRole.ADMIN}>Administradores</option>
-                  </select>
                 </label>
                 <CareerSemesterFilter
                   careers={careers}
@@ -1461,10 +1417,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="px-5 py-14 text-center">
                 <Users aria-hidden="true" className="mx-auto h-8 w-8 text-stone-300" />
                 <p className="mt-3 text-sm font-medium text-slate-700">No hay cuentas para mostrar</p>
-                <p className="mt-1 text-xs text-stone-500">Prueba cambiando los filtros o el texto de búsqueda.</p>
+                <p className="mt-1 text-xs text-stone-500">Prueba cambiando la búsqueda o los filtros académicos.</p>
               </div>
             ) : (
-              <ul className="grid grid-cols-1 gap-3 bg-stone-50/60 p-3 sm:grid-cols-2 xl:grid-cols-3 sm:p-4">
+              <ul className="grid grid-cols-1 gap-3 bg-stone-50/60 p-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 sm:p-4">
                 {filteredUsers.map((u) => {
                   const roleLabel = u.role === UserRole.STUDENT ? 'Estudiante' : u.role === UserRole.TEACHER ? 'Docente' : 'Administrador';
                   const careerName = u.careerId ? careers.find((c) => c.id === u.careerId)?.name || u.careerId : null;
@@ -1612,18 +1568,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         >
           <div
             id="modal-approve-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-approve-title"
             className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden"
           >
             <div className="px-5 py-4 bg-brand-50 border-b border-brand-100 flex items-center justify-between">
-              <h3 className="font-bold text-brand-900 text-sm flex items-center gap-1.5">
+              <h3 id="modal-approve-title" className="font-bold text-brand-900 text-sm flex items-center gap-1.5">
                 <Check aria-hidden="true" className="w-4 h-4 text-brand-700" />
                 Aprobar y Programar Tutoría {approvingTutoring.code}
               </h3>
               <button
+                type="button"
                 onClick={() => setApprovingTutoring(null)}
-                className="text-slate-400 hover:text-slate-600"
+                aria-label="Cerrar ventana de aprobación"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
               >
-                ✕
+                <X aria-hidden="true" className="h-4 w-4" />
               </button>
             </div>
 
@@ -1655,36 +1616,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 uppercase mb-1">
+              <div className="space-y-2">
+                <p className="font-semibold text-slate-700">
                   {approvingTutoring.modality === TutoringModality.PRESENCIAL
-                    ? 'Asignar Aula Física (Sección)'
-                    : 'Asignar Enlace de Videollamada (Meet / Zoom)'}
-                </label>
+                    ? 'Asigna el espacio presencial'
+                    : 'Agrega el enlace de la sesión virtual'}
+                </p>
                 {approvingTutoring.modality === TutoringModality.PRESENCIAL ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <input
-                      id="input-approve-classroom"
-                      type="text"
-                      value={assignedSpace}
-                      onChange={(e) => setAssignedSpace(e.target.value)}
-                      required
-                      maxLength={200}
-                      placeholder="Salón o aula"
-                      className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
-                    />
-                    <input
-                      id="input-approve-block"
-                      type="text"
-                      value={assignedBlock}
-                      onChange={(e) => setAssignedBlock(e.target.value)}
-                      required
-                      maxLength={50}
-                      placeholder="Bloque o edificio"
-                      className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
-                    />
+                    <div>
+                      <label htmlFor="input-approve-classroom" className="mb-1 block text-xs font-medium text-slate-700">Aula o salón</label>
+                      <input
+                        id="input-approve-classroom"
+                        type="text"
+                        value={assignedSpace}
+                        onChange={(e) => setAssignedSpace(e.target.value)}
+                        required
+                        maxLength={200}
+                        placeholder="Ej.: Salón 101"
+                        className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="input-approve-block" className="mb-1 block text-xs font-medium text-slate-700">Bloque o edificio</label>
+                      <input
+                        id="input-approve-block"
+                        type="text"
+                        value={assignedBlock}
+                        onChange={(e) => setAssignedBlock(e.target.value)}
+                        required
+                        maxLength={50}
+                        placeholder="Ej.: Bloque B2"
+                        className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                      />
+                    </div>
                   </div>
                 ) : (
+                  <div>
+                    <label htmlFor="input-approve-link" className="mb-1 block text-xs font-medium text-slate-700">Enlace de videollamada</label>
                   <input
                     id="input-approve-link"
                     type="url"
@@ -1694,13 +1663,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     placeholder="Enlace de videollamada (Google Meet, Zoom, etc.)"
                     className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
                   />
+                  </div>
                 )}
               </div>
-
-              {approvingTutoring.type === TutoringType.GROUP && <div>
-                <label htmlFor="admin-group-capacity" className="block font-semibold text-slate-700 uppercase mb-1">Cupo máximo (incluye al solicitante)</label>
-                <input id="admin-group-capacity" type="number" min={Math.max(2, approvingTutoring.assistants.length)} max={approvingTutoring.modality === TutoringModality.VIRTUAL ? 30 : undefined} value={confirmedCapacity} onChange={(e) => setConfirmedCapacity(Number(e.target.value))} required className="w-full rounded-lg border border-slate-300 p-2 text-xs" />
-              </div>}
 
               {approvalError && (
                 <div role="alert" className="p-2.5 bg-danger-soft border border-danger-border text-danger rounded-lg text-xs">
@@ -1739,18 +1704,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         >
           <div
             id="modal-cancel-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-cancel-title"
             className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden"
           >
             <div className="px-5 py-4 bg-danger-soft border-b border-danger-border flex items-center justify-between">
-              <h3 className="font-bold text-danger text-sm flex items-center gap-1.5">
+              <h3 id="modal-cancel-title" className="font-bold text-danger text-sm flex items-center gap-1.5">
                 <Ban aria-hidden="true" className="w-4 h-4 text-danger" />
                 Cancelar Solicitud {cancellingTutoring.code}
               </h3>
               <button
+                type="button"
                 onClick={() => setCancellingTutoring(null)}
-                className="text-slate-400 hover:text-slate-600"
+                aria-label="Cerrar ventana de cancelación"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
               >
-                ✕
+                <X aria-hidden="true" className="h-4 w-4" />
               </button>
             </div>
 
@@ -1771,7 +1741,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 uppercase mb-1">
+                <label htmlFor="input-cancel-reason" className="block font-semibold text-slate-700 mb-1">
                   Motivo de Cancelación o Rechazo (Obligatorio)
                 </label>
                 <textarea

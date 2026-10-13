@@ -42,15 +42,19 @@ import {
   Search,
   ExternalLink,
   History,
-  PlusCircle
+  PlusCircle,
+  UserCheck,
 } from 'lucide-react';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
 import { TutoringCalendarView } from './TutoringCalendarView';
 import { TutoringDetailModal } from './TutoringDetailModal';
 import { UserAvatar } from './UserAvatar';
 import { InstitutionalProfileCard } from './InstitutionalProfileCard';
+import { DashboardTopNavigation } from './DashboardTopNavigation';
+import { ContextualHelp } from './ContextualHelp';
 import { ProfilePhotoCropModal } from './ProfilePhotoCropModal';
 import { compressProfileImage } from '../core/utils/image-utils';
+import { formatScheduleLabel } from '../core/utils/time-formatting';
 import { db } from '../core/infrastructure/database/database';
 
 interface TeacherDashboardProps {
@@ -59,6 +63,7 @@ interface TeacherDashboardProps {
   availabilities: TeacherAvailability[];
   schedules: ScheduleSlot[];
   subjects?: SubjectCourse[];
+  students?: User[];
   onRefresh: () => void;
   onTutoringUpdated: (tutoring: Tutoring) => void;
 }
@@ -69,11 +74,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   availabilities,
   schedules,
   subjects = [],
+  students = [],
   onRefresh,
   onTutoringUpdated
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'tutorings' | 'convocations' | 'availability' | 'subjects' | 'evaluations' | 'profile'
+    'tutorings' | 'convocations' | 'history' | 'availability' | 'subjects' | 'evaluations' | 'profile'
   >('tutorings');
 
   const [selectedTutoringId, setSelectedTutoringId] = useState<string | null>(null);
@@ -158,18 +164,22 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [approvingTutoring, setApprovingTutoring] = useState<Tutoring | null>(null);
   const [assignedSpace, setAssignedSpace] = useState<string>('');
   const [assignedBlock, setAssignedBlock] = useState<string>('');
-  const [confirmedCapacity, setConfirmedCapacity] = useState<number>(10);
   const [approving, setApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [approvalSuccess, setApprovalSuccess] = useState<string | null>(null);
-  const [convocationAvailabilityId, setConvocationAvailabilityId] = useState('');
+  const [convocationSubjectId, setConvocationSubjectId] = useState('');
+  const [convocationSlotId, setConvocationSlotId] = useState('');
+  const [convocationType, setConvocationType] = useState<TutoringType>(TutoringType.GROUP);
+  const [convocationStudentId, setConvocationStudentId] = useState('');
   const [convocationModality, setConvocationModality] = useState<TutoringModality | ''>('');
   const [convocationTopic, setConvocationTopic] = useState('');
   const [convocationDetails, setConvocationDetails] = useState('');
   const [convocationDate, setConvocationDate] = useState('');
   const [convocationSpace, setConvocationSpace] = useState('');
   const [convocationBlock, setConvocationBlock] = useState('');
-  const [convocationCapacity, setConvocationCapacity] = useState(10);
+  const [convocationAttachmentName, setConvocationAttachmentName] = useState<string | null>(null);
+  const [convocationAttachmentUrl, setConvocationAttachmentUrl] = useState<string | null>(null);
+  const [readingConvocationAttachment, setReadingConvocationAttachment] = useState(false);
   const [convocationError, setConvocationError] = useState<string | null>(null);
   const [convocationSuccess, setConvocationSuccess] = useState<string | null>(null);
   const [creatingConvocation, setCreatingConvocation] = useState(false);
@@ -177,7 +187,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const openApproveModal = (tut: Tutoring) => {
     setApprovingTutoring(tut);
     setApprovalError(null);
-    setConfirmedCapacity(Math.max(2, Math.min(tut.assistants?.length || 2, 10)));
     if (tut.modality === TutoringModality.PRESENCIAL) {
       setAssignedSpace(tut.space && tut.space !== 'Pendiente aula' ? tut.space : '');
       setAssignedBlock(tut.block || '');
@@ -193,7 +202,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     setApproving(true);
     setApprovalError(null);
 
-    const res = await ApiClient.approveTutoring(approvingTutoring.id, assignedSpace, currentUser, assignedBlock, confirmedCapacity);
+    const res = await ApiClient.approveTutoring(approvingTutoring.id, assignedSpace, currentUser, assignedBlock);
     setApproving(false);
 
     if (res.success) {
@@ -209,13 +218,17 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const handleCreateConvocation = async (e: React.FormEvent) => {
     e.preventDefault();
     setConvocationError(null);
-    const availability = availabilities.find((item) => item.id === convocationAvailabilityId && item.teacherId === currentUser.id && item.isAvailable);
+    const availability = myAvailabilities.find((item) => item.subjectCourseId === convocationSubjectId && item.scheduleSlotId === convocationSlotId && item.isAvailable);
     if (!availability) {
       setConvocationError('Selecciona una franja activa de tu disponibilidad.');
       return;
     }
     if (!convocationModality) {
       setConvocationError('Selecciona la modalidad de la tutoría.');
+      return;
+    }
+    if (convocationType === TutoringType.INDIVIDUAL && !convocationStudentId) {
+      setConvocationError('Selecciona el estudiante al que se dirige la tutoría.');
       return;
     }
     setCreatingConvocation(true);
@@ -227,20 +240,29 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       subjectCourseId: availability.subjectCourseId,
       teacherId: currentUser.id,
       modality: convocationModality,
-      type: TutoringType.GROUP,
+      type: convocationType,
+      targetStudentId: convocationType === TutoringType.INDIVIDUAL ? convocationStudentId : undefined,
       space: convocationSpace,
       block: convocationBlock,
-      maxParticipants: convocationCapacity
+      attachmentName: convocationAttachmentName,
+      attachmentUrl: convocationAttachmentUrl,
     }, currentUser);
     setCreatingConvocation(false);
     if (!result.success) {
       setConvocationError(result.error?.message || 'No fue posible crear la convocatoria.');
       return;
     }
-    setConvocationSuccess('Tutoría grupal aprobada y publicada. Los estudiantes elegibles ya pueden inscribirse.');
+    setConvocationSuccess(convocationType === TutoringType.INDIVIDUAL
+      ? 'Tutoría individual programada y notificada al estudiante.'
+      : 'Tutoría grupal aprobada y publicada. Los estudiantes elegibles ya pueden inscribirse.');
     setConvocationTopic('');
     setConvocationDetails('');
     setConvocationDate('');
+    setConvocationStudentId('');
+    setConvocationAttachmentName(null);
+    setConvocationAttachmentUrl(null);
+    const attachmentInput = document.getElementById('teacher-convocation-attachment') as HTMLInputElement | null;
+    if (attachmentInput) attachmentInput.value = '';
     if (result.data) onTutoringUpdated(result.data);
   };
 
@@ -292,6 +314,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       a.teacherId === currentUser.id ||
       a.teacherName?.toLowerCase() === currentUser.fullName?.toLowerCase()
   );
+  const availableConvocationAvailabilities = myAvailabilities.filter((item) => item.isAvailable);
+  const availableConvocationSubjects = subjects.filter((subject) =>
+    availableConvocationAvailabilities.some((item) => item.subjectCourseId === subject.id)
+  );
+  const convocationSlotsForSubject = availableConvocationAvailabilities.filter((item) => item.subjectCourseId === convocationSubjectId);
+  const selectedConvocationSubject = subjects.find((item) => item.id === convocationSubjectId);
+  const eligibleConvocationStudents = students.filter((student) => {
+    if (student.role !== UserRole.STUDENT || !student.isActive || !selectedConvocationSubject) return false;
+    if (selectedConvocationSubject.careerId && student.careerId !== selectedConvocationSubject.careerId) return false;
+    if (selectedConvocationSubject.semester && Number(selectedConvocationSubject.semester) > 0 && Number(student.semester) !== Number(selectedConvocationSubject.semester)) return false;
+    return true;
+  });
 
   // Active tutoring in detail/execution modal
   const activeTutoring = selectedTutoringId
@@ -625,7 +659,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
   // Filtered tutorings list in Tab Tutorings (Tutorías Asignadas - sin COMPLETED)
   const filteredMyTutorings = activeTutorings.filter((t) => {
-    if (tutoringStatusFilter !== 'all' && t.status !== tutoringStatusFilter) return false;
+    if (tutoringStatusFilter !== 'all' && String(t.status) !== tutoringStatusFilter) return false;
     if (tutoringSearch.trim()) {
       const q = tutoringSearch.toLowerCase();
       const matchCode = t.code?.toLowerCase().includes(q);
@@ -639,160 +673,31 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
   return (
     <>
-    <div className="flex flex-col lg:flex-row gap-6 items-start pb-12">
-      {/* LEFT SIDEBAR NAVIGATION */}
-      <aside className="w-full shrink-0 space-y-4 rounded-xl border border-stone-200 bg-white p-4 shadow-xs lg:w-72 xl:w-80">
-        {/* Teacher Profile Card (Referencia UI institucional) */}
-        <InstitutionalProfileCard
-          user={currentUser}
-          variant="sidebar"
-          canEditPhoto={true}
-          showEmail={false}
-          onSelectPhoto={handleTeacherPhotoSelect}
-          onRemovePhoto={handleTeacherRemovePhoto}
-          isUploadingPhoto={photoUploading}
-          className="w-full mb-2"
-        />
+    <div className="flex flex-col gap-4 pb-12">
+      <div className="space-y-3">
+        <DashboardTopNavigation ariaLabel="Navegación docente" activeId={activeTab} groups={[
+          { label: 'Tutorías', items: [
+            { id: 'tutorings', label: 'Mis tutorías', icon: <BookOpen className="h-4 w-4" />, count: activeTutorings.length, onSelect: () => setActiveTab('tutorings') },
+            { id: 'convocations', label: 'Programar tutoría', icon: <Users className="h-4 w-4" />, onSelect: () => setActiveTab('convocations') },
+            { id: 'history', label: 'Historial', icon: <History className="h-4 w-4" />, count: historyTutorings.length, onSelect: () => setActiveTab('history') },
+          ] },
+          { label: 'Gestión académica', items: [
+            { id: 'availability', label: 'Mi disponibilidad', icon: <Clock className="h-4 w-4" />, count: myAvailabilities.length, onSelect: () => setActiveTab('availability') },
+            { id: 'subjects', label: 'Mis asignaturas', icon: <GraduationCap className="h-4 w-4" />, count: teacherCatalog.length, onSelect: () => setActiveTab('subjects') },
+          ] },
+          { label: 'Evaluaciones', items: [{ id: 'evaluations', label: 'Evaluaciones', icon: <Award className="h-4 w-4" />, count: ratedTutorings.length, onSelect: () => setActiveTab('evaluations') }] },
+          { label: 'Mi perfil', items: [{ id: 'profile', label: 'Mi perfil', icon: <UserCheck className="h-4 w-4" />, onSelect: () => setActiveTab('profile') }] },
+        ]} />
+        <ContextualHelp role="teacher" activeSectionId={activeTab} onNavigate={(section) => setActiveTab(section as typeof activeTab)} />
+      </div>
 
-        {/* Navigation Items */}
-        <div className="space-y-2">
-          <div className="px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400">
-            Módulos del Docente
-          </div>
-          <nav className="space-y-1.5">
-            <button
-              id="tab-teacher-tutorings"
-              onClick={() => setActiveTab('tutorings')}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
-                activeTab === 'tutorings'
-                  ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200'
-                  : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <BookOpen aria-hidden="true" className="w-4 h-4 shrink-0" />
-                <span>Tutorías Asignadas</span>
-              </div>
-              <span
-                className={`text-[11px] px-2.5 py-0.5 rounded-full font-extrabold ${
-                  activeTab === 'tutorings'
-                    ? 'bg-white text-brand-700'
-                    : 'bg-stone-100 text-stone-600'
-                }`}
-              >
-                {activeTutorings.length}
-              </span>
-            </button>
-
-            <button
-              id="tab-teacher-convocations"
-              onClick={() => setActiveTab('convocations')}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${activeTab === 'convocations' ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200' : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'}`}
-            >
-              <div className="flex items-center gap-3"><Users aria-hidden="true" className="w-4 h-4 shrink-0" /><span>Convocar grupal</span></div>
-            </button>
-
-            <button
-              id="tab-teacher-history"
-              onClick={() => setActiveTab('history')}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
-                activeTab === 'history'
-                  ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200'
-                  : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <History aria-hidden="true" className="w-4 h-4 shrink-0" />
-                <span>Historial Tutorías</span>
-              </div>
-              <span
-                className={`text-[11px] px-2.5 py-0.5 rounded-full font-extrabold ${
-                  activeTab === 'history'
-                    ? 'bg-white text-brand-700'
-                    : 'bg-stone-100 text-stone-600'
-                }`}
-              >
-                {historyTutorings.length}
-              </span>
-            </button>
-
-            <button
-              id="tab-teacher-availability"
-              onClick={() => setActiveTab('availability')}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
-                activeTab === 'availability'
-                  ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200'
-                  : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Clock aria-hidden="true" className="w-4 h-4 shrink-0" />
-                <span>Mi Disponibilidad</span>
-              </div>
-              <span
-                className={`text-[11px] px-2.5 py-0.5 rounded-full font-extrabold ${
-                  activeTab === 'availability'
-                    ? 'bg-white text-brand-700'
-                    : 'bg-stone-100 text-stone-600'
-                }`}
-              >
-                {myAvailabilities.length}
-              </span>
-            </button>
-
-            <button
-              id="tab-teacher-subjects"
-              onClick={() => setActiveTab('subjects')}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
-                activeTab === 'subjects'
-                  ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200'
-                  : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <GraduationCap aria-hidden="true" className="w-4 h-4 shrink-0" />
-                <span>Mis Asignaturas</span>
-              </div>
-              <span
-                className={`text-[11px] px-2.5 py-0.5 rounded-full font-extrabold ${
-                  activeTab === 'subjects'
-                    ? 'bg-white text-brand-700'
-                    : 'bg-stone-100 text-stone-600'
-                }`}
-              >
-                {teacherCatalog.length}
-              </span>
-            </button>
-
-            <button
-              id="tab-teacher-evaluations"
-              onClick={() => setActiveTab('evaluations')}
-              className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
-                activeTab === 'evaluations'
-                  ? 'bg-brand-50 text-brand-800 shadow-xs ring-1 ring-brand-200'
-                  : 'text-stone-600 hover:bg-stone-100 hover:text-brand-800'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Award aria-hidden="true" className="w-4 h-4 shrink-0" />
-                <span>Evaluaciones</span>
-              </div>
-              <span
-                className={`text-[11px] px-2.5 py-0.5 rounded-full font-extrabold ${
-                  activeTab === 'evaluations'
-                    ? 'bg-white text-brand-700'
-                    : 'bg-warning-soft text-amber-800'
-                }`}
-              >
-                {ratedTutorings.length}
-              </span>
-            </button>
-          </nav>
-        </div>
-      </aside>
-
+      <div className="mt-1 grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[280px_minmax(0,1fr)] xl:gap-6">
+        <aside className="min-w-0 xl:sticky xl:top-20">
+          <InstitutionalProfileCard user={currentUser} variant="sidebar" canEditPhoto={true} showEmail={false} onSelectPhoto={handleTeacherPhotoSelect} onRemovePhoto={handleTeacherRemovePhoto} isUploadingPhoto={photoUploading} className="w-full" />
+        </aside>
+        <div className="min-w-0 space-y-5">
       {/* MAIN CONTENT AREA */}
-      <div className="flex-1 w-full min-w-0 space-y-5">
+      <div className="w-full min-w-0 space-y-5">
         {/* ONBOARDING NOTIFICATION IF NO AVAILABILITY */}
         {myAvailabilities.length === 0 && activeTab !== 'availability' && (
           <div className="p-5 rounded-2xl bg-brand-50 border border-warning-border shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in fade-in">
@@ -858,23 +763,28 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 </div>
               </header>
 
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div className="rounded-xl border border-stone-200 bg-white p-3.5">
-                  <p className="text-xs text-stone-500">Solicitudes</p>
-                  <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{activeTutorings.length}</p>
-                </div>
-                <div className="rounded-xl border border-stone-200 bg-white p-3.5">
-                  <p className="text-xs text-stone-500">Pendientes</p>
-                  <p className="mt-1 text-2xl font-semibold tabular-nums text-amber-700">{activeTutorings.filter((t) => t.status === TutoringStatus.PENDING).length}</p>
-                </div>
-                <div className="rounded-xl border border-stone-200 bg-white p-3.5">
-                  <p className="text-xs text-stone-500">Programadas</p>
-                  <p className="mt-1 text-2xl font-semibold tabular-nums text-brand-700">{activeTutorings.filter((t) => t.status === TutoringStatus.APPROVED).length}</p>
-                </div>
-                <div className="rounded-xl border border-stone-200 bg-white p-3.5">
-                  <p className="text-xs text-stone-500">En curso</p>
-                  <p className="mt-1 text-2xl font-semibold tabular-nums text-sky-700">{activeTutorings.filter((t) => t.status === TutoringStatus.IN_PROGRESS).length}</p>
-                </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" role="group" aria-label="Filtrar tutorías por estado">
+                {[
+                  { label: 'Todas', value: 'all', count: activeTutorings.length, tone: 'slate' },
+                  { label: 'Pendientes', value: String(TutoringStatus.PENDING), count: activeTutorings.filter((t) => t.status === TutoringStatus.PENDING).length, tone: 'amber' },
+                  { label: 'Programadas', value: String(TutoringStatus.APPROVED), count: activeTutorings.filter((t) => t.status === TutoringStatus.APPROVED).length, tone: 'brand' },
+                  { label: 'En curso', value: String(TutoringStatus.IN_PROGRESS), count: activeTutorings.filter((t) => t.status === TutoringStatus.IN_PROGRESS).length, tone: 'sky' },
+                ].map((item) => {
+                  const selected = tutoringStatusFilter === item.value;
+                  const countColor = item.tone === 'amber' ? 'text-amber-700' : item.tone === 'brand' ? 'text-brand-700' : item.tone === 'sky' ? 'text-sky-700' : 'text-slate-900';
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setTutoringStatusFilter(item.value)}
+                      className={`min-h-16 rounded-xl border bg-white p-3.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 ${selected ? 'border-brand-300 bg-brand-50/50 ring-1 ring-brand-200' : 'border-stone-200 hover:border-stone-300 hover:bg-stone-50'}`}
+                    >
+                      <span className="block text-xs text-stone-500">{item.label}</span>
+                      <span className={`mt-1 block text-2xl font-semibold tabular-nums ${countColor}`}>{item.count}</span>
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-3 sm:flex-row sm:items-center">
@@ -901,12 +811,21 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <option value={TutoringStatus.IN_PROGRESS}>En curso</option>
                 </select>
                 <span className="px-1 text-xs text-stone-500 sm:ml-auto">{filteredMyTutorings.length} resultados</span>
+                {(tutoringSearch || tutoringStatusFilter !== 'all') && (
+                  <button
+                    type="button"
+                    onClick={() => { setTutoringSearch(''); setTutoringStatusFilter('all'); }}
+                    className="inline-flex min-h-10 items-center justify-center rounded-lg px-3 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                  >
+                    Limpiar filtros
+                  </button>
+                )}
               </div>
 
               {displayMode === 'calendar' ? (
                 <div className="rounded-xl border border-stone-200 bg-white p-3 sm:p-5">
                   <TutoringCalendarView
-                    tutorings={activeTutorings}
+                    tutorings={filteredMyTutorings}
                     currentUser={currentUser}
                     onSelectTutoring={(tut) => setSelectedTutoringId(tut.id)}
                   />
@@ -914,11 +833,34 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               ) : filteredMyTutorings.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-stone-300 bg-white px-4 py-14 text-center">
                   <BookOpen aria-hidden="true" className="mx-auto mb-3 h-8 w-8 text-stone-300" />
-                  <p className="text-sm font-semibold text-slate-800">No hay tutorías para mostrar</p>
-                  <p className="mt-1 text-xs text-stone-500">Prueba con otra búsqueda o cambia el filtro de estado.</p>
+                  <p className="text-sm font-semibold text-slate-800">
+                    {activeTutorings.length === 0 ? 'Aún no tienes tutorías asignadas' : 'No encontramos tutorías con esos filtros'}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-500">
+                    {activeTutorings.length === 0
+                      ? 'Las solicitudes y sesiones programadas aparecerán aquí.'
+                      : 'Prueba otra búsqueda o selecciona un estado diferente.'}
+                  </p>
+                  {activeTutorings.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (myAvailabilities.length === 0) {
+                          setActiveTab('availability');
+                          setShowAddSlot(true);
+                        } else {
+                          setActiveTab('convocations');
+                        }
+                      }}
+                      className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white transition-colors hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                    >
+                      {myAvailabilities.length === 0 ? 'Configurar disponibilidad' : 'Programar tutoría'}
+                      <ChevronRight aria-hidden="true" className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
                   {filteredMyTutorings.map((tut) => {
                     const dt = formatTutoringDateTime(tut.reservDate, tut.scheduleLabel, tut.reservTime);
                     const creatorName = tut.createdByName || tut.petitionerStudentName;
@@ -941,7 +883,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                             <div className="min-w-0">
                               <p className="truncate text-sm font-semibold text-slate-900">{creatorName}</p>
                               <p className="mt-0.5 text-[10px] text-stone-500">{teacherCreator ? 'Convocada por el docente' : 'Estudiante solicitante'}</p>
-                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5"><span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${tut.type === TutoringType.INDIVIDUAL ? 'bg-slate-100 text-slate-700' : 'bg-violet-50 text-violet-700'}`}>{tut.type === TutoringType.INDIVIDUAL ? 'Individual' : 'Grupal'}</span><span className="text-[11px] text-stone-500">{participantCount} {participantCount === 1 ? 'participante' : 'participantes'}{tut.type !== TutoringType.INDIVIDUAL && ` / ${tut.maxParticipants ?? 'cupo por confirmar'}`}</span></div>
+                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5"><span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${tut.type === TutoringType.INDIVIDUAL ? 'bg-slate-100 text-slate-700' : 'bg-violet-50 text-violet-700'}`}>{tut.type === TutoringType.INDIVIDUAL ? 'Individual' : 'Grupal'}</span><span className="text-[11px] text-stone-500">{participantCount} {participantCount === 1 ? 'participante' : 'participantes'}</span></div>
                             </div>
                           </div>
                           <StatusBadge status={tut.status} size="sm" />
@@ -1249,22 +1191,59 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
         {/* TAB HISTORY: HISTORIAL TUTORÍAS */}
         {activeTab === 'convocations' && (
-          <section className="max-w-3xl space-y-4 animate-in fade-in duration-200">
+          <section className="mx-auto w-full min-w-0 space-y-4 animate-in fade-in duration-200">
             <header>
-              <p className="text-xs font-medium text-brand-700">Nueva convocatoria</p>
-              <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Convocar tutoría grupal</h2>
-              <p className="mt-1 text-sm text-stone-500">Elige una materia y franja activa. La tutoría se aprobará y publicará al crearla si el espacio, el cupo y el horario son válidos.</p>
+              <p className="text-xs font-medium text-brand-700">Nueva tutoría</p>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Convocar sesión o dirigir tutoría</h2>
+              <p className="mt-1 text-sm text-stone-500">Elige una materia y franja activa. Las tutorías individuales se asignan a un estudiante específico; las grupales se publican para estudiantes elegibles.</p>
             </header>
             {convocationSuccess && <div role="status" className="rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm font-medium text-brand-800">{convocationSuccess}</div>}
             <form onSubmit={handleCreateConvocation} className="space-y-5 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6">
+              <section aria-labelledby="teacher-convocation-setup-title" className="space-y-4">
+                <div>
+                  <h3 id="teacher-convocation-setup-title" className="text-sm font-semibold text-slate-900">1. Define la tutoría</h3>
+                  <p className="mt-1 text-xs text-stone-500">Selecciona la materia, el horario y quiénes recibirán la atención.</p>
+                </div>
+              <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1.5">
-                <label htmlFor="teacher-convocation-availability" className="block text-xs font-semibold text-slate-700">Materia y franja disponible</label>
-                <select id="teacher-convocation-availability" value={convocationAvailabilityId} onChange={(e) => setConvocationAvailabilityId(e.target.value)} required className="h-11 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm text-slate-800">
-                  <option value="">Selecciona una materia y horario</option>
-                  {myAvailabilities.filter((item) => item.isAvailable).map((item) => <option key={item.id} value={item.id}>{item.subjectCourseName} · {item.scheduleLabel}</option>)}
+                <label htmlFor="teacher-convocation-subject" className="block text-xs font-semibold text-slate-700">Materia</label>
+                <select id="teacher-convocation-subject" value={convocationSubjectId} onChange={(e) => { setConvocationSubjectId(e.target.value); setConvocationSlotId(''); setConvocationStudentId(''); }} required className="h-11 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm text-slate-800">
+                  <option value="">Selecciona una materia</option>
+                  {availableConvocationSubjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
                 </select>
-                {myAvailabilities.filter((item) => item.isAvailable).length === 0 && <p className="text-xs text-amber-700">Primero configura una franja activa en Mi Disponibilidad.</p>}
+                {availableConvocationSubjects.length === 0 && <p className="text-xs text-amber-700">Primero configura una materia y una franja activa en Mi Disponibilidad.</p>}
               </div>
+              <div className="space-y-1.5">
+                <label htmlFor="teacher-convocation-slot" className="block text-xs font-semibold text-slate-700">Franja horaria</label>
+                <select id="teacher-convocation-slot" value={convocationSlotId} onChange={(e) => setConvocationSlotId(e.target.value)} required disabled={!convocationSubjectId} className="h-11 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm text-slate-800 disabled:cursor-not-allowed disabled:bg-stone-50 disabled:text-stone-400">
+                  <option value="">{convocationSubjectId ? 'Selecciona una franja horaria' : 'Primero selecciona una materia'}</option>
+                  {convocationSlotsForSubject.map((item) => <option key={item.id} value={item.scheduleSlotId}>{formatScheduleLabel(item.scheduleLabel)}</option>)}
+                </select>
+              </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label htmlFor="teacher-convocation-type" className="block text-xs font-semibold text-slate-700">Tipo de tutoría</label>
+                  <select id="teacher-convocation-type" value={convocationType} onChange={(event) => { setConvocationType(event.target.value as TutoringType); setConvocationStudentId(''); }} className="h-11 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm">
+                    <option value={TutoringType.GROUP}>Grupal abierta</option>
+                    <option value={TutoringType.INDIVIDUAL}>Individual para un estudiante</option>
+                  </select>
+                </div>
+                {convocationType === TutoringType.INDIVIDUAL && <div className="space-y-1.5">
+                  <label htmlFor="teacher-convocation-student" className="block text-xs font-semibold text-slate-700">Estudiante</label>
+                  <select id="teacher-convocation-student" value={convocationStudentId} onChange={(event) => setConvocationStudentId(event.target.value)} required className="h-11 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm">
+                    <option value="">Selecciona el estudiante</option>
+                    {eligibleConvocationStudents.map((student) => <option key={student.id} value={student.id}>{student.fullName} · {student.account} · {student.careerName} · Sem. {student.semester ?? '—'}</option>)}
+                  </select>
+                  {convocationSubjectId && eligibleConvocationStudents.length === 0 && <p className="text-xs text-amber-700">No hay estudiantes elegibles para esta asignatura.</p>}
+                </div>}
+              </div>
+              </section>
+              <section aria-labelledby="teacher-convocation-schedule-title" className="space-y-4 border-t border-stone-100 pt-5">
+                <div>
+                  <h3 id="teacher-convocation-schedule-title" className="text-sm font-semibold text-slate-900">2. Programa la sesión</h3>
+                  <p className="mt-1 text-xs text-stone-500">Indica cuándo y en qué modalidad se realizará.</p>
+                </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <label htmlFor="teacher-convocation-date" className="block text-xs font-semibold text-slate-700">Fecha</label>
@@ -1281,7 +1260,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 <div className="space-y-1.5"><label htmlFor="teacher-convocation-room" className="block text-xs font-semibold text-slate-700">Salón</label><input id="teacher-convocation-room" value={convocationSpace} onChange={(e) => setConvocationSpace(e.target.value)} required maxLength={200} placeholder="Ej.: Salón 101" className="h-11 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm" /></div>
                 <div className="space-y-1.5"><label htmlFor="teacher-convocation-block" className="block text-xs font-semibold text-slate-700">Bloque / edificio</label><input id="teacher-convocation-block" value={convocationBlock} onChange={(e) => setConvocationBlock(e.target.value)} required maxLength={50} className="h-11 w-full rounded-lg border border-stone-200 px-3 text-sm" /></div>
               </div> : convocationModality === TutoringModality.VIRTUAL ? <div className="space-y-1.5"><label htmlFor="teacher-convocation-link" className="block text-xs font-semibold text-slate-700">Enlace de reunión</label><input id="teacher-convocation-link" type="url" value={convocationSpace} onChange={(e) => setConvocationSpace(e.target.value)} required placeholder="https://..." className="h-11 w-full rounded-lg border border-stone-200 px-3 text-sm" /></div> : null}
-              <div className="space-y-1.5"><label htmlFor="teacher-convocation-capacity" className="block text-xs font-semibold text-slate-700">Cupo de estudiantes</label><input id="teacher-convocation-capacity" type="number" min={2} max={convocationModality === TutoringModality.VIRTUAL ? 30 : undefined} value={convocationCapacity} onChange={(e) => setConvocationCapacity(Number(e.target.value))} required className="h-11 w-full rounded-lg border border-stone-200 px-3 text-sm" /><p className="text-xs text-stone-500">El cupo incluye solo estudiantes; tú apareces como docente convocante.</p></div>
+              </section>
+              <section aria-labelledby="teacher-convocation-description-title" className="space-y-4 border-t border-stone-100 pt-5">
+                <div>
+                  <h3 id="teacher-convocation-description-title" className="text-sm font-semibold text-slate-900">3. Prepara la convocatoria</h3>
+                  <p className="mt-1 text-xs text-stone-500">Explica qué se trabajará y adjunta material si hace falta.</p>
+                </div>
               <div className="space-y-1.5">
                 <label htmlFor="teacher-convocation-topic" className="block text-xs font-semibold text-slate-700">Tema de la convocatoria</label>
                 <input id="teacher-convocation-topic" value={convocationTopic} onChange={(e) => setConvocationTopic(e.target.value)} maxLength={70} minLength={3} required placeholder="Ej.: Repaso de derivadas" className="h-11 w-full rounded-lg border border-stone-200 px-3 text-sm" />
@@ -1290,8 +1274,68 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 <label htmlFor="teacher-convocation-details" className="block text-xs font-semibold text-slate-700">Descripción y objetivos</label>
                 <textarea id="teacher-convocation-details" value={convocationDetails} onChange={(e) => setConvocationDetails(e.target.value)} minLength={5} maxLength={2000} required rows={4} placeholder="Indica qué se trabajará y qué deben preparar los estudiantes." className="w-full rounded-lg border border-stone-200 p-3 text-sm" />
               </div>
+              <div className="space-y-2">
+                <div>
+                  <label htmlFor="teacher-convocation-attachment" className="block text-xs font-semibold text-slate-700">Material de apoyo <span className="font-normal text-stone-400">(opcional)</span></label>
+                  <p className="mt-0.5 text-xs text-stone-500">PDF, DOC, DOCX o imagen · Máximo 7 MB</p>
+                </div>
+                <div className="rounded-xl border border-dashed border-stone-300 bg-stone-50/70 p-4 transition-colors hover:border-brand-400 hover:bg-brand-50/30">
+                  <input
+                    id="teacher-convocation-attachment"
+                    type="file"
+                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) {
+                        setConvocationAttachmentName(null);
+                        setConvocationAttachmentUrl(null);
+                        return;
+                      }
+                      if (file.size > 7 * 1024 * 1024) {
+                        setConvocationError('El material de apoyo no debe superar los 7 MB.');
+                        event.target.value = '';
+                        setConvocationAttachmentName(null);
+                        setConvocationAttachmentUrl(null);
+                        return;
+                      }
+                      setConvocationError(null);
+                      setConvocationAttachmentName(file.name);
+                      setReadingConvocationAttachment(true);
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        setConvocationAttachmentUrl(reader.result as string);
+                        setReadingConvocationAttachment(false);
+                      };
+                      reader.onerror = () => {
+                        setConvocationError('No se pudo leer el material de apoyo. Intenta con otro archivo.');
+                        setConvocationAttachmentName(null);
+                        setConvocationAttachmentUrl(null);
+                        setReadingConvocationAttachment(false);
+                        event.target.value = '';
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                    className="w-full cursor-pointer text-xs text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3.5 file:py-2 file:text-xs file:font-semibold file:text-slate-700 file:shadow-sm hover:file:bg-stone-100"
+                  />
+                </div>
+                {convocationAttachmentName && <div className="flex w-fit items-center gap-2.5 rounded-lg border border-brand-200 bg-brand-50 px-3.5 py-2 text-xs font-semibold text-brand-700">
+                  <Paperclip aria-hidden="true" className="h-4 w-4 shrink-0" />
+                  <span className="max-w-sm truncate">{convocationAttachmentName}</span>
+                  {readingConvocationAttachment && <span className="animate-pulse text-[10px] text-stone-500">Leyendo…</span>}
+                  <button type="button" onClick={() => {
+                    setConvocationAttachmentName(null);
+                    setConvocationAttachmentUrl(null);
+                    setReadingConvocationAttachment(false);
+                    const input = document.getElementById('teacher-convocation-attachment') as HTMLInputElement | null;
+                    if (input) input.value = '';
+                  }} className="ml-1 rounded p-0.5 text-danger hover:text-rose-800" title="Quitar material de apoyo" aria-label="Quitar material de apoyo">
+                    <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                  </button>
+                </div>}
+              </div>
+              </section>
               {convocationError && <div role="alert" className="rounded-lg border border-danger-border bg-danger-soft p-3 text-sm text-danger">{convocationError}</div>}
-              <button type="submit" disabled={creatingConvocation || myAvailabilities.every((item) => !item.isAvailable)} className="inline-flex h-11 items-center gap-2 rounded-lg bg-brand-700 px-4 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-50"><PlusCircle aria-hidden="true" className="h-4 w-4" />{creatingConvocation ? 'Enviando…' : 'Enviar convocatoria'}</button>
+              <button type="submit" disabled={creatingConvocation || readingConvocationAttachment || myAvailabilities.every((item) => !item.isAvailable)} className="inline-flex h-11 items-center gap-2 rounded-lg bg-brand-700 px-4 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-50"><PlusCircle aria-hidden="true" className="h-4 w-4" />{readingConvocationAttachment ? 'Leyendo material…' : creatingConvocation ? 'Programando…' : convocationType === TutoringType.INDIVIDUAL ? 'Programar tutoría individual' : 'Enviar convocatoria grupal'}</button>
             </form>
           </section>
         )}
@@ -1374,7 +1418,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                             <div className="min-w-0">
                               <p className="truncate text-xs font-medium text-slate-800">{creatorName}</p>
                               <p className="text-[10px] text-stone-500">{teacherCreator ? 'Convocada por el docente' : 'Estudiante solicitante'}</p>
-                              <div className="mt-1 flex flex-wrap items-center gap-1.5"><span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${tut.type === TutoringType.INDIVIDUAL ? 'bg-slate-100 text-slate-700' : 'bg-violet-50 text-violet-700'}`}>{tut.type === TutoringType.INDIVIDUAL ? 'Individual' : 'Grupal'}</span><span className="text-[11px] text-stone-500">{participantCount} {participantCount === 1 ? 'participante' : 'participantes'}{tut.type !== TutoringType.INDIVIDUAL && ` / ${tut.maxParticipants ?? 'cupo por confirmar'}`}</span></div>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5"><span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${tut.type === TutoringType.INDIVIDUAL ? 'bg-slate-100 text-slate-700' : 'bg-violet-50 text-violet-700'}`}>{tut.type === TutoringType.INDIVIDUAL ? 'Individual' : 'Grupal'}</span><span className="text-[11px] text-stone-500">{participantCount} {participantCount === 1 ? 'participante' : 'participantes'}</span></div>
                             </div>
                           </div>
 
@@ -1477,18 +1521,22 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-bold text-brand-700 uppercase tracking-wider flex items-center gap-2">
                       <Sparkles aria-hidden="true" className="w-4 h-4 text-brand-700" />
-                      Asignar Materia y Franjas Horarias
+                      Agregar horario de atención
                     </h3>
                     <span className="text-xs text-stone-600 font-bold bg-white px-2.5 py-1 rounded-md border border-stone-200">
                       {selectedSlotIds.length} franja{selectedSlotIds.length === 1 ? '' : 's'} seleccionada{selectedSlotIds.length === 1 ? '' : 's'}
                     </span>
                   </div>
+                  <p className="-mt-3 text-xs leading-relaxed text-stone-600">
+                    Elige la asignatura y luego marca los bloques semanales en los que puedes atender tutorías.
+                    Puedes seleccionar varios horarios.
+                  </p>
 
                   <div className="space-y-4">
                     <div>
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-2">
                         <label htmlFor="select-add-subject" className="block text-xs font-bold text-slate-800">
-                          1. Seleccionar Asignatura a Impartir (de Mis Asignaturas):
+                          1. Selecciona la asignatura:
                         </label>
                         
                         {/* Compact Semester Dropdown Filter for Teacher Catalog */}
@@ -1574,13 +1622,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <label className="block text-xs font-bold text-slate-800">
-                          2. Franjas Horarias Semanales Disponibles:
+                          2. Selecciona uno o más horarios semanales disponibles:
                         </label>
                         <div className="flex items-center gap-2 text-xs">
                           <button
                             type="button"
                             onClick={() => setSelectedSlotIds(schedules.map((s) => s.id))}
-                            className="text-brand-700 hover:underline font-bold cursor-pointer"
+                            className="min-h-10 px-2 text-brand-700 hover:underline font-bold cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
                           >
                             Seleccionar todas
                           </button>
@@ -1588,13 +1636,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           <button
                             type="button"
                             onClick={() => setSelectedSlotIds([])}
-                            className="text-stone-500 hover:underline font-semibold cursor-pointer"
+                            className="min-h-10 px-2 text-stone-500 hover:underline font-semibold cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
                           >
                             Limpiar
                           </button>
                         </div>
                       </div>
 
+                      {schedules.length === 0 ? (
+                        <p className="rounded-lg border border-stone-200 bg-stone-50 p-3 text-xs text-stone-600">
+                          No hay franjas horarias configuradas. Comunícate con el administrador para que las habilite.
+                        </p>
+                      ) : (
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
                         {schedules.map((slot) => {
                           const isSelected = selectedSlotIds.includes(slot.id);
@@ -1602,23 +1655,25 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                             <button
                               key={slot.id}
                               type="button"
+                              aria-pressed={isSelected}
                               onClick={() => {
                                 setSelectedSlotIds((prev) =>
                                   isSelected ? prev.filter((id) => id !== slot.id) : [...prev, slot.id]
                                 );
                               }}
-                              className={`flex items-center gap-2 p-2.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer text-left ${
+                              className={`flex min-h-11 items-center gap-2 p-2.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 ${
                                 isSelected
                                   ? 'bg-brand-600 border-[#11770e] text-white shadow-xs'
                                   : 'bg-white border-stone-200 text-slate-700 hover:bg-brand-50'
                               }`}
                             >
                               <Clock className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-white' : 'text-brand-700'}`} />
-                              <span className="truncate">{slot.label}</span>
+                              <span className="truncate">{formatScheduleLabel(slot.label)}</span>
                             </button>
                           );
                         })}
                       </div>
+                      )}
                     </div>
                   </div>
 
@@ -1636,7 +1691,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     <button
                       type="button"
                       id="btn-confirm-add-slot"
-                      disabled={addingSlot || selectedSlotIds.length === 0}
+                      disabled={addingSlot || !addSlotFilteredSubjects.some((subject) => subject.id === newSubjectId) || selectedSlotIds.length === 0 || schedules.length === 0}
                       onClick={handleSaveAvailability}
                       className="h-10 px-5 rounded-xl bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 shadow-xs cursor-pointer disabled:opacity-50 transition-colors flex items-center gap-2"
                     >
@@ -1648,7 +1703,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       ) : (
                         <>
                           <Check aria-hidden="true" className="w-4 h-4" />
-                          <span>Guardar {selectedSlotIds.length} Franja{selectedSlotIds.length === 1 ? '' : 's'}</span>
+                          <span>Guardar disponibilidad ({selectedSlotIds.length})</span>
                         </>
                       )}
                     </button>
@@ -1728,7 +1783,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                                 <div key={av.id} className="grid grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-[minmax(180px,1fr)_minmax(120px,0.6fr)_auto] sm:items-center sm:gap-4">
                                   <div className="flex items-center gap-2 text-sm text-slate-800">
                                     <Clock aria-hidden="true" className="h-4 w-4 shrink-0 text-stone-400" />
-                                    <span>{av.scheduleLabel}</span>
+                                    <span>{formatScheduleLabel(av.scheduleLabel)}</span>
                                   </div>
                                   <span className={`inline-flex w-fit items-center gap-1.5 text-xs ${av.isAvailable ? 'text-brand-700' : 'text-stone-500'}`}>
                                     <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${av.isAvailable ? 'bg-brand-600' : 'bg-stone-400'}`} />
@@ -1999,9 +2054,15 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       )}
 
       
-        {/* TAB 5: FICHA DOCENTE (REFERENCIA INSTITUCIONAL) */}
+        {/* TAB 5: FICHA DOCENTE */}
         {activeTab === 'profile' && (
-          <div className="space-y-4 animate-in fade-in duration-200">
+          <div className="mx-auto w-full min-w-0 space-y-4 animate-in fade-in duration-200">
+            <header>
+              <p className="text-xs font-medium text-brand-700">Mi cuenta</p>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Ficha profesional</h2>
+              <p className="mt-1 text-sm text-stone-500">Consulta tu información profesional, asignaturas autorizadas y disponibilidad.</p>
+            </header>
+
             {photoSuccessMsg && (
               <div className="p-4 bg-brand-50 border border-brand-200 text-brand-700 rounded-2xl text-xs flex items-center gap-2.5 font-bold animate-in slide-in-from-top-2 shadow-xs">
                 <CheckCircle2 aria-hidden="true" className="w-5 h-5 text-brand-700 shrink-0" />
@@ -2016,105 +2077,62 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start max-w-5xl">
-              {/* Tarjeta de perfil institucional tamaño completo */}
-              <div className="lg:col-span-5 flex justify-center">
-                <InstitutionalProfileCard
-                  user={currentUser}
-                  variant="full"
-                  canEditPhoto={true}
-                  showEmail={false}
-                  onSelectPhoto={handleTeacherPhotoSelect}
-                  onRemovePhoto={handleTeacherRemovePhoto}
-                  isUploadingPhoto={photoUploading}
-                  className="w-full max-w-sm"
-                />
-              </div>
-
-              {/* Panel de Información Académica del Docente */}
-              <div className="lg:col-span-7 space-y-4">
-                <div className="bg-white rounded-2xl border border-stone-200 p-5 sm:p-6 space-y-5">
-                  <div className="border-b border-stone-100 pb-3 flex items-center justify-between">
+            <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+              <div className="min-w-0 space-y-5 p-4 sm:p-6">
+                <section aria-labelledby="teacher-profile-data-title">
+                  <div className="mb-3 flex items-center gap-2 border-b border-stone-100 pb-3">
+                    <GraduationCap aria-hidden="true" className="h-4 w-4 text-brand-700" />
                     <div>
-                      <h3 className="font-extrabold text-slate-900 text-base">
-                        Ficha Profesional del Docente
-                      </h3>
-                      <p className="text-xs text-stone-500 mt-0.5">
-                        Registro oficial de profesorado en el Sistema de Tutorías FET
-                      </p>
+                      <h3 id="teacher-profile-data-title" className="text-sm font-semibold text-slate-900">Ficha Profesional del Docente</h3>
+                      <p className="mt-0.5 text-xs text-stone-500">Registro oficial de profesorado en el Sistema de Tutorías FET</p>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
-                    <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200/80 space-y-1">
-                      <span className="text-[10px] uppercase font-bold text-stone-400 block tracking-wider">
-                        Código Docente
-                      </span>
-                      <span className="font-bold text-slate-900 text-sm font-mono block">
-                        {currentUser.account || 'DOC-TITULAR'}
-                      </span>
+                  <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border border-stone-200 p-3.5">
+                      <dt className="text-xs text-stone-500">Programa / Facultad</dt>
+                      <dd className="mt-1 text-sm font-medium text-slate-800">{currentUser.careerName || 'Docente Institucional'}</dd>
                     </div>
-
-                    <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200/80 space-y-1">
-                      <span className="text-[10px] uppercase font-bold text-stone-400 block tracking-wider">
-                        Programa / Facultad
-                      </span>
-                      <span className="font-bold text-slate-900 text-xs block leading-tight">
-                        {currentUser.careerName || 'Docente Institucional'}
-                      </span>
+                    <div className="rounded-lg border border-stone-200 p-3.5">
+                      <dt className="text-xs text-stone-500">Calificación promedio</dt>
+                      <dd className="mt-1 text-sm font-medium text-brand-700">⭐ {avgScore ? avgScore.toFixed(1) : '5.0'} / 5.0</dd>
                     </div>
+                  </dl>
+                </section>
 
-                    <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200/80 space-y-1">
-                      <span className="text-[10px] uppercase font-bold text-stone-400 block tracking-wider">
-                        Calificación Promedio
-                      </span>
-                      <span className="font-bold text-[#11770e] text-sm block">
-                        ⭐ {avgScore ? avgScore.toFixed(1) : '5.0'} / 5.0
-                      </span>
-                    </div>
+                <section aria-labelledby="teacher-profile-subjects-title">
+                  <div className="mb-3 flex items-center gap-2 border-b border-stone-100 pb-3">
+                    <BookOpen aria-hidden="true" className="h-4 w-4 text-brand-700" />
+                    <h3 id="teacher-profile-subjects-title" className="text-sm font-semibold text-slate-900">Asignaturas autorizadas ({teacherCatalog.length})</h3>
                   </div>
-
-                  {/* Catálogo de Asignaturas que orienta */}
-                  <div className="pt-2 border-t border-stone-100">
-                    <div className="flex items-center justify-between mb-2.5">
-                      <span className="text-[11px] font-bold text-stone-400 uppercase tracking-wider block">
-                        Asignaturas Autorizadas ({teacherCatalog.length})
-                      </span>
+                  {teacherCatalog.length === 0 ? (
+                    <p className="text-xs italic text-stone-500">No tienes asignaturas registradas en tu catálogo. El administrador puede asignártelas desde el panel.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {teacherCatalog.map((sub) => (
+                        <span key={sub.id} className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-medium text-slate-800">
+                          {sub.name}
+                        </span>
+                      ))}
                     </div>
+                  )}
+                </section>
 
-                    {teacherCatalog.length === 0 ? (
-                      <p className="text-xs text-stone-400 italic">
-                        No tienes asignaturas registradas en tu catálogo. El administrador puede asignártelas desde el panel.
-                      </p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {teacherCatalog.map((sub) => (
-                          <span
-                            key={sub.id}
-                            className="px-3 py-1.5 bg-stone-100 text-slate-800 text-xs font-semibold rounded-xl border border-stone-200/80"
-                          >
-                            {sub.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                <section aria-labelledby="teacher-profile-availability-title">
+                  <div className="mb-3 flex items-center gap-2 border-b border-stone-100 pb-3">
+                    <Clock aria-hidden="true" className="h-4 w-4 text-brand-700" />
+                    <h3 id="teacher-profile-availability-title" className="text-sm font-semibold text-slate-900">Disponibilidad semanal registrada</h3>
                   </div>
-
-                  {/* Resumen de Franjas de Disponibilidad */}
-                  <div className="pt-2 border-t border-stone-100">
-                    <span className="text-[11px] font-bold text-stone-400 uppercase tracking-wider block mb-2">
-                      Disponibilidad Semanal Registrada
-                    </span>
-                    <p className="text-xs text-stone-600 leading-relaxed">
-                      Actualmente tienes <strong className="text-slate-900">{myAvailabilities.length} franja(s) horaria(s)</strong> activas para recibir solicitudes de estudiantes.
-                    </p>
-                  </div>
-                </div>
+                  <p className="text-sm leading-relaxed text-stone-600">
+                    Actualmente tienes <strong className="text-slate-900">{myAvailabilities.length} franja(s) horaria(s)</strong> activas para recibir solicitudes de estudiantes.
+                  </p>
+                </section>
               </div>
             </div>
           </div>
         )}
+        </div>
       </div>
+    </div>
 
       {/* MODAL: APPROVE TUTORING */}
       {approvingTutoring && (
@@ -2191,8 +2209,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
               {approvingTutoring.type === 'GROUP' && (
                 <div>
-                  <label htmlFor="approval-group-capacity" className="block font-bold text-slate-800 uppercase tracking-wider text-[10px] mb-1.5">Cupo máximo de participantes (incluye al solicitante)</label>
-                  <input id="approval-group-capacity" type="number" min={Math.max(2, approvingTutoring.assistants.length)} max={approvingTutoring.modality === TutoringModality.VIRTUAL ? 30 : undefined} value={confirmedCapacity} onChange={(e) => setConfirmedCapacity(Number(e.target.value))} required className="w-full rounded-xl border border-stone-200 p-3 text-xs" />
                 </div>
               )}
 

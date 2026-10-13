@@ -38,9 +38,6 @@ export class ApproveTutoringUseCase {
       );
     }
     const group = (tutoring.type || TutoringType.GROUP) === TutoringType.GROUP;
-    if (group && (!Number.isInteger(dto.maxParticipants) || Number(dto.maxParticipants) < Math.max(2, tutoring.assistants.length))) {
-      throw new BusinessRuleException('Indique un cupo grupal que incluya a los participantes ya inscritos.', 'INVALID_CAPACITY');
-    }
 
     const block = (dto.block || '').trim();
     if (tutoring.modality === TutoringModality.PRESENCIAL && block.length === 0) {
@@ -65,7 +62,7 @@ export class ApproveTutoringUseCase {
     }
 
     tutoring.status = TutoringStatus.APPROVED;
-    tutoring.maxParticipants = group ? Number(dto.maxParticipants) : 1;
+    tutoring.maxParticipants = group ? null : 1;
     tutoring.space = dto.space.trim();
     tutoring.block = tutoring.modality === TutoringModality.PRESENCIAL ? block : '';
     tutoring.approvedById = approver.id;

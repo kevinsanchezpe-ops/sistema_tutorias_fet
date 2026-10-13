@@ -29,7 +29,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const [careerFilter, setCareerFilter] = useState<string>(currentUser.careerId || 'all');
+  const [careerFilter, setCareerFilter] = useState<string>('all');
   const [semesterFilter, setSemesterFilter] = useState<string>('all');
 
   // Form state
@@ -37,7 +37,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
   const [code, setCode] = useState('');
   const [credits, setCredits] = useState(4);
   const [semester, setSemester] = useState(1);
-  const [selectedCareerId, setSelectedCareerId] = useState<string>(currentUser.careerId || careers[0]?.id || '');
+  const [selectedCareerId, setSelectedCareerId] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -72,6 +72,10 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
+    if (!selectedCareerId) {
+      setErrorMsg('Selecciona una carrera para la asignatura.');
+      return;
+    }
     setIsSubmitting(true);
 
     const res = await ApiClient.createSubject(
@@ -81,7 +85,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
         credits: Number(credits),
         semester: Number(semester),
         careerId: selectedCareerId,
-        careerName: selectedCareer?.name || careers[0]?.name || 'Carrera Institucional'
+        careerName: selectedCareer?.name || 'Carrera Institucional'
       },
       currentUser
     );
@@ -94,6 +98,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
       setCode('');
       setCredits(4);
       setSemester(1);
+      setSelectedCareerId('');
       setShowCreateForm(false);
       onRefresh();
       setTimeout(() => setSuccessMsg(null), 4000);
@@ -264,8 +269,10 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
                   id="input-subject-career"
                   value={selectedCareerId}
                   onChange={(e) => setSelectedCareerId(e.target.value)}
+                  required
                   className="w-full text-sm rounded-lg border border-stone-200 px-3.5 py-3 text-slate-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 bg-white font-medium"
                 >
+                  <option value="" disabled>Selecciona una carrera</option>
                   {careers.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -285,6 +292,7 @@ export const AdminSubjectsTab: React.FC<AdminSubjectsTabProps> = ({
                   id="input-subject-semester"
                   value={semester}
                   onChange={(e) => setSemester(Number(e.target.value))}
+                  disabled={!selectedCareer}
                   className="w-full text-sm rounded-lg border border-stone-200 px-3.5 py-3 text-slate-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 bg-white font-medium"
                 >
                   {Array.from({ length: selectedCareer?.numberOfSemesters || 10 }, (_, i) => i + 1).map((n) => (

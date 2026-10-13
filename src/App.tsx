@@ -381,7 +381,7 @@ export default function App() {
         />
 
       {/* Main Content Area */}
-      <main id="main-content" className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main id="main-content" className="w-full flex-1 px-4 py-6 sm:px-6 lg:px-8 2xl:px-10">
         {apiBusy && (
           <div role="status" aria-live="polite" className="mb-4 flex items-center gap-2 rounded-lg border border-brand-200 bg-white px-3 py-2 text-xs font-medium text-brand-800 shadow-xs">
             <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
@@ -412,6 +412,7 @@ export default function App() {
             availabilities={availabilities}
             schedules={schedules}
             subjects={subjects}
+            students={allUsers}
             onRefresh={scheduleRefreshData}
             onTutoringUpdated={updateTutoring}
             />
@@ -440,8 +441,8 @@ export default function App() {
       </main>
 
       {/* Footer institucional */}
-      <footer className="mt-auto border-t-2 border-brand-600 bg-slate-950 text-slate-300">
-        <div className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
+      <footer className="mt-auto bg-slate-950 text-slate-300">
+        <div className="w-full px-4 py-7 sm:px-6 lg:px-8 2xl:px-10">
           <div className="grid gap-7 sm:grid-cols-2 xl:grid-cols-[1.4fr_1fr_1fr] xl:gap-12">
             <div className="sm:col-span-2 xl:col-span-1">
               <div className="flex items-center gap-4">
@@ -489,7 +490,7 @@ export default function App() {
 
           <div className="mt-7 flex flex-col gap-2 border-t border-white/10 pt-4 text-[11px] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
             <span>© {new Date().getFullYear()} Fundación Escuela Tecnológica de Neiva - FET. Todos los derechos reservados.</span>
-            <span>Sistema Institucional de Gestión de Tutorías Académicas</span>
+            <span>Tutorías FET · Sistema institucional de acompañamiento académico</span>
           </div>
         </div>
       </footer>

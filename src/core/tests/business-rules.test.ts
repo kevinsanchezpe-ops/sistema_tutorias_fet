@@ -1,5 +1,5 @@
 /**
- * Pruebas unitarias de invariantes y reglas de negocio del Sistema GT.
+ * Pruebas unitarias de invariantes y reglas de negocio de Tutorías FET.
  * Verifica que todas las reglas extraídas del sistema PHP original se cumplan fielmente.
  */
 

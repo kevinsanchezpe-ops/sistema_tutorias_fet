@@ -237,10 +237,10 @@ export class ApiClient {
     });
   }
 
-  public static async approveTutoring(tutoringId: string, space: string, approver: User, block: string = '', maxParticipants?: number): Promise<ApiResponse<Tutoring>> {
+  public static async approveTutoring(tutoringId: string, space: string, approver: User, block: string = '', _maxParticipants?: number): Promise<ApiResponse<Tutoring>> {
     return request<Tutoring>(`/tutorings/${tutoringId}/approve`, {
       method: 'PATCH',
-      body: JSON.stringify({ space, block, maxParticipants, approverId: approver.id })
+      body: JSON.stringify({ space, block, approverId: approver.id })
     });
   }
 

@@ -2,6 +2,7 @@ import { BusinessRuleException } from '../../domain/services/schedule-conflict.s
 import { db } from '../../infrastructure/database/database';
 import { getCareerById, getDefaultCareer } from '../../infrastructure/database/careers-data';
 import { User, UserRole } from '../../types';
+import { formatPersonName } from '../../utils/name-formatting';
 
 export interface RegisterStudentDto {
   fullName: string;
@@ -40,8 +41,9 @@ export class RegisterStudentUseCase {
       throw new BusinessRuleException('El número de cuenta ya se encuentra registrado.', 'ACCOUNT_TAKEN');
     }
 
-    const nameParts = dto.fullName.trim().split(' ');
-    const alias = nameParts.length >= 2 ? `${nameParts[0]} ${nameParts[1]}` : dto.fullName;
+    const fullName = formatPersonName(dto.fullName);
+    const nameParts = fullName.split(' ');
+    const alias = nameParts.length >= 2 ? `${nameParts[0]} ${nameParts[1]}` : fullName;
 
     const careerId = dto.careerId || getDefaultCareer().id;
     const career = getCareerById(careerId);
@@ -59,7 +61,7 @@ export class RegisterStudentUseCase {
     const newUser: User = {
       id: `usr-student-${Date.now()}`,
       username: usernameLower,
-      fullName: dto.fullName.trim(),
+      fullName,
       alias,
       email: dto.email.trim(),
       role: UserRole.STUDENT,

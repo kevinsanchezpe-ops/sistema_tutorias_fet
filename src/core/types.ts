@@ -1,5 +1,5 @@
 /**
- * Core Types & Enums for GT (Gestión de Tutorías)
+ * Core Types & Enums for Tutorías FET
  * Respecting 100% of original business statuses and rules.
  */
 

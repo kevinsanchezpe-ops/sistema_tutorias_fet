@@ -1,4 +1,4 @@
-# Arquitectura del Sistema GT: Monolito Modular Limpio
+# Arquitectura de Tutorías FET: Monolito Modular Limpio
 
 ## 1. Visión General
 
